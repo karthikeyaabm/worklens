@@ -4,9 +4,18 @@
   "description": "Daily Timelog Desktop Widget",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.company.timelog",
+    "productName": "Daily Timelog Widget",
+    "win": {
+      "target": "nsis"
+    }
   }
 }

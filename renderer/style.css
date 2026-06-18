@@ -12,32 +12,39 @@ body {
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   user-select: none;
 }
 
 #widget-container {
   width: 100%;
   height: 100%;
+
   background: rgba(18, 18, 18, 0.78);
   backdrop-filter: blur(25px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 20px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-  padding: 24px;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  padding: 8px 12px;
+
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 22px;
-  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  gap: 6px;
+
   opacity: 0;
+  animation: fadeIn .35s ease forwards;
+
   -webkit-app-region: drag;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(5px);
   }
 
   to {
@@ -46,113 +53,124 @@ body {
   }
 }
 
-/* Header Styling */
+/* HEADER */
+
 .widget-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .header-icon-container {
+  width: 18px;
+  height: 18px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
 }
 
 .header-icon {
-  width: 24px;
-  height: 24px;
+  width: 15px;
+  height: 15px;
 }
 
 .header-title {
-  color: #FFFFFF;
-  font-size: 15px;
+  color: #ffffff;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  line-height: 1;
 }
 
-/* Date Section Styling */
+/* DATE SECTION */
+
 .date-section {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
 }
 
 .date-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .calendar-icon-container {
+  width: 28px;
+  height: 28px;
+
+  border-radius: 8px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .calendar-icon {
-  width: 22px;
-  height: 22px;
+  width: 14px;
+  height: 14px;
 }
 
 .date-text-container {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 
 .date-main {
-  color: #FFFFFF;
-  font-size: 16px;
+  color: #ffffff;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .date-sub {
-  color: #B8B8B8;
-  font-size: 13px;
+  color: #b8b8b8;
+  font-size: 9px;
   font-weight: 500;
+  line-height: 1;
 }
 
-/* Total Badge Styling */
+/* TOTAL TIME */
+
 .total-badge {
-  background: #2563EB;
-  border-radius: 100px;
-  padding: 6px 14px;
+  background: #2563eb;
+
+  min-width: 85px;
+  height: 30px;
+
+  padding: 0 12px;
+
+  border-radius: 999px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-  transition: all 0.2s ease;
+
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35);
+
+  transition: all .2s ease;
+
   -webkit-app-region: no-drag;
 }
 
 .total-badge:hover {
-  background: #1d4ed8;
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
-}
-
-.total-badge:active {
-  transform: translateY(0);
+  background: #1d4ed8;
 }
 
 #total-time {
-  color: #FFFFFF;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }

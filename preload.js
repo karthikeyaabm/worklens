@@ -1,10 +1,13 @@
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   fetchTimelog: async () => {
-    // Return dummy data for now. Mainnet API will be integrated here later.
     return {
       totalTime: "07h 45m"
     };
+  },
+
+  getUsername: async () => {
+    return await ipcRenderer.invoke('get-username');
   }
 });
