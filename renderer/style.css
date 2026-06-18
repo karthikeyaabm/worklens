@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+}
+
+#widget-container {
+  width: 100%;
+  height: 100%;
+  background: rgba(18, 18, 18, 0.78);
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 22px;
+  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  -webkit-app-region: drag;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header Styling */
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.header-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.header-title {
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Date Section Styling */
+.date-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.date-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.calendar-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.calendar-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.date-text-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.date-main {
+  color: #FFFFFF;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.date-sub {
+  color: #B8B8B8;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Total Badge Styling */
+.total-badge {
+  background: #2563EB;
+  border-radius: 100px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.total-badge:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
+.total-badge:active {
+  transform: translateY(0);
+}
+
+#total-time {
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}

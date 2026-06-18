@@ -1,0 +1,12 @@
+{
+  "name": "daily-timelog-widget",
+  "version": "1.0.0",
+  "description": "Daily Timelog Desktop Widget",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
