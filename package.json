@@ -1,21 +1,44 @@
 {
-  "name": "daily-timelog-widget",
-  "version": "1.0.0",
-  "description": "Daily Timelog Desktop Widget",
+  "name": "worklens",
+  "version": "1.0.2",
+  "description": "WorkLens | Employee Timelog & Activity Tracking",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "release": "electron-builder --publish always"
   },
   "devDependencies": {
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.company.timelog",
-    "productName": "Daily Timelog Widget",
+    "appId": "com.worklens.desktop",
+    "productName": "WorkLens",
+    "files": [
+      "**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
     "win": {
       "target": "nsis"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "karthikeyaabm",
+      "repo": "worklens",
+      "private": true,
+      "releaseType": "release"
     }
+  },
+  "dependencies": {
+    "active-win": "^8.2.1",
+    "dotenv": "^16.4.5",
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9"
   }
 }
