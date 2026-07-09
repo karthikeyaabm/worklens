@@ -1,6 +1,6 @@
 {
   "name": "worklens",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "description": "WorkLens | Employee Timelog & Activity Tracking",
   "main": "main.js",
   "scripts": {
@@ -25,13 +25,13 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "publish": {
       "provider": "github",
       "owner": "karthikeyaabm",
       "repo": "worklens",
-      "private": true,
       "releaseType": "release"
     }
   },
