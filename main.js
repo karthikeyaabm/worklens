@@ -344,16 +344,17 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+  log.info(`Installed version: ${app.getVersion()}`);
 
-  // ---- Auto-update setup ----
-  autoUpdater.checkForUpdatesAndNotify();
-
-  autoUpdater.on('checking-for-update', () => {
-    log.info('[AutoUpdate] Checking for update...');
+  autoUpdater.on("checking-for-update", () => {
+    log.info(`Checking for update. Current version: ${app.getVersion()}`);
   });
+  // ---- Auto-update setup ----
 
-  autoUpdater.on('update-available', (info) => {
-    log.info(`[AutoUpdate] Update available: v${info.version}`);
+  autoUpdater.on("update-available", (info) => {
+    log.info(`[AutoUpdate] Update available: ${info.version}`);
+    log.info(`Installed: ${app.getVersion()}`);
+    log.info(`GitHub: ${info.version}`);
   });
 
   autoUpdater.on('update-not-available', () => {
@@ -374,6 +375,12 @@ app.whenReady().then(async () => {
     // currentRecord is already being flushed by the existing 'before-quit' handler.
     autoUpdater.quitAndInstall();
   });
+
+  try {
+    await autoUpdater.checkForUpdatesAndNotify();
+  } catch (err) {
+    log.error("[AutoUpdate] Initial check failed:", err);
+  }
 
   // Re-check every 4 hours in the background
   setInterval(() => {
