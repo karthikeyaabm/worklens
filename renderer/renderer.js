@@ -39,26 +39,28 @@ function updateDateDisplay() {
   //dayElement.textContent = dayString;
 }
 
-// Helper to format active tracked seconds into a readable format (e.g. 1h 30m)
 function formatSeconds(seconds) {
-  if (seconds <= 0) return '0h';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
+  if (seconds <= 0) return '0';
 
-  if (h > 0) {
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  const decimalHours = seconds / 3600;
+
+  // Agar exact integer hai (10.0) to "10h" dikhao
+  if (Number.isInteger(decimalHours)) {
+    return `${decimalHours}`;
   }
-  return `${m}m`;
+
+  // Agar decimal hai (6.5) to "6.5h" dikhao
+  return `${parseFloat(decimalHours.toFixed(1))}`;
 }
 
 // Helper to format Redmine hours into clean strings
 function formatRedmineHours(hours) {
   const val = parseFloat(hours);
-  if (isNaN(val) || val <= 0) return '0h';
+  if (isNaN(val) || val <= 0) return '0';
   if (Number.isInteger(val)) {
-    return `${val}h`;
+    return `${val}`;
   }
-  return `${val.toFixed(1)}h`;
+  return `${val.toFixed(1)}`;
 }
 
 // Load both Redmine efforts and Active tracking metrics

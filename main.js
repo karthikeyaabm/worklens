@@ -36,24 +36,14 @@ async function loadActiveWin() {
   return activeWin;
 }
 
-// Helper to format date into local YYYY-MM-DD
-function formatDate(date) {
+function formatDateTime(date) {
   const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  const second = String(date.getSeconds()).padStart(2, '0');
 
-// Format a Date as "YYYY-MM-DDTHH:mm:ss" (local time, no ms, no Z) to match
-// the activity-log API's example payload: "2026-07-03T09:00:00"
-function formatDateTimeLocal(date) {
-  // Convert to UTC before sending, since server treats naive string as UTC
-  const yyyy = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const hour = String(date.getUTCHours()).padStart(2, '0');
-  const minute = String(date.getUTCMinutes()).padStart(2, '0');
-  const second = String(date.getUTCSeconds()).padStart(2, '0');
   return `${yyyy}-${month}-${day}T${hour}:${minute}:${second}`;
 }
 
@@ -95,8 +85,8 @@ async function syncChunkToApi(appName, windowTitle, status, startTime, endTime) 
     user_id: userId,
     app_name: appName,
     window_title: windowTitle,
-    start_time: formatDateTimeLocal(startTime),
-    end_time: formatDateTimeLocal(endTime),
+    start_time: formatDateTime(startTime),
+    end_time: formatDateTime(endTime),
     duration: calculateDuration(startTime, endTime),
     status: status.toLowerCase()
   };
