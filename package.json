@@ -31,7 +31,6 @@
       "provider": "github",
       "owner": "karthikeyaabm",
       "repo": "worklens",
-      "private": true,
       "releaseType": "release"
     }
   },
