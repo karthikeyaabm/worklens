@@ -178,8 +178,8 @@ function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
 
-  const widgetWidth = 200;
-  const widgetHeight = 75;
+  const widgetWidth = 185;
+  const widgetHeight = 60;
 
   const x = workX + workWidth - widgetWidth - 20;
   const y = workY + workHeight - widgetHeight - 20;
@@ -217,6 +217,10 @@ function createWindow() {
 // IPC Handlers
 ipcMain.handle('get-username', () => {
   return os.userInfo().username;
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
 });
 
 // Response shape confirmed from logs:

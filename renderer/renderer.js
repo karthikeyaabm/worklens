@@ -40,27 +40,43 @@ function updateDateDisplay() {
 }
 
 function formatSeconds(seconds) {
-  if (seconds <= 0) return '0';
+  if (seconds <= 0) return '0h';
 
   const decimalHours = seconds / 3600;
 
-  // Agar exact integer hai (10.0) to "10h" dikhao
+  // If exact integer (e.g. 10.0) show "10h"
   if (Number.isInteger(decimalHours)) {
-    return `${decimalHours}`;
+    return `${decimalHours}h`;
   }
 
-  // Agar decimal hai (6.5) to "6.5h" dikhao
-  return `${parseFloat(decimalHours.toFixed(1))}`;
+  // If decimal (e.g. 6.5) show "6.5h"
+  return `${parseFloat(decimalHours.toFixed(1))}h`;
 }
 
 // Helper to format Redmine hours into clean strings
 function formatRedmineHours(hours) {
   const val = parseFloat(hours);
-  if (isNaN(val) || val <= 0) return '0';
+  if (isNaN(val) || val <= 0) return '0h';
   if (Number.isInteger(val)) {
-    return `${val}`;
+    return `${val}h`;
   }
-  return `${val.toFixed(1)}`;
+  return `${val.toFixed(1)}h`;
+}
+
+// Get App Version
+async function loadVersion() {
+  try {
+    if (!window.api || typeof window.api.getAppVersion !== 'function') return;
+
+    const version = await window.api.getAppVersion();
+    const versionElement = document.getElementById('version-display');
+
+    if (versionElement) {
+      versionElement.textContent = `v${version}`;
+    }
+  } catch (error) {
+    console.error('Failed to load version:', error);
+  }
 }
 
 // Load both Redmine efforts and Active tracking metrics
@@ -114,6 +130,7 @@ async function loadWidgetData() {
 // Initialization on DOM load
 document.addEventListener('DOMContentLoaded', () => {
   loadUsername();
+  loadVersion();
   updateDateDisplay();
   loadWidgetData();
 
