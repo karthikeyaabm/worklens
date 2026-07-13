@@ -41,5 +41,9 @@ contextBridge.exposeInMainWorld('api', {
 
   getCurrentStatus: async () => {
     return await ipcRenderer.invoke('get-current-status');
+  },
+
+  getAppVersion: async () => {
+    return await ipcRenderer.invoke('get-app-version');
   }
 });

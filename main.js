@@ -1,5 +1,5 @@
 require('dotenv').config(); // Load environment variables from .env
-const { app, BrowserWindow, screen, ipcMain, powerMonitor } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, Tray, nativeImage, dialog } = require('electron');
 const path = require('path');
 const os = require('os');
 const redmineClient = require('./redmineClient');
@@ -10,6 +10,22 @@ log.transports.file.level = 'info';
 autoUpdater.logger = log;
 
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
+let finalSyncDone = false;
+
+// Request single instance lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+function showAndFocusWindow() {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  }
+}
+
 let cachedUserId = null;
 let currentRecord = null; // { appName, windowTitle, startTime, status } -- no `id`, no PUT flow (POST-only API)
 let currentStatus = 'Active'; // 'Active' or 'Inactive'
@@ -178,11 +194,14 @@ function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
 
-  const widgetWidth = 200;
-  const widgetHeight = 75;
+  const widgetWidth = 185;
+  const widgetHeight = 60;
 
   const x = workX + workWidth - widgetWidth - 20;
   const y = workY + workHeight - widgetHeight - 20;
+
+  const loginSettings = app.getLoginItemSettings();
+  const startHidden = loginSettings.wasOpenedAsHidden || process.argv.includes('--hidden') || process.argv.includes('--open-as-hidden');
 
   mainWindow = new BrowserWindow({
     width: widgetWidth,
@@ -200,6 +219,7 @@ function createWindow() {
     //closable: false,
     fullscreenable: false,
     hasShadow: false,
+    show: !startHidden,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -212,11 +232,22 @@ function createWindow() {
   //mainWindow.webContents.openDevTools();
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
+
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
 }
 
 // IPC Handlers
 ipcMain.handle('get-username', () => {
   return os.userInfo().username;
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
 });
 
 // Response shape confirmed from logs:
@@ -317,111 +348,151 @@ ipcMain.handle('get-current-status', () => {
   return currentStatus;
 });
 
-// App Lifecycle
-app.whenReady().then(async () => {
-  try {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      path: process.execPath
-    });
-  } catch (error) {
-    console.error(error);
-  }
+function createTray() {
+  const iconPath = path.join(__dirname, 'assets', 'icon.png');
+  let trayIcon = nativeImage.createFromPath(iconPath);
+  trayIcon = trayIcon.resize({ width: 16, height: 16 });
 
-  const userId = await getUserId();
-  if (userId) {
-    console.log(`[Startup] App started. Resolved user ID: ${userId}. Tracking active sessions.`);
-  }
-
-  // Start tracking interval every 2 seconds
-  trackingInterval = setInterval(trackTick, 2000);
-  trackTick();
-
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+  tray = new Tray(trayIcon);
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open WorkLens',
+      click: () => {
+        showAndFocusWindow();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Exit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
     }
+  ]);
+
+  tray.setToolTip('WorkLens');
+  tray.setContextMenu(contextMenu);
+
+  tray.on('double-click', () => {
+    showAndFocusWindow();
   });
-  log.info(`Installed version: ${app.getVersion()}`);
+}
 
-  autoUpdater.on("checking-for-update", () => {
-    log.info(`Checking for update. Current version: ${app.getVersion()}`);
-  });
-  // ---- Auto-update setup ----
-
-  autoUpdater.on("update-available", (info) => {
-    log.info(`[AutoUpdate] Update available: ${info.version}`);
-    log.info(`Installed: ${app.getVersion()}`);
-    log.info(`GitHub: ${info.version}`);
-  });
-
-  autoUpdater.on('update-not-available', () => {
-    log.info('[AutoUpdate] No update available.');
-  });
-
-  autoUpdater.on('error', (err) => {
-    log.error('[AutoUpdate] Error:', err);
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    log.info(`[AutoUpdate] Download progress: ${Math.round(progress.percent)}%`);
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    log.info(`[AutoUpdate] Update downloaded: v${info.version}. Installing now...`);
-    // Closes the app and installs the new version immediately.
-    // currentRecord is already being flushed by the existing 'before-quit' handler.
-    autoUpdater.quitAndInstall();
-  });
-
-  try {
-    await autoUpdater.checkForUpdatesAndNotify();
-  } catch (err) {
-    log.error("[AutoUpdate] Initial check failed:", err);
-  }
-
-  // Re-check every 4 hours in the background
-  setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify();
-  }, 4 * 60 * 60 * 1000);
-
-  // Handle system suspend/resume
-  powerMonitor.on('suspend', async () => {
-    console.log('System suspending, saving current activity...');
-    if (currentRecord) {
-      await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date());
-      currentRecord = null;
-    }
-  });
-
-  powerMonitor.on('resume', async () => {
-    console.log('System resumed, restarting tracking...');
-    trackTick();
-  });
-});
-
-// Graceful exit
-let isQuitting = false;
-app.on('before-quit', async (event) => {
-  if (currentRecord && !isQuitting) {
-    event.preventDefault();
-    isQuitting = true;
-    clearInterval(trackingInterval);
-    console.log('App quitting, closing final activity record...');
+if (gotTheLock) {
+  // App Lifecycle
+  app.whenReady().then(async () => {
     try {
-      await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date());
-    } catch (e) {
-      console.error(e);
-    } finally {
-      app.quit();
+      app.setLoginItemSettings({
+        openAtLogin: true,
+        openAsHidden: true,
+        path: process.execPath
+      });
+    } catch (error) {
+      console.error(error);
     }
-  }
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+    const userId = await getUserId();
+    if (userId) {
+      console.log(`[Startup] App started. Resolved user ID: ${userId}. Tracking active sessions.`);
+    }
+
+    // Start tracking interval every 2 seconds
+    trackingInterval = setInterval(trackTick, 2000);
+    trackTick();
+
+    createWindow();
+    createTray();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+    log.info(`Installed version: ${app.getVersion()}`);
+
+    autoUpdater.on("checking-for-update", () => {
+      log.info(`Checking for update. Current version: ${app.getVersion()}`);
+    });
+    // ---- Auto-update setup ----
+
+    autoUpdater.on("update-available", (info) => {
+      log.info(`[AutoUpdate] Update available: ${info.version}`);
+      log.info(`Installed: ${app.getVersion()}`);
+      log.info(`GitHub: ${info.version}`);
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      log.info('[AutoUpdate] No update available.');
+    });
+
+    autoUpdater.on('error', (err) => {
+      log.error('[AutoUpdate] Error:', err);
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+      log.info(`[AutoUpdate] Download progress: ${Math.round(progress.percent)}%`);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      log.info(`[AutoUpdate] Update downloaded: v${info.version}. Installing now...`);
+      // Closes the app and installs the new version immediately.
+      // currentRecord is already being flushed by the existing 'before-quit' handler.
+      autoUpdater.quitAndInstall();
+    });
+
+    try {
+      await autoUpdater.checkForUpdatesAndNotify();
+    } catch (err) {
+      log.error("[AutoUpdate] Initial check failed:", err);
+    }
+
+    // Re-check every 4 hours in the background
+    setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+    }, 4 * 60 * 60 * 1000);
+
+    // Handle system suspend/resume
+    powerMonitor.on('suspend', async () => {
+      console.log('System suspending, saving current activity...');
+      if (currentRecord) {
+        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date());
+        currentRecord = null;
+      }
+    });
+
+    powerMonitor.on('resume', async () => {
+      console.log('System resumed, restarting tracking...');
+      trackTick();
+    });
+  });
+
+  // Graceful exit
+  app.on('before-quit', async (event) => {
+    isQuitting = true;
+
+    if (currentRecord && !finalSyncDone) {
+      event.preventDefault();
+      finalSyncDone = true;
+      clearInterval(trackingInterval);
+      console.log('App quitting, closing final activity record...');
+      try {
+        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date());
+      } catch (e) {
+        console.error(e);
+      } finally {
+        app.quit();
+      }
+    }
+  });
+
+  app.on('window-all-closed', (event) => {
+    if (process.platform !== 'darwin') {
+      if (isQuitting) {
+        app.quit();
+      } else {
+        event.preventDefault();
+      }
+    }
+  });
+}

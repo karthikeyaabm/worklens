@@ -27,54 +27,52 @@
         </div>
         <span id="header-title" class="header-title"></span>
       </div>
+      <div class="header-center">
+        <span id="version-display" class="version-text">v1.0.0</span>
+      </div>
       <div class="header-right">
         <span id="date-display" class="date-main">May 16</span>
-        <!---span id="day-display" class="date-sub">Friday</span>--->
       </div>
     </header>
 
     <!-- Info Cards Grid Section -->
     <div class="widget-grid">
       <!-- Redmine Efforts Card -->
-      <div class="info-card">
+      <div class="info-card time-logs-card">
         <div class="card-header">
           <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 8V12L15 14" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" />
             <circle cx="12" cy="12" r="9" stroke="#60a5fa" stroke-width="2" />
           </svg>
-          <span>Time Logs</span>
+          <span>TIME LOGS</span>
         </div>
         <div class="card-body">
-          <div class="time-row ">
+          <div class="time-item">
             <span class="label">Y</span>
-            <span class="separator">:</span>
             <span id="redmine-yesterday" class="value">0h</span>
           </div>
-          <div class="time-row">
+          <div class="time-item">
             <span class="label">T</span>
-            <span class="separator">:</span>
             <span id="redmine-today" class="value">0h</span>
           </div>
         </div>
       </div>
 
       <!-- Active Time Tracking Card -->
-      <div class="info-card">
+      <div class="info-card active-time-card">
         <div class="card-header">
           <div class="status-container">
             <span id="status-dot" class="status-dot active"></span>
           </div>
-          <span>Active Time</span>
+          <span>ACTIVE TIME</span>
         </div>
         <div class="card-body">
-          <div class="time-row">
+          <div class="time-item">
             <span class="label">Y</span>
-            <span class="separator">:</span>
             <span id="active-yesterday" class="value">0h</span>
           </div>
-          <div class="time-row">
+          <div class="time-item">
             <span class="label">T</span>
-            <span class="separator">:</span>
             <span id="active-today" class="value">0h</span>
           </div>
         </div>
