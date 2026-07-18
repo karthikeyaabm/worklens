@@ -1,0 +1,1035 @@
+/* dashboard.css - Premium Windows 11 Fluent Dark UI */
+
+/* Custom Variables */
+:root {
+  --bg-app: #070b13;
+  --bg-sidebar: #090f1d;
+  --bg-content: #0c1427;
+  --bg-card: rgba(20, 30, 55, 0.55);
+  --border-card: rgba(255, 255, 255, 0.07);
+  --border-card-hover: rgba(59, 130, 246, 0.35);
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  /* Accent Colors */
+  --accent-blue: #3b82f6;
+  --accent-blue-hover: #2563eb;
+  --accent-green: #10b981;
+  --accent-orange: #f97316;
+  --accent-purple: #8b5cf6;
+  --accent-pink: #ec4899;
+  
+  /* Font Family */
+  --font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+}
+
+/* Reset and Core Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* App Container Layout */
+#app-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at top right, rgba(30, 58, 138, 0.15), transparent 60%),
+              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05), transparent 55%),
+              var(--bg-app);
+}
+
+/* ================= 1. SIDEBAR ================= */
+.sidebar {
+  width: 230px;
+  height: 100%;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-card);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  flex-shrink: 0;
+}
+
+/* Profile Section */
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 24px;
+}
+
+.avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), #1d4ed8);
+  color: white;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.user-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  letter-spacing: -0.2px;
+}
+
+.user-role {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* Navigation Menu */
+.nav-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+}
+
+.nav-item:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item.active {
+  color: var(--text-primary);
+  background-color: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.25);
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.nav-item:hover .nav-icon {
+  transform: scale(1.05);
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.app-version {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.last-sync-card {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.last-sync-card .sync-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.last-sync-card .sync-time {
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--text-secondary);
+}
+
+/* ================= 2. MAIN CONTENT ================= */
+.main-content {
+  flex: 1;
+  height: 100%;
+  background-color: var(--bg-content);
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* Custom Scrollbar for Main Content */
+.main-content::-webkit-scrollbar {
+  width: 8px;
+}
+.main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.main-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+.main-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Dashboard Header */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.dashboard-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.dashboard-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auto-refresh-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  border-radius: 20px;
+  padding: 6px 14px;
+}
+
+.refresh-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green);
+}
+
+.refresh-indicator.pulse {
+  animation: pulseGreenIndicator 2s infinite;
+}
+
+@keyframes pulseGreenIndicator {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.refresh-text {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--accent-green);
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 50%;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.icon-btn:active {
+  transform: scale(0.95);
+}
+
+.refresh-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.icon-btn.spinning .refresh-icon {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ================= 3. SUMMARY CARDS ROW ================= */
+.summary-cards-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.summary-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-card-hover);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.card-icon-wrapper {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.card-icon-wrapper svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Card Accent Icon Colors */
+.active-time-icon {
+  background-color: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: var(--accent-green);
+}
+.idle-time-icon {
+  background-color: rgba(249, 115, 22, 0.15);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+  color: var(--accent-orange);
+}
+.apps-icon {
+  background-color: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: var(--accent-blue);
+}
+.sessions-icon {
+  background-color: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: var(--accent-purple);
+}
+.top-app-icon {
+  background-color: rgba(236, 72, 153, 0.15);
+  border: 1px solid rgba(236, 72, 153, 0.2);
+  color: var(--accent-pink);
+}
+
+/* Card Content Details */
+.card-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.card-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 2px;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+
+.card-secondary-val {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.card-subtext {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trend-icon {
+  font-size: 12px;
+}
+
+.trend-up {
+  color: var(--accent-green);
+}
+
+.trend-down {
+  color: #ef4444;
+}
+
+.trend-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ================= 4. FILTERS PANEL ================= */
+.filters-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.filters-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.filter-title-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+}
+
+.filters-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.filter-group.search-group {
+  flex: 2.2;
+  min-width: 220px;
+}
+
+.filter-group label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 550;
+}
+
+/* Filter Input Customizations */
+.input-wrapper, select, .search-input-wrapper input {
+  width: 100%;
+  height: 34px;
+  background-color: rgba(10, 15, 30, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 12.5px;
+  padding: 0 12px;
+  transition: all 0.2s ease;
+}
+
+select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 28px;
+}
+
+.input-wrapper input[type="date"] {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 12.5px;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Chrome custom calendar icon */
+::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(0.2) saturate(1.2) hue-rotate(180deg);
+  cursor: pointer;
+}
+
+.search-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.search-input-wrapper input {
+  padding-right: 32px;
+}
+
+.search-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.input-wrapper:hover, select:hover, .search-input-wrapper input:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.input-wrapper:focus-within, select:focus, .search-input-wrapper input:focus {
+  border-color: var(--accent-blue);
+  background-color: rgba(10, 15, 30, 0.7);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* General Button Styles */
+.btn {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 0 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.btn-secondary {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.btn-secondary:active {
+  transform: scale(0.97);
+}
+
+.btn-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.reset-btn {
+  flex-shrink: 0;
+  border-color: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.reset-btn:hover {
+  background-color: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #fff;
+}
+
+/* ================= 5. CHARTS SECTION ================= */
+.charts-row {
+  display: grid;
+  grid-template-columns: 6.5fr 3.5fr;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.chart-container {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.chart-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chart-select {
+  width: 90px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.chart-wrapper {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 220px;
+}
+
+/* Activity Doughnut Chart Specifics */
+.chart-layout-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.doughnut-wrapper {
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doughnut-center-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.doughnut-center-text .lbl {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.doughnut-center-text .val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+.legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.legend-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.legend-color.active-color {
+  background-color: var(--accent-green);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+
+.legend-color.idle-color {
+  background-color: var(--accent-orange);
+  box-shadow: 0 0 6px rgba(249, 115, 22, 0.4);
+}
+
+.legend-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legend-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 550;
+}
+
+.legend-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ================= 6. ACTIVITY LOGS TABLE ================= */
+.logs-container {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 300px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logs-title-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.logs-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.logs-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 550;
+}
+
+.logs-meta span {
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+/* Table Scroll Wrapper */
+.table-scroll-container {
+  position: relative;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Custom Scrollbar for Logs Table */
+.table-scroll-container::-webkit-scrollbar {
+  width: 8px;
+}
+.table-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+.table-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Table Layout */
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+/* Sticky Headers */
+.logs-table th {
+  position: sticky;
+  top: 0;
+  background-color: #0c1427; /* Solid color to prevent overlay overlap */
+  z-index: 10;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.logs-table td {
+  padding: 10px 20px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logs-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.logs-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+}
+
+.logs-table tbody tr:hover td {
+  color: var(--text-primary);
+}
+
+/* Application Name Cell with Icon */
+.app-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 550;
+  max-width: 250px;
+}
+
+.app-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background-color: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+/* Status Badges styling */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  line-height: 1;
+}
+
+.badge-active {
+  background-color: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+}
+
+.badge-idle {
+  background-color: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+}
+
+/* Overlay states (loading, empty) */
+.loading-state-overlay, .empty-state-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(12, 20, 39, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transition: opacity 0.25s ease;
+}
+
+.loading-state-overlay span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.05);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.empty-state-overlay {
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 24px;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.empty-state-overlay h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.empty-state-overlay p {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.hidden {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ================= 7. FOOTER ================= */
+.dashboard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.dashboard-footer span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-success-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.sync-status {
+  font-weight: 550;
+  color: var(--text-secondary) !important;
+}
+
+.sync-status span {
+  color: var(--text-primary) !important;
+  font-weight: 600;
+}

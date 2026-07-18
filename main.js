@@ -10,6 +10,7 @@ log.transports.file.level = 'info';
 autoUpdater.logger = log;
 
 let mainWindow = null;
+let dashboardWindow = null;
 let tray = null;
 let isQuitting = false;
 let finalSyncDone = false;
@@ -110,6 +111,13 @@ async function syncChunkToApi(appName, windowTitle, status, startTime, endTime) 
   try {
     console.log(`[Sync] POST chunk user=${userId} app="${appName}" ${body.start_time} -> ${body.end_time} (${body.status})`);
     await redmineClient.post('/user_system_activity_logs.json', body);
+
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('activity-synced', {
+        lastSyncTime: Date.now()
+      });
+    }
+
     return true;
   } catch (error) {
     console.error('[Sync] Failed to sync activity chunk:', error.message || error);
@@ -346,6 +354,104 @@ ipcMain.handle('get-active-time-yesterday', async () => {
 
 ipcMain.handle('get-current-status', () => {
   return currentStatus;
+});
+
+ipcMain.handle('open-activity-window', () => {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+    if (!dashboardWindow.isVisible()) dashboardWindow.show();
+    dashboardWindow.focus();
+    return;
+  }
+
+  dashboardWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    title: 'WorkLens | Activity Log Dashboard',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'dashboardPreload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  dashboardWindow.setMenu(null);
+  dashboardWindow.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
+
+  dashboardWindow.on('closed', () => {
+    dashboardWindow = null;
+  });
+});
+
+ipcMain.handle('get-dashboard-data', async () => {
+  try {
+    const username = os.userInfo().username;
+    const userId = await getUserId();
+    if (!userId) {
+      throw new Error('User ID not resolved');
+    }
+
+    // Fetch today's logs
+    const todayLogs = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+    
+    // Fetch summary logs
+    const summary = await fetchActivitySummary();
+
+    // Get user full name (optional, but premium if we cache it)
+    let fullName = username;
+    try {
+      const usersResponse = await redmineClient.get('/users.json', { name: username, limit: 100 });
+      if (usersResponse && Array.isArray(usersResponse.users)) {
+        const matchedUser = usersResponse.users.find(u => u.login === username);
+        if (matchedUser) {
+          fullName = `${matchedUser.firstname} ${matchedUser.lastname}`;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching full name:', err);
+    }
+
+    // Format currentRecord to match API format
+    let activeRecord = null;
+    if (currentRecord) {
+      const now = new Date();
+      const duration = Math.floor((now - currentRecord.startTime) / 1000);
+      
+      // Format dates as DD-MM-YYYY HH:mm:ss
+      const formatApiDate = (d) => {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const hr = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        const sec = String(d.getSeconds()).padStart(2, '0');
+        return `${day}-${month}-${year} ${hr}:${min}:${sec}`;
+      };
+
+      activeRecord = {
+        id: 'current-virtual-record',
+        user_id: userId,
+        app_name: currentRecord.appName,
+        window_title: currentRecord.windowTitle,
+        start_time: formatApiDate(currentRecord.startTime),
+        end_time: formatApiDate(now),
+        duration: duration,
+        status: currentRecord.status.toLowerCase()
+      };
+    }
+
+    return {
+      username: username,
+      fullName: fullName,
+      entries: todayLogs.entries || [],
+      summary: summary,
+      currentRecord: activeRecord
+    };
+  } catch (error) {
+    console.error('get-dashboard-data error:', error);
+    throw error;
+  }
 });
 
 function createTray() {

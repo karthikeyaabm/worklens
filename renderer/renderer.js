@@ -139,4 +139,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Refresh widget stats and status every 30 seconds
   setInterval(loadWidgetData, 30000);
+
+  // Open Activity Dashboard on card click
+  const activeCard = document.querySelector('.active-time-card');
+  if (activeCard) {
+    activeCard.addEventListener('click', () => {
+      if (window.api && typeof window.api.openActivityWindow === 'function') {
+        window.api.openActivityWindow();
+      }
+    });
+  }
 });
