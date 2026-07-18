@@ -134,6 +134,17 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDateDisplay();
   loadWidgetData();
 
+  // Set pointer cursor and add click listener for Active Time card to open details popup
+  const activeTimeCard = document.querySelector('.active-time-card');
+  if (activeTimeCard) {
+    activeTimeCard.style.cursor = 'pointer';
+    activeTimeCard.addEventListener('click', () => {
+      if (window.api && typeof window.api.toggleActivityPopup === 'function') {
+        window.api.toggleActivityPopup();
+      }
+    });
+  }
+
   // Refresh clock every minute
   setInterval(updateDateDisplay, 60000);
 

@@ -10,6 +10,9 @@ log.transports.file.level = 'info';
 autoUpdater.logger = log;
 
 let mainWindow = null;
+let activityWindow = null;
+let isPopupReady = false;
+let showPopupOnReady = false;
 let tray = null;
 let isQuitting = false;
 let finalSyncDone = false;
@@ -190,6 +193,146 @@ async function trackTick() {
   }
 }
 
+function createActivityWindow() {
+  if (activityWindow) return activityWindow;
+
+  activityWindow = new BrowserWindow({
+    width: 700,
+    height: 520,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    movable: true,
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  activityWindow.loadFile(path.join(__dirname, 'renderer', 'activity-popup.html'));
+
+  activityWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      activityWindow.hide();
+      activityWindow.webContents.send('popup-status-changed', 'closed');
+    }
+  });
+
+  return activityWindow;
+}
+
+function positionActivityWindow() {
+  if (!mainWindow || !activityWindow) return;
+
+  const [wx, wy] = mainWindow.getPosition();
+  const primaryDisplay = screen.getDisplayNearestPoint({ x: wx, y: wy });
+  const { x: workX, y: workY, width: workWidth, height: workHeight } = primaryDisplay.workArea;
+
+  const popupWidth = 700;
+  const popupHeight = 520;
+  const widgetWidth = 185;
+  const widgetHeight = 60;
+
+  // The center of the ACTIVE TIME card is at wx + 140
+  const activeTimeCardCenterX = wx + 140;
+
+  // 1. Determine horizontal position (popupX)
+  let popupX = wx + widgetWidth - popupWidth + 15;
+  if (popupX < workX) {
+    popupX = workX;
+  }
+  if (popupX + popupWidth > workX + workWidth) {
+    popupX = workX + workWidth - popupWidth;
+  }
+
+  // 2. Determine vertical position (popupY)
+  // Calculate available space above and below the widget
+  const spaceAbove = wy - workY;
+  const spaceBelow = (workY + workHeight) - (wy + widgetHeight);
+
+  let popupY = 0;
+  let isBelow = false;
+
+  // Prefer opening above if we have enough space, otherwise check space below
+  if (spaceAbove >= popupHeight + 8) {
+    // Open above
+    popupY = wy - popupHeight - 8;
+    isBelow = false;
+  } else if (spaceBelow >= popupHeight + 8) {
+    // Open below
+    popupY = wy + widgetHeight + 8;
+    isBelow = true;
+  } else {
+    // Neither side has enough space for the full height without overflow.
+    // Place it where there is more room, and clamp it to screen bounds.
+    if (spaceAbove > spaceBelow) {
+      // Place above and clamp
+      popupY = wy - popupHeight - 8;
+      if (popupY < workY) {
+        popupY = workY;
+      }
+      isBelow = false;
+    } else {
+      // Place below and clamp
+      popupY = wy + widgetHeight + 8;
+      if (popupY + popupHeight > workY + workHeight) {
+        popupY = workY + workHeight - popupHeight;
+      }
+      isBelow = true;
+    }
+  }
+
+  // Final safety clamp to absolute screen boundaries to prevent any overflow/cut-offs
+  if (popupY < workY) {
+    popupY = workY;
+  }
+  if (popupY + popupHeight > workY + workHeight) {
+    popupY = workY + workHeight - popupHeight;
+  }
+
+  activityWindow.setBounds({
+    x: Math.round(popupX),
+    y: Math.round(popupY),
+    width: popupWidth,
+    height: popupHeight
+  });
+
+  // Calculate arrow pointer's horizontal offset relative to the popup's left edge
+  let arrowLeft = activeTimeCardCenterX - popupX;
+  if (arrowLeft < 20) arrowLeft = 20;
+  if (arrowLeft > popupWidth - 20) arrowLeft = popupWidth - 20;
+
+  // Send styling and position variables to the popup renderer
+  activityWindow.webContents.send('update-arrow-position', arrowLeft, isBelow);
+}
+
+function toggleActivityPopup() {
+  if (!mainWindow) return;
+
+  if (!activityWindow) {
+    showPopupOnReady = true;
+    createActivityWindow();
+    return;
+  }
+
+  if (activityWindow.isVisible()) {
+    activityWindow.webContents.send('request-close');
+  } else {
+    positionActivityWindow();
+    activityWindow.show();
+    activityWindow.focus();
+    activityWindow.webContents.send('popup-status-changed', 'opened');
+  }
+}
+
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
@@ -346,6 +489,59 @@ ipcMain.handle('get-active-time-yesterday', async () => {
 
 ipcMain.handle('get-current-status', () => {
   return currentStatus;
+});
+
+// Activity Popup IPC Handlers
+ipcMain.handle('toggle-activity-popup', () => {
+  toggleActivityPopup();
+});
+
+ipcMain.handle('open-activity-popup', () => {
+  if (!activityWindow) {
+    createActivityWindow();
+  }
+  if (!activityWindow.isVisible()) {
+    positionActivityWindow();
+    activityWindow.show();
+    activityWindow.focus();
+    activityWindow.webContents.send('popup-status-changed', 'opened');
+  }
+});
+
+ipcMain.handle('close-activity-popup', () => {
+  if (activityWindow && activityWindow.isVisible()) {
+    activityWindow.hide();
+    activityWindow.webContents.send('popup-status-changed', 'closed');
+  }
+});
+
+ipcMain.handle('fetch-activity-logs', async () => {
+  try {
+    const userId = await getUserId();
+    if (!userId) {
+      throw new Error('User ID could not be resolved.');
+    }
+    const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+    return response;
+  } catch (error) {
+    console.error('[ActivityPopup API] Error fetching logs:', error.message || error);
+    throw error;
+  }
+});
+
+ipcMain.handle('get-employee-id', async () => {
+  return await getUserId();
+});
+
+ipcMain.handle('popup-ready', () => {
+  isPopupReady = true;
+  if (showPopupOnReady) {
+    showPopupOnReady = false;
+    positionActivityWindow();
+    activityWindow.show();
+    activityWindow.focus();
+    activityWindow.webContents.send('popup-status-changed', 'opened');
+  }
 });
 
 function createTray() {

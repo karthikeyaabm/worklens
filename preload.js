@@ -45,5 +45,45 @@ contextBridge.exposeInMainWorld('api', {
 
   getAppVersion: async () => {
     return await ipcRenderer.invoke('get-app-version');
+  },
+
+  // Activity Popup APIs
+  toggleActivityPopup: async () => {
+    return await ipcRenderer.invoke('toggle-activity-popup');
+  },
+
+  openActivityPopup: async () => {
+    return await ipcRenderer.invoke('open-activity-popup');
+  },
+
+  closeActivityPopup: async () => {
+    return await ipcRenderer.invoke('close-activity-popup');
+  },
+
+  fetchActivityLogs: async () => {
+    return await ipcRenderer.invoke('fetch-activity-logs');
+  },
+
+  // Activity Popup Listeners/Signals
+  onPopupStatusChanged: (callback) => {
+    const listener = (event, status) => callback(status);
+    ipcRenderer.on('popup-status-changed', listener);
+    return () => ipcRenderer.removeListener('popup-status-changed', listener);
+  },
+
+  onUpdateArrowPosition: (callback) => {
+    const listener = (event, arrowLeft, isBelow) => callback(arrowLeft, isBelow);
+    ipcRenderer.on('update-arrow-position', listener);
+    return () => ipcRenderer.removeListener('update-arrow-position', listener);
+  },
+
+  onRequestClose: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('request-close', listener);
+    return () => ipcRenderer.removeListener('request-close', listener);
+  },
+
+  sendPopupReady: () => {
+    ipcRenderer.invoke('popup-ready');
   }
 });

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkLens | Active Time Details</title>
+  <link rel="stylesheet" href="activity-popup.css">
+</head>
+<body>
+  <!-- Dynamic pointer arrow indicating connection to the widget, placed as direct child of body to avoid clipping -->
+  <div id="arrow" class="arrow arrow-down"></div>
+  <div id="popup-container">
+    
+    <!-- Window Header -->
+    <header class="popup-header">
+      <div class="header-title">
+        <span class="lightning-icon">⚡</span>
+        <h1>ACTIVE TIME</h1>
+      </div>
+      <button id="close-btn" class="close-button" title="Close popup">&times;</button>
+    </header>
+    
+    <!-- Subtitle Date -->
+    <div class="date-subtitle" id="current-date">Today's Date</div>
+
+    <!-- Column Headers -->
+    <div class="list-header">
+      <span class="col-app">APPLICATION / WEBSITE</span>
+      <span class="col-time">ACTIVE TIME</span>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="popup-content">
+      <!-- Loading State -->
+      <div id="loading-state" class="state-container">
+        <div class="spinner"></div>
+        <p>Loading activity...</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="state-container hidden">
+        <p class="error-msg">Unable to load activity.</p>
+        <button id="retry-btn" class="retry-button">Retry</button>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="state-container hidden">
+        <p class="empty-msg">No activity recorded today.</p>
+      </div>
+
+      <!-- Dynamic Activity List -->
+      <div id="activity-list" class="activity-list hidden">
+        <!-- Application rows will be injected dynamically -->
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <div class="footer-left">
+        <svg class="footer-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+          <path d="M12 6V12L15 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <span>Total Active Time</span>
+      </div>
+      <div id="total-time" class="footer-value">0h 00m</div>
+    </footer>
+  </div>
+
+  <script src="activity-popup.js"></script>
+</body>
+</html>
