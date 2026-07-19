@@ -15,6 +15,7 @@
   "build": {
     "appId": "com.worklens.desktop",
     "productName": "WorkLens",
+    "icon": "assets/icon.png",
     "files": [
       "**/*"
     ],
@@ -26,6 +27,7 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "assets/icon.png",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "publish": {
