@@ -131,8 +131,16 @@ async function fetchAndRender() {
   try {
     const rawData = await window.api.fetchActivityLogs();
     
+    // Support either { logs, icons } or raw data direct
+    let logsData = rawData;
+    let iconsMap = {};
+    if (rawData && rawData.logs) {
+      logsData = rawData.logs;
+      iconsMap = rawData.icons || {};
+    }
+    
     // Format is { user_id, date, entries, ... } or raw array
-    const logs = Array.isArray(rawData) ? rawData : (rawData?.entries || []);
+    const logs = Array.isArray(logsData) ? logsData : (logsData?.entries || []);
     
     // Group logs by application name
     const grouped = {};
@@ -166,7 +174,7 @@ async function fetchAndRender() {
     const maxDuration = sortedApps[0].duration;
     
     // Render and reconcile rows
-    reconcileRows(sortedApps, maxDuration);
+    reconcileRows(sortedApps, maxDuration, iconsMap);
 
     // Calculate and show total active duration
     const totalSeconds = sortedApps.reduce((acc, app) => acc + app.duration, 0);
@@ -191,7 +199,7 @@ function showState(visibleElement) {
 }
 
 // ================= DOM RECONCILIATION =================
-function reconcileRows(sortedApps, maxDuration) {
+function reconcileRows(sortedApps, maxDuration, iconsMap) {
   const currentAppNames = new Set(sortedApps.map(app => app.name));
   
   // 1. Remove stale rows
@@ -207,6 +215,7 @@ function reconcileRows(sortedApps, maxDuration) {
     const { name, duration } = app;
     const percentage = maxDuration > 0 ? (duration / maxDuration) * 100 : 0;
     const formattedDuration = formatDuration(duration);
+    const lowerName = name.toLowerCase();
     
     let rowEl = renderedRows[name];
     
@@ -223,7 +232,14 @@ function reconcileRows(sortedApps, maxDuration) {
       // Icon Column
       const iconEl = document.createElement('div');
       iconEl.className = 'app-icon-container';
-      iconEl.innerHTML = getAppIconSvg(name);
+      if (iconsMap && iconsMap[lowerName]) {
+        const img = document.createElement('img');
+        img.className = 'app-img-icon';
+        img.src = iconsMap[lowerName];
+        iconEl.appendChild(img);
+      } else {
+        iconEl.innerHTML = getAppIconSvg(name);
+      }
 
       // Details Column (Name & Progress Bar)
       const detailsEl = document.createElement('div');
@@ -280,6 +296,19 @@ function reconcileRows(sortedApps, maxDuration) {
       const progressBar = rowEl.querySelector('.progress-bar');
       if (progressBar) {
         progressBar.style.width = `${percentage}%`;
+      }
+
+      // Update icon if it wasn't rendered as an image before but now has one
+      const iconEl = rowEl.querySelector('.app-icon-container');
+      if (iconEl) {
+        const hasImg = iconEl.querySelector('.app-img-icon');
+        if (iconsMap && iconsMap[lowerName] && !hasImg) {
+          iconEl.innerHTML = '';
+          const img = document.createElement('img');
+          img.className = 'app-img-icon';
+          img.src = iconsMap[lowerName];
+          iconEl.appendChild(img);
+        }
       }
     }
   });

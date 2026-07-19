@@ -2,6 +2,9 @@ require('dotenv').config(); // Load environment variables from .env
 const { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, Tray, nativeImage, dialog } = require('electron');
 const path = require('path');
 const os = require('os');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 const redmineClient = require('./redmineClient');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -35,6 +38,92 @@ let currentStatus = 'Active'; // 'Active' or 'Inactive'
 let trackingInterval = null;
 let lastDbSyncTime = Date.now();
 let activeWin = null;
+
+const appIconCache = {}; // maps appName.toLowerCase() -> base64 data URL
+
+async function cacheAppIcon(appName, exePath) {
+  if (!appName || !exePath) return;
+  const key = appName.toLowerCase();
+  if (appIconCache[key]) return;
+
+  try {
+    const icon = await app.getFileIcon(exePath, { size: 'normal' });
+    if (icon) {
+      appIconCache[key] = icon.toDataURL();
+      console.log(`[IconCache] Cached icon for app: ${appName}`);
+    }
+  } catch (err) {
+    console.error(`[IconCache] Failed to get icon for ${appName} at ${exePath}:`, err);
+  }
+}
+
+async function preCacheCommonIcons() {
+  const commonPaths = [
+    { name: 'Windows Explorer', path: 'C:\\Windows\\explorer.exe' },
+    { name: 'System UI', path: 'C:\\Windows\\explorer.exe' },
+    { name: 'LockApp', path: 'C:\\Windows\\SystemApps\\Microsoft.LockApp_cw5n1h2txyewy\\LockApp.exe' },
+    { name: 'Electron', path: process.execPath }
+  ];
+  for (const item of commonPaths) {
+    try {
+      const fs = require('fs');
+      if (fs.existsSync(item.path)) {
+        await cacheAppIcon(item.name, item.path);
+      }
+    } catch (e) {
+      console.error(`[IconCache] Error pre-caching ${item.name}:`, e);
+    }
+  }
+}
+
+const nameOverrides = {
+  'windows explorer': 'explorer',
+  'microsoft teams': 'ms-teams',
+  'system ui': 'explorer',
+  'lockapp': 'lockapp',
+  'electron': 'electron'
+};
+
+async function scanAndCacheIcons(appNames) {
+  try {
+    const missingNames = appNames.filter(name => !appIconCache[name.toLowerCase()]);
+    if (missingNames.length === 0) return;
+
+    const cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $null -ne $_.Path } | Select-Object Name, Path -Unique | ConvertTo-Json"';
+    const { stdout } = await execPromise(cmd);
+    if (!stdout) return;
+
+    let processes = [];
+    try {
+      processes = JSON.parse(stdout);
+      if (!Array.isArray(processes)) {
+        processes = [processes];
+      }
+    } catch (e) {
+      console.error('[IconCache] Failed to parse PowerShell output:', e);
+      return;
+    }
+
+    for (const appName of missingNames) {
+      const cleanName = appName.toLowerCase().replace(/\.exe$/, '');
+      const targetProcName = nameOverrides[cleanName] || cleanName;
+
+      const matchedProc = processes.find(p => {
+        if (!p || !p.Name) return false;
+        const procName = p.Name.toLowerCase();
+        return procName === targetProcName ||
+               procName.includes(targetProcName) ||
+               targetProcName.includes(procName);
+      });
+
+      if (matchedProc && matchedProc.Path) {
+        await cacheAppIcon(appName, matchedProc.Path);
+      }
+    }
+  } catch (error) {
+    console.error('[IconCache] Error scanning running processes:', error);
+  }
+}
 
 // Graceful degradation caches
 let cachedRedmineEfforts = { yesterday: 0, today: 0 };
@@ -140,6 +229,9 @@ async function trackTick() {
         if (winInfo) {
           currentApp = winInfo.owner?.name || 'Unknown';
           currentTitle = winInfo.title || 'Untitled';
+          if (winInfo.owner?.path) {
+            cacheAppIcon(currentApp, winInfo.owner.path);
+          }
         } else {
           currentApp = 'Unknown';
           currentTitle = 'No Active Window';
@@ -524,7 +616,19 @@ ipcMain.handle('fetch-activity-logs', async () => {
       throw new Error('User ID could not be resolved.');
     }
     const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
-    return response;
+    
+    try {
+      const logs = Array.isArray(response) ? response : (response?.entries || []);
+      const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
+      await scanAndCacheIcons(appNames);
+    } catch (scanError) {
+      console.error('[ActivityPopup API] Error scanning icons:', scanError);
+    }
+
+    return {
+      logs: response,
+      icons: appIconCache
+    };
   } catch (error) {
     console.error('[ActivityPopup API] Error fetching logs:', error.message || error);
     throw error;
@@ -598,6 +702,9 @@ if (gotTheLock) {
     // Start tracking interval every 2 seconds
     trackingInterval = setInterval(trackTick, 2000);
     trackTick();
+
+    // Pre-cache common system icons
+    preCacheCommonIcons();
 
     createWindow();
     createTray();
