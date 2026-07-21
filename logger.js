@@ -53,37 +53,26 @@ log.transports.file.archiveLogFn = (file) => {
   } catch (err) {
     try {
       file.clear();
-    } catch (_) {}
+    } catch (_) { }
   }
 };
 
 // 4. Automatic Cleanup routine on startup
 function cleanupOldLogs() {
-  log.info('Cleanup started');
   try {
     if (!fs.existsSync(logsDir)) {
-      log.info('Number of log files found: 0');
-      log.info('Files deleted: 0');
-      log.info('Files kept: 0');
-      log.info('Cleanup completed');
       return;
     }
 
     const files = fs.readdirSync(logsDir);
-    log.info(`Number of log files found: ${files.length}`);
-
     const todayStr = getFormattedDate();
     const todayPrefix = `worklens-${todayStr}`;
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    let deletedCount = 0;
-    let keptCount = 0;
-
     for (const file of files) {
       // Ignore today's log file
       if (file.startsWith(todayPrefix)) {
-        keptCount++;
         continue;
       }
 
@@ -118,20 +107,12 @@ function cleanupOldLogs() {
       if (isOlderThan7Days) {
         try {
           fs.unlinkSync(filePath);
-          deletedCount++;
           log.info(`Deleted old log: ${file}`);
         } catch (unlinkErr) {
           log.error(`Failed to delete old log: ${file}`, unlinkErr);
-          keptCount++;
         }
-      } else {
-        keptCount++;
       }
     }
-
-    log.info(`Files deleted: ${deletedCount}`);
-    log.info(`Files kept: ${keptCount}`);
-    log.info('Cleanup completed');
   } catch (err) {
     log.error('Log cleanup failed:', err);
   }
