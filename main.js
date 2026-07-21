@@ -7,9 +7,7 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const redmineClient = require('./redmineClient');
 const { autoUpdater } = require('electron-updater');
-const log = require('electron-log');
-
-log.transports.file.level = 'info';
+const log = require('./logger');
 autoUpdater.logger = log;
 
 let mainWindow = null;
