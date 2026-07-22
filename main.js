@@ -31,7 +31,7 @@ function showAndFocusWindow() {
 }
 
 let cachedUserId = null;
-let currentRecord = null; // { appName, windowTitle, startTime, status } -- no `id`, no PUT flow (POST-only API)
+let currentRecord = null; // { appName, windowTitle, startTime, activityOn, status } -- no `id`, no PUT flow (POST-only API)
 let currentStatus = 'Active'; // 'Active' or 'Inactive'
 let trackingInterval = null;
 let lastDbSyncTime = Date.now();
@@ -110,8 +110,8 @@ async function scanAndCacheIcons(appNames) {
         if (!p || !p.Name) return false;
         const procName = p.Name.toLowerCase();
         return procName === targetProcName ||
-               procName.includes(targetProcName) ||
-               targetProcName.includes(procName);
+          procName.includes(targetProcName) ||
+          targetProcName.includes(procName);
       });
 
       if (matchedProc && matchedProc.Path) {
@@ -183,7 +183,8 @@ async function getUserId() {
 
 // Single POST-only "chunk" sync — the API has no update/PUT endpoint, so every
 // chunk is a complete, already-closed start->end record.
-async function syncChunkToApi(appName, windowTitle, status, startTime, endTime) {
+// Signature order is: startTime, endTime, activityOn — callers below now match this.
+async function syncChunkToApi(appName, windowTitle, status, startTime, endTime, activityOn) {
   const userId = await getUserId();
   if (!userId) return false;
 
@@ -194,11 +195,12 @@ async function syncChunkToApi(appName, windowTitle, status, startTime, endTime) 
     start_time: formatDateTime(startTime),
     end_time: formatDateTime(endTime),
     duration: calculateDuration(startTime, endTime),
+    activity_on: activityOn,
     status: status.toLowerCase()
   };
 
   try {
-    console.log(`[Sync] POST chunk user=${userId} app="${appName}" ${body.start_time} -> ${body.end_time} (${body.status})`);
+    console.log(`[Sync] POST chunk user=${userId} app="${appName}" ${body.start_time} -> ${body.end_time} (${body.status}) (${body.activity_on})`);
     await redmineClient.post('/user_system_activity_logs.json', body);
     return true;
   } catch (error) {
@@ -248,8 +250,11 @@ async function trackTick() {
 
     if (statusChanged || appChanged) {
       // Close out the previous chunk fully (real start -> now)
+      // FIX #1: correct param order — endTime is `now`, activityOn is the
+      // record's own activityOn marker. Previously `now` and `activityOn`
+      // were swapped, which made endTime ≈ startTime and duration ≈ 0.
       if (currentRecord) {
-        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now);
+        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now, currentRecord.activityOn);
       }
 
       // Start a fresh chunk from now
@@ -257,6 +262,7 @@ async function trackTick() {
         appName: currentApp,
         windowTitle: currentTitle,
         startTime: now,
+        activityOn: now,
         status: newStatus
       };
       lastDbSyncTime = Date.now();
@@ -266,12 +272,16 @@ async function trackTick() {
       // with the same appName/windowTitle/status, so nothing is lost beyond ~15s.
       const elapsed = Date.now() - lastDbSyncTime;
       if (elapsed >= 15000 && currentRecord) {
-        const synced = await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now);
+        const synced = await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now, currentRecord.activityOn);
         if (synced) {
+          // FIX #2: re-added `activityOn: now` — this was missing, so after
+          // the first periodic resync currentRecord.activityOn became
+          // undefined, producing NaN duration on the next close-out call.
           currentRecord = {
             appName: currentRecord.appName,
             windowTitle: currentRecord.windowTitle,
             startTime: now,
+            activityOn: now,
             status: currentRecord.status
           };
         }
@@ -614,7 +624,7 @@ ipcMain.handle('fetch-activity-logs', async () => {
       throw new Error('User ID could not be resolved.');
     }
     const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
-    
+
     try {
       const logs = Array.isArray(response) ? response : (response?.entries || []);
       const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
@@ -759,7 +769,7 @@ if (gotTheLock) {
     powerMonitor.on('suspend', async () => {
       console.log('System suspending, saving current activity...');
       if (currentRecord) {
-        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date());
+        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date(), currentRecord.activityOn);
         currentRecord = null;
       }
     });
@@ -780,7 +790,7 @@ if (gotTheLock) {
       clearInterval(trackingInterval);
       console.log('App quitting, closing final activity record...');
       try {
-        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date());
+        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date(), currentRecord.activityOn);
       } catch (e) {
         console.error(e);
       } finally {
