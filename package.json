@@ -1,6 +1,6 @@
 {
   "name": "worklens",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "WorkLens | Employee Timelog & Activity Tracking",
   "main": "main.js",
   "scripts": {
