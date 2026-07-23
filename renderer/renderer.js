@@ -150,4 +150,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Refresh widget stats and status every 30 seconds
   setInterval(loadWidgetData, 30000);
+
+  // Trigger immediate sync on network recovery
+  window.addEventListener('online', () => {
+    if (window.api && typeof window.api.triggerSync === 'function') {
+      console.log('[Network] Browser online event detected, triggering activity sync...');
+      window.api.triggerSync().catch(err => console.error('Failed to trigger sync:', err));
+    }
+  });
 });

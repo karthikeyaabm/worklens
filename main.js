@@ -8,6 +8,16 @@ const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
 const quotes = require('./quotes');
+const {
+  saveOrUpdateActiveSessionLocal,
+  closeOrphanedSessions,
+  getEligibleClosedSessions,
+  getPendingClosedSessions,
+  markSessionSynced,
+  markSessionFailed,
+  getUnsyncedTodayDuration,
+  getUnsyncedTodayLogs
+} = require('./activityStore');
 
 // Inactivity Nudge Configuration
 const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger threshold
@@ -18,6 +28,7 @@ let inactivityPopup = null;
 let inactivityPopupShown = false;
 let isSystemLocked = false;
 let inactivityInterval = null;
+let inactivityCheckRunning = false;
 const util = require('util');
 const execPromise = util.promisify(exec);
 const redmineClient = require('./redmineClient');
@@ -51,6 +62,15 @@ let currentStatus = 'Active'; // 'Active' or 'Inactive'
 let trackingInterval = null;
 let lastDbSyncTime = Date.now();
 let activeWin = null;
+
+const TEAMS_MEETING_TITLE_PATTERNS = [
+  /\bmeeting\b/i,
+  /\bcall\b/i,
+  /\bconference\b/i,
+  /\bpresenting\b/i,
+  /\bscreen sharing\b/i,
+  /\bteams meeting\b/i
+];
 
 const appIconCache = {}; // maps appName.toLowerCase() -> base64 data URL
 
@@ -157,6 +177,51 @@ async function loadActiveWin() {
   return activeWin;
 }
 
+async function getActiveWindowInfo() {
+  const getWin = await loadActiveWin();
+  return await getWin();
+}
+
+function isLockScreenWindow(winInfo) {
+  if (!winInfo) return false;
+  const appName = (winInfo.owner?.name || '').toLowerCase();
+  const appPath = (winInfo.owner?.path || '').toLowerCase();
+  return appName.includes('lockapp') || appPath.includes('lockapp.exe');
+}
+
+function isTeamsWindow(winInfo) {
+  if (!winInfo) return false;
+  const appName = (winInfo.owner?.name || '').toLowerCase();
+  const appPath = (winInfo.owner?.path || '').toLowerCase();
+  return appName.includes('teams') || appPath.includes('teams.exe') || appPath.includes('ms-teams.exe');
+}
+
+function isTeamsMeetingWindow(winInfo) {
+  if (!isTeamsWindow(winInfo)) return false;
+
+  const title = (winInfo.title || '').trim();
+  if (!title) return true;
+
+  return TEAMS_MEETING_TITLE_PATTERNS.some(pattern => pattern.test(title)) ||
+    title.toLowerCase() === 'microsoft teams' ||
+    title.toLowerCase().endsWith('| microsoft teams');
+}
+
+function applyActiveWindowInfo(winInfo, fallbackApp = 'Unknown', fallbackTitle = 'No Active Window') {
+  if (!winInfo) {
+    return { appName: fallbackApp, windowTitle: fallbackTitle };
+  }
+
+  const appName = winInfo.owner?.name || 'Unknown';
+  const windowTitle = winInfo.title || 'Untitled';
+
+  if (winInfo.owner?.path) {
+    cacheAppIcon(appName, winInfo.owner.path);
+  }
+
+  return { appName, windowTitle };
+}
+
 function formatDateTime(date) {
   const yyyy = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -196,32 +261,125 @@ async function getUserId() {
   return cachedUserId;
 }
 
-// Single POST-only "chunk" sync — the API has no update/PUT endpoint, so every
-// chunk is a complete, already-closed start->end record.
-// Signature order is: startTime, endTime, activityOn — callers below now match this.
-async function syncChunkToApi(appName, windowTitle, status, startTime, endTime, activityOn) {
-  const userId = await getUserId();
-  if (!userId) return false;
-
+async function syncChunkToApi(chunk) {
   const body = {
-    user_id: userId,
-    app_name: appName,
-    window_title: windowTitle,
-    start_time: formatDateTime(startTime),
-    end_time: formatDateTime(endTime),
-    duration: calculateDuration(startTime, endTime),
-    activity_on: activityOn,
-    status: status.toLowerCase()
+    user_id: chunk.user_id,
+    app_name: chunk.app_name,
+    window_title: chunk.window_title,
+    start_time: chunk.start_time,
+    end_time: chunk.end_time,
+    duration: chunk.duration,
+    activity_on: chunk.activity_on,
+    status: chunk.status.toLowerCase()
   };
 
+  console.log(`[Sync] POST chunk user=${body.user_id} app="${body.app_name}" duration=${body.duration}s`);
+  await redmineClient.post('/user_system_activity_logs.json', body);
+  return true;
+}
+
+let isSyncing = false;
+
+async function flushPendingClosedSessions() {
+  if (isSyncing) return;
+  isSyncing = true;
+  console.log('[Sync] Starting flush of pending closed sessions...');
+
   try {
-    console.log(`[Sync] POST chunk user=${userId} app="${appName}" ${body.start_time} -> ${body.end_time} (${body.status}) (${body.activity_on})`);
-    await redmineClient.post('/user_system_activity_logs.json', body);
-    return true;
-  } catch (error) {
-    console.error('[Sync] Failed to sync activity chunk:', error.message || error);
-    return false;
+    const eligible = getEligibleClosedSessions();
+    if (eligible.length === 0) {
+      console.log('[Sync] No pending closed sessions eligible for sync.');
+      isSyncing = false;
+      return;
+    }
+
+    console.log(`[Sync] Found ${eligible.length} pending closed sessions to sync.`);
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const session of eligible) {
+      if (session.duration <= 0) {
+        markSessionSynced(session.local_id);
+        continue;
+      }
+
+      if (!session.user_id) {
+        const uId = await getUserId();
+        if (uId) {
+          session.user_id = uId;
+        } else {
+          console.warn(`[Sync] Skipping session ${session.local_id} because User ID is still unresolved.`);
+          continue;
+        }
+      }
+
+      try {
+        const success = await syncChunkToApi(session);
+        if (success) {
+          markSessionSynced(session.local_id);
+          successCount++;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      } catch (error) {
+        failureCount++;
+        const errMsg = error.message || String(error);
+        markSessionFailed(session.local_id, errMsg);
+      }
+    }
+
+    console.log(`[Sync] Flush completed. Successes: ${successCount}, Failures: ${failureCount}`);
+  } catch (err) {
+    console.error('[Sync] Error during flush:', err);
+  } finally {
+    isSyncing = false;
   }
+}
+
+function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date()) {
+  const cleanStatus = status.toLowerCase();
+
+  if (currentRecord) {
+    const isSameApp = currentRecord.appName === appName;
+    const isSameTitle = currentRecord.windowTitle === windowTitle;
+    const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
+    const isSameDay = new Date(currentRecord.startTime).toDateString() === now.toDateString();
+
+    if (isSameApp && isSameTitle && isSameStatus && isSameDay) {
+      // Continue existing session
+      currentRecord.endTime = now;
+      currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
+      saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
+      return;
+    } else {
+      closeCurrentSession(now);
+    }
+  }
+
+  currentRecord = {
+    appName: appName,
+    windowTitle: windowTitle,
+    status: cleanStatus,
+    startTime: now,
+    endTime: now,
+    activityOn: now,
+    duration: 0,
+    closed: false
+  };
+  const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
+  if (saved) {
+    currentRecord.local_id = saved.local_id;
+  }
+}
+
+function closeCurrentSession(endTime = new Date()) {
+  if (!currentRecord) return;
+  currentRecord.endTime = endTime;
+  currentRecord.duration = Math.floor((endTime - currentRecord.startTime) / 1000);
+  currentRecord.closed = true;
+
+  saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
+  console.log(`[Session] Closed session locally: local_id=${currentRecord.local_id} app="${currentRecord.appName}" duration=${currentRecord.duration}s`);
+  currentRecord = null;
 }
 
 // Main tracking tick
@@ -231,89 +389,56 @@ async function trackTick() {
     if (!userId) return;
 
     const idleTime = powerMonitor.getSystemIdleTime();
-    let newStatus = idleTime >= 300 ? 'Inactive' : 'Active';
+    let newStatus = idleTime >= INACTIVITY_THRESHOLD_SECONDS ? 'Inactive' : 'Active';
 
     let currentApp = 'System';
     let currentTitle = 'Idle';
+    let winInfo = null;
 
-    if (newStatus === 'Active') {
+    try {
+      winInfo = await getActiveWindowInfo();
+
+      if (isLockScreenWindow(winInfo)) {
+        newStatus = 'Inactive';
+      } else if (newStatus === 'Active' || isTeamsMeetingWindow(winInfo)) {
+        if (newStatus === 'Inactive') {
+          console.log('[Teams Activity] System is idle, but an active Teams meeting/call window was detected. Counting as Active.');
+        }
+        newStatus = 'Active';
+        const activeWindow = applyActiveWindowInfo(winInfo);
+        currentApp = activeWindow.appName;
+        currentTitle = activeWindow.windowTitle;
+      } else if (!winInfo) {
+        currentApp = 'Unknown';
+        currentTitle = 'No Active Window';
+      }
+    } catch (winError) {
+      console.error('Error getting active window:', winError);
+      if (newStatus === 'Active') {
+        currentApp = 'Unknown';
+        currentTitle = 'Error';
+      }
+    }
+
+    if (newStatus === 'Active' && currentApp === 'System') {
       try {
-        const getWin = await loadActiveWin();
-        const winInfo = await getWin();
         if (winInfo) {
-          const appName = winInfo.owner?.name || '';
-          const appPath = winInfo.owner?.path || '';
-          if (appName.toLowerCase().includes('lockapp') || appPath.toLowerCase().includes('lockapp.exe')) {
-            newStatus = 'Inactive';
-          } else {
-            currentApp = appName || 'Unknown';
-            currentTitle = winInfo.title || 'Untitled';
-            if (winInfo.owner?.path) {
-              cacheAppIcon(currentApp, winInfo.owner.path);
-            }
-          }
+          const activeWindow = applyActiveWindowInfo(winInfo);
+          currentApp = activeWindow.appName;
+          currentTitle = activeWindow.windowTitle;
         } else {
           currentApp = 'Unknown';
           currentTitle = 'No Active Window';
         }
       } catch (winError) {
-        console.error('Error getting active window:', winError);
-        currentApp = 'Unknown';
-        currentTitle = 'Error';
+        console.error('Error applying active window info:', winError);
       }
     }
 
     currentStatus = newStatus;
 
     const now = new Date();
-    const statusChanged = !currentRecord || currentRecord.status !== newStatus;
-    const appChanged = currentRecord && currentRecord.status === 'Active' &&
-      (currentRecord.appName !== currentApp || currentRecord.windowTitle !== currentTitle);
-
-    if (statusChanged || appChanged) {
-      // Close out the previous chunk fully (real start -> now)
-      // FIX #1: correct param order — endTime is `now`, activityOn is the
-      // record's own activityOn marker. Previously `now` and `activityOn`
-      // were swapped, which made endTime ≈ startTime and duration ≈ 0.
-      if (currentRecord) {
-        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now, currentRecord.activityOn);
-      }
-
-      // Start a fresh chunk from now
-      currentRecord = {
-        appName: currentApp,
-        windowTitle: currentTitle,
-        startTime: now,
-        activityOn: now,
-        status: newStatus
-      };
-      lastDbSyncTime = Date.now();
-    } else {
-      // Periodic durability sync — no PUT available, so we close the current
-      // chunk (start -> now) and immediately re-open a new chunk from `now`
-      // with the same appName/windowTitle/status, so nothing is lost beyond ~15s.
-      const elapsed = Date.now() - lastDbSyncTime;
-      if (elapsed >= 15000 && currentRecord) {
-        if (currentRecord.status === 'Active') {
-          const synced = await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now, currentRecord.activityOn);
-          if (synced) {
-            // FIX #2: re-added `activityOn: now` — this was missing, so after
-            // the first periodic resync currentRecord.activityOn became
-            // undefined, producing NaN duration on the next close-out call.
-            currentRecord = {
-              appName: currentRecord.appName,
-              windowTitle: currentRecord.windowTitle,
-              startTime: now,
-              activityOn: now,
-              status: currentRecord.status
-            };
-          }
-        } else {
-          console.log(`[Sync] Skipping 15s durability sync since computer status is ${currentRecord.status}`);
-        }
-        lastDbSyncTime = Date.now();
-      }
-    }
+    startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now);
   } catch (err) {
     console.error('Error in activity tracking tick:', err);
   }
@@ -517,21 +642,41 @@ function createWindow() {
 // Inactivity Nudge Helpers
 function startInactivityCheck() {
   if (inactivityInterval) return;
-  inactivityInterval = setInterval(() => {
+  inactivityInterval = setInterval(async () => {
+    if (inactivityCheckRunning) return;
     if (isQuitting || isSystemLocked) return;
 
-    const idleTime = powerMonitor.getSystemIdleTime();
-    console.log(`[Inactivity Nudge] Idle check: current idle time = ${idleTime}s, threshold = ${INACTIVITY_THRESHOLD_SECONDS}s, popupShown = ${inactivityPopupShown}`);
-    if (idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
-      if (!inactivityPopupShown && !inactivityPopup) {
-        showInactivityPopup();
+    inactivityCheckRunning = true;
+    try {
+      const idleTime = powerMonitor.getSystemIdleTime();
+      console.log(`[Inactivity Nudge] Idle check: current idle time = ${idleTime}s, threshold = ${INACTIVITY_THRESHOLD_SECONDS}s, popupShown = ${inactivityPopupShown}`);
+      if (idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
+        try {
+          const winInfo = await getActiveWindowInfo();
+          if (isTeamsMeetingWindow(winInfo)) {
+            inactivityPopupShown = false;
+            if (inactivityPopup) {
+              console.log('[Inactivity Nudge] Active Teams meeting/call detected. Closing inactivity popup.');
+              inactivityPopup.close();
+            }
+            return;
+          }
+        } catch (winError) {
+          console.error('[Inactivity Nudge] Error checking active window for Teams meeting:', winError);
+        }
+
+        if (!inactivityPopupShown && !inactivityPopup) {
+          showInactivityPopup();
+        }
+      } else {
+        inactivityPopupShown = false;
+        if (inactivityPopup) {
+          console.log('[Inactivity Nudge] User activity detected (idleTime < threshold). Automatically closing popup.');
+          inactivityPopup.close();
+        }
       }
-    } else {
-      inactivityPopupShown = false;
-      if (inactivityPopup) {
-        console.log('[Inactivity Nudge] User activity detected (idleTime < threshold). Automatically closing popup.');
-        inactivityPopup.close();
-      }
+    } finally {
+      inactivityCheckRunning = false;
     }
   }, IDLE_CHECK_INTERVAL_MS);
 }
@@ -689,6 +834,15 @@ ipcMain.handle('get-active-time-today', async () => {
   }
 
   let totalSeconds = cachedActiveTimeToday;
+
+  try {
+    const userId = await getUserId();
+    const unsyncedDuration = getUnsyncedTodayDuration(userId);
+    totalSeconds += unsyncedDuration;
+  } catch (err) {
+    console.error('[Sync] Error getting unsynced duration for active-time-today:', err);
+  }
+
   if (currentRecord && currentRecord.status === 'Active') {
     const now = new Date();
     if (now.toDateString() === currentRecord.startTime.toDateString()) {
@@ -750,22 +904,55 @@ ipcMain.handle('fetch-activity-logs', async () => {
     }
     const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
 
+    let logs = [];
+    const isResponseArray = Array.isArray(response);
+    if (isResponseArray) {
+      logs = [...response];
+    } else if (response && Array.isArray(response.entries)) {
+      logs = [...response.entries];
+    }
+
     try {
-      const logs = Array.isArray(response) ? response : (response?.entries || []);
+      const unsyncedToday = getUnsyncedTodayLogs(userId);
+      const unsyncedMapped = unsyncedToday.map(c => ({
+        id: c.local_id,
+        user_id: c.user_id,
+        app_name: c.app_name,
+        window_title: c.window_title,
+        start_time: c.start_time,
+        end_time: c.end_time,
+        duration: c.duration,
+        activity_on: c.activity_on,
+        status: c.status
+      }));
+
+      logs = [...unsyncedMapped, ...logs];
+    } catch (localErr) {
+      console.error('[ActivityPopup API] Error fetching local unsynced logs:', localErr);
+    }
+
+    try {
       const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
       await scanAndCacheIcons(appNames);
     } catch (scanError) {
       console.error('[ActivityPopup API] Error scanning icons:', scanError);
     }
 
+    const finalLogsResult = isResponseArray ? logs : { ...response, entries: logs };
+
     return {
-      logs: response,
+      logs: finalLogsResult,
       icons: appIconCache
     };
   } catch (error) {
     console.error('[ActivityPopup API] Error fetching logs:', error.message || error);
     throw error;
   }
+});
+
+ipcMain.handle('trigger-sync', async () => {
+  console.log('[IPC] trigger-sync called. Flushing pending closed sessions...');
+  flushPendingClosedSessions();
 });
 
 ipcMain.handle('get-employee-id', async () => {
@@ -817,6 +1004,13 @@ function createTray() {
 if (gotTheLock) {
   // App Lifecycle
   app.whenReady().then(async () => {
+    // Close any orphaned sessions from previous runs
+    try {
+      closeOrphanedSessions();
+    } catch (err) {
+      console.error('[Startup] Failed to close orphaned sessions:', err);
+    }
+
     try {
       app.setLoginItemSettings({
         openAtLogin: true,
@@ -830,7 +1024,11 @@ if (gotTheLock) {
     const userId = await getUserId();
     if (userId) {
       console.log(`[Startup] App started. Resolved user ID: ${userId}. Tracking active sessions.`);
+      flushPendingClosedSessions();
     }
+
+    // Background sync worker: runs every 2 minutes
+    setInterval(flushPendingClosedSessions, 2 * 60 * 1000);
 
     // Start tracking interval every 2 seconds
     trackingInterval = setInterval(trackTick, 2000);
@@ -896,15 +1094,14 @@ if (gotTheLock) {
     // Handle system suspend/resume
     powerMonitor.on('suspend', async () => {
       console.log('System suspending, saving current activity...');
-      if (currentRecord) {
-        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date(), currentRecord.activityOn);
-        currentRecord = null;
-      }
+      closeCurrentSession(new Date());
+      flushPendingClosedSessions();
     });
 
     powerMonitor.on('resume', async () => {
       console.log('System resumed, restarting tracking...');
       trackTick();
+      flushPendingClosedSessions();
     });
 
     // Handle lock/unlock screen events for inactivity nudge
@@ -927,18 +1124,19 @@ if (gotTheLock) {
       inactivityPopup.destroy();
     }
 
-    if (currentRecord && !finalSyncDone) {
+    if (!finalSyncDone) {
       event.preventDefault();
       finalSyncDone = true;
       clearInterval(trackingInterval);
-      console.log('App quitting, closing final activity record...');
-      try {
-        await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, new Date(), currentRecord.activityOn);
-      } catch (e) {
-        console.error(e);
-      } finally {
+      console.log('App quitting, closing final activity record and flushing queue...');
+      
+      closeCurrentSession(new Date());
+
+      // Attempt sync with a 3-second timeout so it doesn't block quitting indefinitely
+      const syncTimeout = new Promise(resolve => setTimeout(resolve, 3000));
+      Promise.race([flushPendingClosedSessions(), syncTimeout]).finally(() => {
         app.quit();
-      }
+      });
     }
   });
 

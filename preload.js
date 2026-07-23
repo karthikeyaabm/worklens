@@ -89,5 +89,9 @@ contextBridge.exposeInMainWorld('api', {
 
   closeInactivityPopup: async () => {
     return await ipcRenderer.invoke('close-inactivity-popup');
+  },
+
+  triggerSync: async () => {
+    return await ipcRenderer.invoke('trigger-sync');
   }
 });
