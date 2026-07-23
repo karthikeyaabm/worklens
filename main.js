@@ -3,6 +3,17 @@ const { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, Tray, nativeIma
 const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
+const quotes = require('./quotes');
+
+// Inactivity Nudge Configuration
+const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger threshold
+const IDLE_CHECK_INTERVAL_MS = 1000; // 1 second interval to close quickly on user activity
+const POPUP_AUTO_CLOSE_MS = 10000; // 10 seconds auto-close if no user action
+
+let inactivityPopup = null;
+let inactivityPopupShown = false;
+let isSystemLocked = false;
+let inactivityInterval = null;
 const util = require('util');
 const execPromise = util.promisify(exec);
 const redmineClient = require('./redmineClient');
@@ -167,7 +178,7 @@ async function getUserId() {
 
     const response = await redmineClient.get('/users.json', { name: username, limit: 100 });
     if (response && Array.isArray(response.users)) {
-      const matchedUser = response.users.find(u => u.login === username);
+      const matchedUser = response.users.find(u => (u.login && u.login.toLowerCase()) === (username && username.toLowerCase()));
       if (matchedUser) {
         cachedUserId = matchedUser.id;
         console.log(`[UserId Resolution] Resolved OS username "${username}" to Redmine user_id: ${cachedUserId}`);
@@ -216,8 +227,7 @@ async function trackTick() {
     if (!userId) return;
 
     const idleTime = powerMonitor.getSystemIdleTime();
-    const newStatus = idleTime >= 300 ? 'Inactive' : 'Active';
-    currentStatus = newStatus;
+    let newStatus = idleTime >= 300 ? 'Inactive' : 'Active';
 
     let currentApp = 'System';
     let currentTitle = 'Idle';
@@ -227,10 +237,16 @@ async function trackTick() {
         const getWin = await loadActiveWin();
         const winInfo = await getWin();
         if (winInfo) {
-          currentApp = winInfo.owner?.name || 'Unknown';
-          currentTitle = winInfo.title || 'Untitled';
-          if (winInfo.owner?.path) {
-            cacheAppIcon(currentApp, winInfo.owner.path);
+          const appName = winInfo.owner?.name || '';
+          const appPath = winInfo.owner?.path || '';
+          if (appName.toLowerCase().includes('lockapp') || appPath.toLowerCase().includes('lockapp.exe')) {
+            newStatus = 'Inactive';
+          } else {
+            currentApp = appName || 'Unknown';
+            currentTitle = winInfo.title || 'Untitled';
+            if (winInfo.owner?.path) {
+              cacheAppIcon(currentApp, winInfo.owner.path);
+            }
           }
         } else {
           currentApp = 'Unknown';
@@ -242,6 +258,8 @@ async function trackTick() {
         currentTitle = 'Error';
       }
     }
+
+    currentStatus = newStatus;
 
     const now = new Date();
     const statusChanged = !currentRecord || currentRecord.status !== newStatus;
@@ -313,7 +331,8 @@ function createActivityWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      devTools: false
     }
   });
 
@@ -468,7 +487,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      devTools: false
     }
   });
 
@@ -485,6 +505,97 @@ function createWindow() {
     }
   });
 }
+
+// Inactivity Nudge Helpers
+function startInactivityCheck() {
+  if (inactivityInterval) return;
+  inactivityInterval = setInterval(() => {
+    if (isQuitting || isSystemLocked) return;
+
+    const idleTime = powerMonitor.getSystemIdleTime();
+    console.log(`[Inactivity Nudge] Idle check: current idle time = ${idleTime}s, threshold = ${INACTIVITY_THRESHOLD_SECONDS}s, popupShown = ${inactivityPopupShown}`);
+    if (idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
+      if (!inactivityPopupShown && !inactivityPopup) {
+        showInactivityPopup();
+      }
+    } else {
+      inactivityPopupShown = false;
+      if (inactivityPopup) {
+        console.log('[Inactivity Nudge] User activity detected (idleTime < threshold). Automatically closing popup.');
+        inactivityPopup.close();
+      }
+    }
+  }, IDLE_CHECK_INTERVAL_MS);
+}
+
+function stopInactivityCheck() {
+  if (inactivityInterval) {
+    clearInterval(inactivityInterval);
+    inactivityInterval = null;
+  }
+}
+
+function showInactivityPopup() {
+  if (isQuitting || isSystemLocked || inactivityPopup) return;
+
+  console.log('[Inactivity Nudge] Showing inactivity popup window...');
+  inactivityPopupShown = true;
+  const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { workArea } = primaryDisplay;
+
+  const width = 450;
+  const height = 280;
+  const x = workArea.x + workArea.width - width - 20;
+  const y = workArea.y + workArea.height - height - 20;
+
+  inactivityPopup = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false, // Do not steal focus
+    show: false, // Show without activating/focusing
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false
+    }
+  });
+
+  inactivityPopup.loadFile(path.join(__dirname, 'inactivityPopup.html'), {
+    query: {
+      quote: randomQuote
+    }
+  });
+
+  inactivityPopup.once('ready-to-show', () => {
+    if (inactivityPopup) {
+      inactivityPopup.showInactive();
+      inactivityPopup.setAlwaysOnTop(true, 'screen-saver');
+    }
+  });
+
+  const autoCloseTimer = setTimeout(() => {
+    if (inactivityPopup) {
+      console.log('[Inactivity Nudge] Timeout reached. Closing popup.');
+      inactivityPopup.close();
+    }
+  }, POPUP_AUTO_CLOSE_MS);
+
+  inactivityPopup.on('closed', () => {
+    inactivityPopup = null;
+    clearTimeout(autoCloseTimer);
+  });
+}
+
 
 // IPC Handlers
 ipcMain.handle('get-username', () => {
@@ -617,6 +728,12 @@ ipcMain.handle('close-activity-popup', () => {
   }
 });
 
+ipcMain.handle('close-inactivity-popup', () => {
+  if (inactivityPopup) {
+    inactivityPopup.close();
+  }
+});
+
 ipcMain.handle('fetch-activity-logs', async () => {
   try {
     const userId = await getUserId();
@@ -711,6 +828,9 @@ if (gotTheLock) {
     trackingInterval = setInterval(trackTick, 2000);
     trackTick();
 
+    // Start inactivity check loop
+    startInactivityCheck();
+
     // Pre-cache common system icons
     preCacheCommonIcons();
 
@@ -778,11 +898,26 @@ if (gotTheLock) {
       console.log('System resumed, restarting tracking...');
       trackTick();
     });
+
+    // Handle lock/unlock screen events for inactivity nudge
+    powerMonitor.on('lock-screen', () => {
+      isSystemLocked = true;
+    });
+
+    powerMonitor.on('unlock-screen', () => {
+      isSystemLocked = false;
+      // Reset popup trigger flag so it can trigger on the next idle session
+      inactivityPopupShown = false;
+    });
   });
 
   // Graceful exit
   app.on('before-quit', async (event) => {
     isQuitting = true;
+    stopInactivityCheck();
+    if (inactivityPopup && !inactivityPopup.isDestroyed()) {
+      inactivityPopup.destroy();
+    }
 
     if (currentRecord && !finalSyncDone) {
       event.preventDefault();

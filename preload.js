@@ -85,5 +85,9 @@ contextBridge.exposeInMainWorld('api', {
 
   sendPopupReady: () => {
     ipcRenderer.invoke('popup-ready');
+  },
+
+  closeInactivityPopup: async () => {
+    return await ipcRenderer.invoke('close-inactivity-popup');
   }
 });

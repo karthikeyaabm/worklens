@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkLens - Inactive</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            overflow: hidden;
+            user-select: none;
+        }
+        .container {
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .popup-card {
+            width: 100%;
+            height: 100%;
+            background-color: rgba(18, 18, 18, 0.96);
+            border: 2px solid #ff3333;
+            border-radius: 16px;
+            box-shadow: 0 0 20px rgba(255, 51, 51, 0.6), inset 0 0 10px rgba(255, 51, 51, 0.2);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 18px 24px;
+            position: relative;
+            text-align: center;
+        }
+        .close-btn {
+            position: absolute;
+            top: 12px;
+            right: 18px;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .close-btn:hover {
+            color: #ff3333;
+        }
+        .icon-circle {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 2px solid #ff3333;
+            box-shadow: 0 0 12px rgba(255, 51, 51, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        .title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .divider {
+            width: 40px;
+            height: 3px;
+            background-color: #ff3333;
+            border-radius: 2px;
+            margin-bottom: 12px;
+        }
+        .quote-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 0 10px;
+        }
+        .quote-mark {
+            font-size: 26px;
+            color: #ff3333;
+            font-family: Georgia, serif;
+            line-height: 0;
+            font-weight: bold;
+        }
+        .quote-text {
+            font-size: 13px;
+            font-style: italic;
+            font-weight: 300;
+            line-height: 1.4;
+            color: rgba(255, 255, 255, 0.9);
+            margin: 0 10px;
+            flex: 1;
+        }
+        .info-tip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 10.5px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 12px;
+        }
+        .info-tip .bulb-icon {
+            color: #ff3333;
+            font-size: 13px;
+        }
+        .dismiss-btn {
+            width: 100%;
+            background: linear-gradient(135deg, rgba(120, 20, 20, 0.8) 0%, rgba(200, 30, 30, 0.8) 100%);
+            border: 1px solid rgba(255, 51, 51, 0.6);
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 8px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+        .dismiss-btn:hover {
+            background: linear-gradient(135deg, rgba(140, 25, 25, 0.9) 0%, rgba(220, 40, 40, 0.9) 100%);
+            border-color: rgba(255, 51, 51, 0.8);
+            box-shadow: 0 4px 15px rgba(255, 51, 51, 0.3);
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="popup-card">
+            <div class="close-btn" id="closeBtn">✕</div>
+            <div class="icon-circle">💼</div>
+            <div class="title">You've been inactive</div>
+            <div class="divider"></div>
+            <div class="quote-section">
+                <span class="quote-mark">“</span>
+                <span id="quoteText" class="quote-text">Every small effort counts. Make it a great one today.</span>
+                <span class="quote-mark">”</span>
+            </div>
+            <div class="info-tip">
+                <span class="bulb-icon">💡</span>
+                <span>Stay focused. Stay productive. Keep moving forward!</span>
+            </div>
+            <button class="dismiss-btn" id="dismissBtn">
+                <span>👆</span>
+                <span>Click to dismiss</span>
+            </button>
+        </div>
+    </div>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const quote = params.get('quote') || "Stay focused and keep up the great work!";
+        document.getElementById('quoteText').textContent = quote;
+        
+        const closeAction = () => {
+            if (window.api && typeof window.api.closeInactivityPopup === 'function') {
+                window.api.closeInactivityPopup();
+            } else {
+                window.close();
+            }
+        };
+
+        document.getElementById('closeBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeAction();
+        });
+
+        document.getElementById('dismissBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeAction();
+        });
+        
+        // Also click anywhere on the card to dismiss
+        document.querySelector('.popup-card').addEventListener('click', closeAction);
+    </script>
+</body>
+</html>
