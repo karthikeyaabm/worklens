@@ -165,6 +165,47 @@
         </div>
     </div>
     <script>
+        // Synthesized double-beep notification sound
+        function playTone(audioCtx, frequency, duration, delay) {
+            try {
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime + delay);
+                
+                // Smooth gain ramp-up and fade-out to prevent clicks and pops
+                gainNode.gain.setValueAtTime(0.001, audioCtx.currentTime + delay);
+                gainNode.gain.exponentialRampToValueAtTime(0.08, audioCtx.currentTime + delay + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+
+                oscillator.start(audioCtx.currentTime + delay);
+                oscillator.stop(audioCtx.currentTime + delay + duration);
+            } catch (err) {
+                console.error("Failed to play tone:", err);
+            }
+        }
+
+        function playBeep() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Play first beep (800Hz, 120ms)
+                playTone(audioCtx, 800, 0.12, 0);
+                
+                // Play second beep (800Hz, 120ms) after a 250ms delay
+                playTone(audioCtx, 800, 0.12, 0.25);
+            } catch (e) {
+                console.error("Web Audio API not supported or blocked:", e);
+            }
+        }
+
+        // Play the beep alert as soon as the popup script runs
+        playBeep();
+
         const params = new URLSearchParams(window.location.search);
         const quote = params.get('quote') || "Stay focused and keep up the great work!";
         document.getElementById('quoteText').textContent = quote;

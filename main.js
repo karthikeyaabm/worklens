@@ -1,5 +1,9 @@
 require('dotenv').config(); // Load environment variables from .env
 const { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, Tray, nativeImage, dialog } = require('electron');
+
+// Disable autoplay policy to allow inactivity popup beep sound without user gesture
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
@@ -8,7 +12,7 @@ const quotes = require('./quotes');
 // Inactivity Nudge Configuration
 const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger threshold
 const IDLE_CHECK_INTERVAL_MS = 1000; // 1 second interval to close quickly on user activity
-const POPUP_AUTO_CLOSE_MS = 10000; // 10 seconds auto-close if no user action
+const POPUP_AUTO_CLOSE_MS = 15000; // 15 seconds auto-close if no user action
 
 let inactivityPopup = null;
 let inactivityPopupShown = false;
@@ -290,18 +294,22 @@ async function trackTick() {
       // with the same appName/windowTitle/status, so nothing is lost beyond ~15s.
       const elapsed = Date.now() - lastDbSyncTime;
       if (elapsed >= 15000 && currentRecord) {
-        const synced = await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now, currentRecord.activityOn);
-        if (synced) {
-          // FIX #2: re-added `activityOn: now` — this was missing, so after
-          // the first periodic resync currentRecord.activityOn became
-          // undefined, producing NaN duration on the next close-out call.
-          currentRecord = {
-            appName: currentRecord.appName,
-            windowTitle: currentRecord.windowTitle,
-            startTime: now,
-            activityOn: now,
-            status: currentRecord.status
-          };
+        if (currentRecord.status === 'Active') {
+          const synced = await syncChunkToApi(currentRecord.appName, currentRecord.windowTitle, currentRecord.status, currentRecord.startTime, now, currentRecord.activityOn);
+          if (synced) {
+            // FIX #2: re-added `activityOn: now` — this was missing, so after
+            // the first periodic resync currentRecord.activityOn became
+            // undefined, producing NaN duration on the next close-out call.
+            currentRecord = {
+              appName: currentRecord.appName,
+              windowTitle: currentRecord.windowTitle,
+              startTime: now,
+              activityOn: now,
+              status: currentRecord.status
+            };
+          }
+        } else {
+          console.log(`[Sync] Skipping 15s durability sync since computer status is ${currentRecord.status}`);
         }
         lastDbSyncTime = Date.now();
       }
