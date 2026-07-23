@@ -72,6 +72,8 @@ const TEAMS_MEETING_TITLE_PATTERNS = [
   /\bteams meeting\b/i
 ];
 
+const TRANSFER_PROGRESS_TITLE_PATTERN = /\b\d{1,3}%\s+(downloading|uploading|transferring)\b/i;
+
 const appIconCache = {}; // maps appName.toLowerCase() -> base64 data URL
 
 async function cacheAppIcon(appName, exePath) {
@@ -207,13 +209,40 @@ function isTeamsMeetingWindow(winInfo) {
     title.toLowerCase().endsWith('| microsoft teams');
 }
 
+function isWinScpApp(appName = '', appPath = '') {
+  const name = appName.toLowerCase();
+  const pathName = appPath.toLowerCase();
+  return name.includes('winscp') || pathName.includes('winscp.exe');
+}
+
+function isPassiveTransferWindow(winInfo) {
+  if (!winInfo) return false;
+
+  const title = winInfo.title || '';
+
+  return TRANSFER_PROGRESS_TITLE_PATTERN.test(title);
+}
+
+function normalizeVolatileWindowTitle(appName, appPath, windowTitle) {
+  if (!windowTitle || (!isWinScpApp(appName, appPath) && !TRANSFER_PROGRESS_TITLE_PATTERN.test(windowTitle))) {
+    return windowTitle;
+  }
+
+  return windowTitle.replace(TRANSFER_PROGRESS_TITLE_PATTERN, (_, action) => {
+    const normalizedAction = action.charAt(0).toUpperCase() + action.slice(1).toLowerCase();
+    return `${normalizedAction} in progress`;
+  });
+}
+
 function applyActiveWindowInfo(winInfo, fallbackApp = 'Unknown', fallbackTitle = 'No Active Window') {
   if (!winInfo) {
     return { appName: fallbackApp, windowTitle: fallbackTitle };
   }
 
   const appName = winInfo.owner?.name || 'Unknown';
-  const windowTitle = winInfo.title || 'Untitled';
+  const appPath = winInfo.owner?.path || '';
+  const rawWindowTitle = winInfo.title || 'Untitled';
+  const windowTitle = normalizeVolatileWindowTitle(appName, appPath, rawWindowTitle);
 
   if (winInfo.owner?.path) {
     cacheAppIcon(appName, winInfo.owner.path);
@@ -408,6 +437,11 @@ async function trackTick() {
         const activeWindow = applyActiveWindowInfo(winInfo);
         currentApp = activeWindow.appName;
         currentTitle = activeWindow.windowTitle;
+
+        if (isPassiveTransferWindow(winInfo)) {
+          newStatus = 'Inactive';
+          console.log('[Passive Transfer] Transfer progress detected. Counting as Inactive.');
+        }
       } else if (!winInfo) {
         currentApp = 'Unknown';
         currentTitle = 'No Active Window';
