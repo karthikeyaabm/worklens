@@ -13,6 +13,7 @@ const totalTimeEl = document.getElementById('total-time');
 // ================= STATE VARIABLES =================
 let pollInterval = null;
 let renderedRows = {}; // Holds map of appName -> DOM element
+let expandedAppName = null; // Currently expanded application name
 
 // ================= INITIALIZATION =================
 document.addEventListener('DOMContentLoaded', () => {
@@ -71,6 +72,83 @@ function formatDuration(totalSeconds) {
     return `${hours}h ${minutes}m`;
   }
   return `${minutes}m`;
+}
+
+function formatActivityDuration(totalSeconds) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+function toggleAppExpansion(appName, groupEl) {
+  const wrapper = groupEl.querySelector('.activities-details-wrapper');
+  const row = groupEl.querySelector('.activity-row');
+  const isExpanded = wrapper.classList.contains('expanded');
+
+  // Collapse currently expanded one if it's different
+  if (!isExpanded && expandedAppName && expandedAppName !== appName) {
+    const prevGroup = renderedRows[expandedAppName];
+    if (prevGroup) {
+      const prevWrapper = prevGroup.querySelector('.activities-details-wrapper');
+      const prevRow = prevGroup.querySelector('.activity-row');
+      if (prevWrapper && prevWrapper.classList.contains('expanded')) {
+        prevWrapper.classList.remove('expanded');
+        prevRow.classList.remove('expanded');
+        prevRow.setAttribute('aria-expanded', 'false');
+      }
+    }
+  }
+
+  // Toggle this one
+  if (isExpanded) {
+    wrapper.classList.remove('expanded');
+    row.classList.remove('expanded');
+    row.setAttribute('aria-expanded', 'false');
+    expandedAppName = null;
+  } else {
+    wrapper.classList.add('expanded');
+    row.classList.add('expanded');
+    row.setAttribute('aria-expanded', 'true');
+    expandedAppName = appName;
+  }
+}
+
+function renderActivities(contentEl, activities) {
+  contentEl.innerHTML = '';
+  
+  if (!activities || activities.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'activity-detail-empty';
+    emptyEl.textContent = 'No activity details available.';
+    contentEl.appendChild(emptyEl);
+    return;
+  }
+
+  activities.forEach(act => {
+    const detailRow = document.createElement('div');
+    detailRow.className = 'activity-detail-row';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'activity-title';
+    titleEl.textContent = act.title;
+    titleEl.title = act.title;
+
+    const durationEl = document.createElement('span');
+    durationEl.className = 'activity-duration';
+    durationEl.textContent = formatActivityDuration(act.duration);
+
+    detailRow.appendChild(titleEl);
+    detailRow.appendChild(durationEl);
+    contentEl.appendChild(detailRow);
+  });
 }
 
 function updateArrowPosition(arrowLeft, isBelow) {
@@ -142,18 +220,40 @@ async function fetchAndRender() {
     // Format is { user_id, date, entries, ... } or raw array
     const logs = Array.isArray(logsData) ? logsData : (logsData?.entries || []);
     
-    // Group logs by application name
+    // Group logs by application name and individual activities
     const grouped = {};
     logs.forEach(entry => {
-      // API response status field matches "active"
       if (entry.status === 'active' && entry.duration > 0) {
         const appName = entry.app_name || 'Unknown';
-        grouped[appName] = (grouped[appName] || 0) + entry.duration;
+        const windowTitle = entry.window_title || 'Unknown Activity';
+        const duration = entry.duration;
+
+        if (!grouped[appName]) {
+          grouped[appName] = {
+            application: appName,
+            totalDuration: 0,
+            activitiesMap: {}
+          };
+        }
+        grouped[appName].totalDuration += duration;
+        grouped[appName].activitiesMap[windowTitle] = (grouped[appName].activitiesMap[windowTitle] || 0) + duration;
       }
     });
 
     const sortedApps = Object.keys(grouped)
-      .map(name => ({ name, duration: grouped[name] }))
+      .map(name => {
+        const appGroup = grouped[name];
+        const activities = Object.keys(appGroup.activitiesMap).map(title => ({
+          title,
+          duration: appGroup.activitiesMap[title]
+        })).sort((a, b) => b.duration - a.duration);
+
+        return {
+          name,
+          duration: appGroup.totalDuration,
+          activities
+        };
+      })
       .sort((a, b) => b.duration - a.duration);
 
     if (sortedApps.length === 0) {
@@ -165,6 +265,7 @@ async function fetchAndRender() {
         renderedRows[name].remove();
       }
       renderedRows = {};
+      expandedAppName = null;
       return;
     }
 
@@ -207,27 +308,48 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
     if (!currentAppNames.has(appName)) {
       renderedRows[appName].remove();
       delete renderedRows[appName];
+      if (expandedAppName === appName) {
+        expandedAppName = null;
+      }
     }
   }
 
   // 2. Add or update active rows
   sortedApps.forEach((app, index) => {
-    const { name, duration } = app;
+    const { name, duration, activities } = app;
     const percentage = maxDuration > 0 ? (duration / maxDuration) * 100 : 0;
     const formattedDuration = formatDuration(duration);
     const lowerName = name.toLowerCase();
     
-    let rowEl = renderedRows[name];
+    let groupEl = renderedRows[name];
     
-    if (!rowEl) {
-      // Create new row elements
-      rowEl = document.createElement('div');
-      rowEl.className = 'activity-row';
-      rowEl.dataset.appName = name;
+    if (!groupEl) {
+      // Create new group element
+      groupEl = document.createElement('div');
+      groupEl.className = 'activity-group';
+      groupEl.dataset.appName = name;
       
       // Smooth fade-in staggers
-      rowEl.style.animation = 'rowFadeIn 250ms ease forwards';
-      rowEl.style.animationDelay = `${Math.min(index * 40, 400)}ms`;
+      groupEl.style.animation = 'rowFadeIn 250ms ease forwards';
+      groupEl.style.animationDelay = `${Math.min(index * 40, 400)}ms`;
+
+      // Create row element (the clickable app header)
+      const rowEl = document.createElement('div');
+      rowEl.className = 'activity-row';
+      rowEl.tabIndex = 0;
+      rowEl.setAttribute('role', 'button');
+      rowEl.setAttribute('aria-expanded', 'false');
+      rowEl.setAttribute('aria-label', `Toggle ${name} activities`);
+
+      // Add Chevron container and SVG
+      const chevronContainer = document.createElement('div');
+      chevronContainer.className = 'chevron-container';
+      chevronContainer.innerHTML = `
+        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/>
+        </svg>
+      `;
+      rowEl.appendChild(chevronContainer);
 
       // Icon Column
       const iconEl = document.createElement('div');
@@ -240,6 +362,7 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
       } else {
         iconEl.innerHTML = getAppIconSvg(name);
       }
+      rowEl.appendChild(iconEl);
 
       // Details Column (Name & Progress Bar)
       const detailsEl = document.createElement('div');
@@ -261,18 +384,44 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
       progressContainer.appendChild(progressBar);
       detailsEl.appendChild(nameEl);
       detailsEl.appendChild(progressContainer);
+      rowEl.appendChild(detailsEl);
 
       // Duration Column
       const durationEl = document.createElement('div');
       durationEl.className = 'app-duration';
       durationEl.textContent = formattedDuration;
-
-      rowEl.appendChild(iconEl);
-      rowEl.appendChild(detailsEl);
       rowEl.appendChild(durationEl);
 
-      activityList.appendChild(rowEl);
-      renderedRows[name] = rowEl;
+      // Activities Details Container (Wrapper and Content)
+      const detailsWrapper = document.createElement('div');
+      detailsWrapper.className = 'activities-details-wrapper';
+      
+      const detailsContent = document.createElement('div');
+      detailsContent.className = 'activities-details-content';
+      
+      detailsWrapper.appendChild(detailsContent);
+      
+      groupEl.appendChild(rowEl);
+      groupEl.appendChild(detailsWrapper);
+
+      // Render the child activities list
+      renderActivities(detailsContent, activities);
+
+      // Register Click and Keyboard handlers
+      const toggleHandler = () => {
+        toggleAppExpansion(name, groupEl);
+      };
+      
+      rowEl.addEventListener('click', toggleHandler);
+      rowEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleHandler();
+        }
+      });
+
+      activityList.appendChild(groupEl);
+      renderedRows[name] = groupEl;
       
       // Animate the progress bar width from 0% to target width
       setTimeout(() => {
@@ -282,24 +431,24 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
     } else {
       // Update existing row
       // Re-order if position changed
-      if (activityList.children[index] !== rowEl) {
-        activityList.insertBefore(rowEl, activityList.children[index]);
+      if (activityList.children[index] !== groupEl) {
+        activityList.insertBefore(groupEl, activityList.children[index]);
       }
       
       // Update duration text
-      const durationEl = rowEl.querySelector('.app-duration');
+      const durationEl = groupEl.querySelector('.app-duration');
       if (durationEl && durationEl.textContent !== formattedDuration) {
         durationEl.textContent = formattedDuration;
       }
 
       // Update progress bar width
-      const progressBar = rowEl.querySelector('.progress-bar');
+      const progressBar = groupEl.querySelector('.progress-bar');
       if (progressBar) {
         progressBar.style.width = `${percentage}%`;
       }
 
       // Update icon if it wasn't rendered as an image before but now has one
-      const iconEl = rowEl.querySelector('.app-icon-container');
+      const iconEl = groupEl.querySelector('.app-icon-container');
       if (iconEl) {
         const hasImg = iconEl.querySelector('.app-img-icon');
         if (iconsMap && iconsMap[lowerName] && !hasImg) {
@@ -309,6 +458,12 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
           img.src = iconsMap[lowerName];
           iconEl.appendChild(img);
         }
+      }
+
+      // Update the child activities list dynamically
+      const detailsContent = groupEl.querySelector('.activities-details-content');
+      if (detailsContent) {
+        renderActivities(detailsContent, activities);
       }
     }
   });

@@ -1,0 +1,13 @@
+# AI Coding Rules for WorkLens
+
+## CRITICAL: Always Keep `BRAIN.md` Updated
+
+Whenever you make any changes to the code of this project, you MUST update [BRAIN.md](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/BRAIN.md) to reflect those changes.
+
+### Guidelines for AI Assistants:
+1. **Single Source of Truth:** `BRAIN.md` represents the complete tech stack, directory structure, application flow, IPC events, features, API routes, database layout, background processes, configurations, and coding guidelines. Keep it accurate.
+2. **Update Immediately:** Do not wait for the user to ask you to update the documentation. If you modify a file, add a feature, introduce a config variable, add an API endpoint, create an IPC channel, or add a background job, update the corresponding section in `BRAIN.md` immediately in the same response or PR.
+3. **Keep Details Clean:** Ensure you update the tech stack versions, dependency maps, glossary, and change logs if necessary.
+4. **Pre-completion Checklist:** Before finish/exit, run a diff verification of your changes against `BRAIN.md` to ensure no documentation is outdated.
+
+Let's maintain high documentation standards!
