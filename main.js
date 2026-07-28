@@ -270,23 +270,31 @@ function calculateDuration(startTime, endTime) {
 // Still needed for the numeric user_id in the activity-log POST body.
 async function getUserId() {
   if (cachedUserId !== null) return cachedUserId;
+
   try {
     const username = os.userInfo().username;
     console.log(`[UserId Resolution] Resolving Redmine user_id for OS username: ${username}`);
 
-    const response = await redmineClient.get('/users.json', { name: username, limit: 100 });
-    if (response && Array.isArray(response.users)) {
-      const matchedUser = response.users.find(u => (u.login && u.login.toLowerCase()) === (username && username.toLowerCase()));
-      if (matchedUser) {
-        cachedUserId = matchedUser.id;
-        console.log(`[UserId Resolution] Resolved OS username "${username}" to Redmine user_id: ${cachedUserId}`);
-      } else {
-        console.warn(`[UserId Resolution] No user with login "${username}" found in Redmine response.`);
-      }
+    const response = await redmineClient.get('/today_timesheet.json', {
+      user_id: username
+    });
+
+    console.log("Response:", response);
+
+    if (response && response.user) {
+      cachedUserId = response.user.id;
+      console.log(
+        `[UserId Resolution] Resolved OS username "${username}" to Redmine user_id: ${cachedUserId}`
+      );
+    } else {
+      console.warn(
+        `[UserId Resolution] No user found for OS username "${username}".`
+      );
     }
   } catch (error) {
-    console.error('Error resolving user ID via Redmine API:', error);
+    console.error("Error resolving user ID via Redmine API:", error);
   }
+
   return cachedUserId;
 }
 
@@ -1163,7 +1171,7 @@ if (gotTheLock) {
       finalSyncDone = true;
       clearInterval(trackingInterval);
       console.log('App quitting, closing final activity record and flushing queue...');
-      
+
       closeCurrentSession(new Date());
 
       // Attempt sync with a 3-second timeout so it doesn't block quitting indefinitely
