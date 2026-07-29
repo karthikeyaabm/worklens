@@ -183,7 +183,7 @@ sequenceDiagram
 *   **UI Metrics Displayed:** 
     *   *Time Logs (Redmine Summary):* Shows yesterday's (Y) and today's (T) logged times returned by Redmine.
     *   *Active Time (Local Tracked Time):* Shows local tracked active time yesterday (Y) and today (T).
-    *   *Status Dot:* A pulsing indicator representing "Active" (Green) or "Inactive" (Orange) states.
+    *   *Status Dot:* A pulsing indicator representing "Active (Online)" (Green), "Active (Offline)" (Blue), or "Inactive" (Orange) states.
 
 ### 2. Active Window Tracking
 *   **Purpose:** Continuously poll the top-most window in the OS to track where the user's attention is focused.
@@ -437,6 +437,10 @@ WorkLens runs several key background processes:
 *   Closes orphaned sessions (where `closed: false` from a previous session).
 *   Prunes log files older than 7 days from the logs folder.
 
+### 6. User Resolution Retry Loop
+*   **Interval:** Every 30 seconds.
+*   **Logic:** Retries validating the local Windows username against the Redmine backend `/today_timesheet.json` API. If validation fails (due to backend username changes), all tracking services are stopped immediately. If validation succeeds again, cached user info is updated and all tracking/sync services are resumed automatically. Allows recovering user IDs from local queues during offline boot-up.
+
 ---
 
 ## 12. Configuration & Environment
@@ -645,6 +649,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.1.0 - Offline Sync:** JSONL-based local storage queue with automatic retry handling and session consolidation.
 *   **v1.1.1 - Expandable Activity Details:** Added chevrons and interactive expansion dropdowns in the Active Time details popup to view specific window titles and durations with smooth CSS Grid animations and keyboard accessibility.
 *   **v1.2.0 - Anti-AFK & Anti-Fake Activity Detection:** Integrated global input hooks using `uiohook-napi` and implemented a scoring detector to automatically filter out key-weights and held-key cheating behaviors from active productivity calculations.
+*   **v1.3.0 - Username Change Auto-Recovery & Persistent Offline Tracking:** Implemented background username validation, persistent username display during reachability/network failures, and automatic recovery. Added start/stop service controllers to immediately halt tracking when explicit validation fails. Introduced pulsing Blue indicator beside Active Time for active offline tracking, pulsing Green for active online, and pulsing Orange for inactive. Paused sync interval during unreachable states and triggered auto-sync on recovery.
 
 ---
 

@@ -8,8 +8,14 @@ async function loadUsername() {
 
     if (titleElement) {
       if (result && result.error) {
-        titleElement.textContent = 'Not Connected';
-        titleElement.style.color = '#ef4444'; // Red color to indicate connection error
+        if (result.error.toLowerCase().includes('not found') || result.error.toLowerCase().includes('database')) {
+          titleElement.textContent = 'User not found';
+        } else if (result.error.toLowerCase().includes('waiting for account update') || result.error.toLowerCase().includes('unresolved')) {
+          titleElement.textContent = 'Waiting for account update';
+        } else {
+          titleElement.textContent = 'Not Connected';
+        }
+        titleElement.style.color = '#ef4444'; // Red color to indicate connection/validation error
         titleElement.style.fontWeight = 'bold';
         titleElement.title = `${result.error}`; // Tooltip containing the full error details
       } else {
@@ -116,20 +122,27 @@ async function loadWidgetData() {
     }
 
     // 3. Active Time Today
-    if (typeof window.api.getActiveTimeToday === 'function') {
-      const activeToday = await window.api.getActiveTimeToday();
-      const activeTodayEl = document.getElementById('active-today');
-      if (activeTodayEl) activeTodayEl.textContent = formatSeconds(activeToday);
-    }
+    await updateActiveTimeToday();
 
     // 4. Current Status (pulsing dot)
-    if (typeof window.api.getCurrentStatus === 'function') {
+    await updateStatusDot();
+  } catch (error) {
+    console.error('Failed to load widget data:', error);
+  }
+}
+
+async function updateStatusDot() {
+  try {
+    if (window.api && typeof window.api.getCurrentStatus === 'function') {
       const status = await window.api.getCurrentStatus();
       const dotEl = document.getElementById('status-dot');
       if (dotEl) {
         if (status === 'Active') {
           dotEl.className = 'status-dot active';
-          dotEl.title = 'Active';
+          dotEl.title = 'Active (Online)';
+        } else if (status === 'Offline') {
+          dotEl.className = 'status-dot offline';
+          dotEl.title = 'Active (Offline)';
         } else {
           dotEl.className = 'status-dot inactive';
           dotEl.title = 'Inactive';
@@ -137,7 +150,19 @@ async function loadWidgetData() {
       }
     }
   } catch (error) {
-    console.error('Failed to load widget data:', error);
+    console.error('Failed to update status dot:', error);
+  }
+}
+
+async function updateActiveTimeToday() {
+  try {
+    if (window.api && typeof window.api.getActiveTimeToday === 'function') {
+      const activeToday = await window.api.getActiveTimeToday();
+      const activeTodayEl = document.getElementById('active-today');
+      if (activeTodayEl) activeTodayEl.textContent = formatSeconds(activeToday);
+    }
+  } catch (error) {
+    console.error('Failed to update active time today:', error);
   }
 }
 
@@ -162,7 +187,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Refresh clock every minute
   setInterval(updateDateDisplay, 60000);
 
-  // Refresh widget stats and status every 30 seconds
+  // Refresh cheap local stats, status dot, and username status every 2 seconds
+  setInterval(async () => {
+    await loadUsername();
+    await updateStatusDot();
+    await updateActiveTimeToday();
+  }, 2000);
+
+  // Refresh server-side stats every 30 seconds
   setInterval(loadWidgetData, 30000);
 
   // Trigger immediate sync on network recovery

@@ -122,6 +122,10 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
     return chunks[index];
   } else {
     // Insert new active session
+    if (!userId) {
+      console.warn('[Storage] Skipping insert of new active session: User is unresolved.');
+      return null;
+    }
     const newSession = {
       local_id: session.local_id || crypto.randomUUID(),
       user_id: userId || null,
@@ -264,6 +268,21 @@ function getUnsyncedTodayLogs(userId) {
   });
 }
 
+function getUserIdFromLocalQueue() {
+  try {
+    const chunks = readChunks();
+    // Scan backward to find the most recent non-null user_id
+    for (let i = chunks.length - 1; i >= 0; i--) {
+      if (chunks[i].user_id) {
+        return chunks[i].user_id;
+      }
+    }
+  } catch (err) {
+    console.error('[Storage] Error reading user_id from local queue:', err);
+  }
+  return null;
+}
+
 module.exports = {
   saveOrUpdateActiveSessionLocal,
   closeOrphanedSessions,
@@ -274,6 +293,7 @@ module.exports = {
   getUnsyncedTodayDuration,
   getUnsyncedTodayLogs,
   getQueueFilePath,
+  getUserIdFromLocalQueue,
   // Keep back compat mapping
   saveChunkLocal,
   markChunkSynced: markSessionSynced,

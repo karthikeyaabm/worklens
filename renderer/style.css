@@ -244,6 +244,12 @@ body {
   animation: pulse-amber 2s infinite;
 }
 
+.status-dot.offline {
+  background: #3b82f6; /* Fluent Blue */
+  box-shadow: 0 0 4px #3b82f6;
+  animation: pulse-blue 2s infinite;
+}
+
 @keyframes pulse-green {
   0% {
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
@@ -269,5 +275,19 @@ body {
 
   100% {
     box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+@keyframes pulse-blue {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6);
+  }
+
+  70% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
   }
 }

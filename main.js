@@ -16,7 +16,8 @@ const {
   markSessionSynced,
   markSessionFailed,
   getUnsyncedTodayDuration,
-  getUnsyncedTodayLogs
+  getUnsyncedTodayLogs,
+  getUserIdFromLocalQueue
 } = require('./activityStore');
 const antiAfkDetector = require('./antiAfkDetector');
 const { uIOhook } = require('uiohook-napi');
@@ -65,6 +66,92 @@ let currentStatus = 'Active'; // 'Active' or 'Inactive'
 let trackingInterval = null;
 let lastDbSyncTime = Date.now();
 let activeWin = null;
+
+let isUserResolved = false;
+let syncInterval = null;
+let isUiohookRunning = false;
+let isBackendReachable = true;
+
+function startUiohook() {
+  if (isUiohookRunning) return;
+  try {
+    uIOhook.start();
+    isUiohookRunning = true;
+    console.log('[AntiAFK] Global input hook started.');
+  } catch (err) {
+    console.error('[AntiAFK] Failed to start global input hook:', err);
+  }
+}
+
+function stopUiohook() {
+  if (!isUiohookRunning) return;
+  try {
+    uIOhook.stop();
+    isUiohookRunning = false;
+    console.log('[AntiAFK] Global input hook stopped.');
+  } catch (err) {
+    console.error('[AntiAFK] Failed to stop global input hook:', err);
+  }
+}
+
+function startTrackingServices() {
+  console.log('[Services] Starting all tracking services...');
+  
+  // 1. Keyboard/mouse tracking
+  startUiohook();
+
+  // 2. Active window monitoring (trackTick every 2 seconds)
+  if (!trackingInterval) {
+    trackingInterval = setInterval(trackTick, 2000);
+  }
+  trackTick();
+
+  // 3. Inactivity check loop
+  startInactivityCheck();
+
+  // 4. Sync interval
+  if (!syncInterval) {
+    syncInterval = setInterval(flushPendingClosedSessions, 2 * 60 * 1000);
+  }
+  flushPendingClosedSessions();
+}
+
+function stopTrackingServices() {
+  console.log('[Services] Stopping all tracking services...');
+
+  // 1. Keyboard/mouse tracking
+  stopUiohook();
+
+  // 2. Active window monitoring
+  if (trackingInterval) {
+    clearInterval(trackingInterval);
+    trackingInterval = null;
+  }
+
+  // 3. Inactivity check loop
+  stopInactivityCheck();
+
+  // 4. Close any open inactivity nudge window
+  if (inactivityPopup && !inactivityPopup.isDestroyed()) {
+    try {
+      inactivityPopup.close();
+    } catch (e) {
+      console.error('[Inactivity Nudge] Error closing inactivity popup:', e);
+    }
+  }
+  inactivityPopupShown = false;
+
+  // 5. Sync interval
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+
+  // 6. Close and save the current active session
+  if (currentRecord) {
+    closeCurrentSession(new Date());
+  }
+}
 
 const TEAMS_MEETING_TITLE_PATTERNS = [
   /\bmeeting\b/i,
@@ -272,38 +359,80 @@ function calculateDuration(startTime, endTime) {
 // Get or Cache Redmine User ID using OS username via REST API
 // Still needed for the numeric user_id in the activity-log POST body.
 async function getUserId() {
-  if (cachedUserId !== null && !usernameError) return cachedUserId;
+  if (cachedUserId !== null) return cachedUserId;
+  
+  // Try local queue recovery if we don't have it in memory
+  const localUserId = getUserIdFromLocalQueue();
+  if (localUserId) {
+    cachedUserId = localUserId;
+    isUserResolved = true;
+  }
+  return cachedUserId;
+}
 
+async function checkUserResolution() {
+  const username = os.userInfo().username;
+  console.log(`[User Resolution] Retrying user resolution for OS username: "${username}"`);
+  
   try {
-    const username = os.userInfo().username;
-    console.log(`[UserId Resolution] Resolving Redmine user_id for OS username: ${username}`);
-
     const response = await redmineClient.get('/today_timesheet.json', {
       user_id: username
     });
 
-    console.log("Response:", response);
-
     if (response && response.user) {
-      cachedUserId = response.user.id;
+      const newUserId = response.user.id;
       usernameError = null;
-      console.log(
-        `[UserId Resolution] Resolved OS username "${username}" to Redmine user_id: ${cachedUserId}`
-      );
+      isBackendReachable = true;
+      
+      const wasResolved = isUserResolved;
+      isUserResolved = true;
+      cachedUserId = newUserId;
+      
+      if (!wasResolved) {
+        console.log('[User Resolution] SUCCESS: User became valid. Automatically starting/restarting tracking services.');
+        startTrackingServices();
+      } else {
+        console.log('[User Resolution] SUCCESS: User resolved successfully. Triggering automatic sync.');
+        flushPendingClosedSessions();
+      }
     } else {
-      cachedUserId = null;
+      console.warn(`[User Resolution] FAILURE: User "${username}" explicitly not found in Redmine database.`);
       usernameError = `User "${username}" not found in Redmine database`;
-      console.warn(
-        `[UserId Resolution] No user found for OS username "${username}".`
-      );
+      isBackendReachable = true;
+      
+      if (isUserResolved || cachedUserId !== null) {
+        console.error('[User Resolution] Active user explicitly became invalid. Stopping tracking services.');
+        stopTrackingServices();
+        isUserResolved = false;
+        cachedUserId = null;
+      }
     }
   } catch (error) {
-    cachedUserId = null;
-    usernameError = error.message || String(error);
-    console.error("Error resolving user ID via Redmine API:", error);
+    console.error('[User Resolution] reachability check failed:', error.message || error);
+    
+    isBackendReachable = false;
+    
+    if (!isUserResolved) {
+      // Offline startup/boot
+      const localUserId = getUserIdFromLocalQueue();
+      if (localUserId) {
+        console.log(`[User Resolution] Offline startup: recovered user ID ${localUserId} from local queue.`);
+        cachedUserId = localUserId;
+        isUserResolved = true;
+        usernameError = null;
+        startTrackingServices();
+      } else {
+        usernameError = error.message || String(error);
+        console.warn('[User Resolution] Offline startup failed: no user ID found in local queue. Tracking remains stopped.');
+      }
+    } else {
+      // Already resolved, continue tracking locally (offline mode)
+      console.log('[User Resolution] Reachability failure mid-session. Continuing tracking locally (offline mode).');
+      if (!usernameError || (!usernameError.includes('not found') && !usernameError.includes('database'))) {
+        usernameError = error.message || String(error);
+      }
+    }
   }
-
-  return cachedUserId;
 }
 
 async function syncChunkToApi(chunk) {
@@ -326,6 +455,10 @@ async function syncChunkToApi(chunk) {
 let isSyncing = false;
 
 async function flushPendingClosedSessions() {
+  if (!isUserResolved || !isBackendReachable) {
+    console.log('[Sync] Skipping sync flush: User is unresolved or backend is unreachable.');
+    return;
+  }
   if (isSyncing) return;
   isSyncing = true;
   console.log('[Sync] Starting flush of pending closed sessions...');
@@ -504,7 +637,11 @@ async function trackTick() {
       antiAfkReason = 'Continuous repetitive keyboard input detected.';
     }
 
-    currentStatus = newStatus;
+    if (newStatus === 'Active') {
+      currentStatus = isBackendReachable ? 'Active' : 'Offline';
+    } else {
+      currentStatus = 'Inactive';
+    }
 
     const now = new Date();
     startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now, antiAfkReason);
@@ -821,9 +958,17 @@ function showInactivityPopup() {
 
 // IPC Handlers
 ipcMain.handle('get-username', () => {
+  const isUserExplicitlyInvalid = usernameError && (
+    usernameError.toLowerCase().includes('not found') ||
+    usernameError.toLowerCase().includes('database') ||
+    usernameError.toLowerCase().includes('waiting for account update')
+  );
+
+  const shouldShowError = isUserExplicitlyInvalid || (cachedUserId === null && usernameError);
+
   return {
     username: os.userInfo().username,
-    error: usernameError
+    error: shouldShowError ? usernameError : null
   };
 });
 
@@ -834,6 +979,9 @@ ipcMain.handle('get-app-version', () => {
 // Response shape confirmed from logs:
 // { user: {id, name}, yesterday: {date, hours}, today: {date, hours} }
 ipcMain.handle('get-redmine-efforts', async () => {
+  if (!isUserResolved) {
+    return { yesterday: 0, today: 0 };
+  }
   try {
     const username = os.userInfo().username;
     const response = await redmineClient.get('/today_timesheet.json', { user_id: username });
@@ -867,6 +1015,9 @@ ipcMain.handle('get-redmine-efforts', async () => {
 // Note: values are HOURS, not seconds — converted below since the renderer's
 // formatSeconds() expects seconds.
 async function fetchActivitySummary() {
+  if (!isUserResolved) {
+    return { today: 0, yesterday: 0 };
+  }
   const now = Date.now();
 
   // Serve from cache if fresh (5s window)
@@ -914,6 +1065,9 @@ async function fetchActivitySummary() {
 }
 
 ipcMain.handle('get-active-time-today', async () => {
+  if (!isUserResolved) {
+    return 0;
+  }
   try {
     const summary = await fetchActivitySummary();
     cachedActiveTimeToday = summary.today;
@@ -942,6 +1096,9 @@ ipcMain.handle('get-active-time-today', async () => {
 });
 
 ipcMain.handle('get-active-time-yesterday', async () => {
+  if (!isUserResolved) {
+    return 0;
+  }
   try {
     const summary = await fetchActivitySummary();
     cachedActiveTimeYesterday = summary.yesterday;
@@ -986,6 +1143,9 @@ ipcMain.handle('close-inactivity-popup', () => {
 });
 
 ipcMain.handle('fetch-activity-logs', async () => {
+  if (!isUserResolved) {
+    return { logs: [], icons: {} };
+  }
   try {
     const userId = await getUserId();
     if (!userId) {
@@ -1100,24 +1260,22 @@ if (gotTheLock) {
       console.error('[Startup] Failed to close orphaned sessions:', err);
     }
 
-    // Start global keyboard and mouse hooks via uiohook-napi
+    // Register global keyboard and mouse hooks callbacks (starts stopped, controlled via service manager)
     try {
       uIOhook.on('keydown', (e) => {
-        antiAfkDetector.recordKeyDown(e.keycode);
+        if (isUiohookRunning) antiAfkDetector.recordKeyDown(e.keycode);
       });
       uIOhook.on('keyup', (e) => {
-        antiAfkDetector.recordKeyUp(e.keycode);
+        if (isUiohookRunning) antiAfkDetector.recordKeyUp(e.keycode);
       });
       uIOhook.on('mousemove', (e) => {
-        antiAfkDetector.recordMouseMove(e.x, e.y);
+        if (isUiohookRunning) antiAfkDetector.recordMouseMove(e.x, e.y);
       });
       uIOhook.on('mousedown', (e) => {
-        antiAfkDetector.recordMouseClick(e.button, e.x, e.y);
+        if (isUiohookRunning) antiAfkDetector.recordMouseClick(e.button, e.x, e.y);
       });
-      uIOhook.start();
-      console.log('[AntiAFK] Global input hook started.');
     } catch (err) {
-      console.error('[AntiAFK] Failed to start global input hook:', err);
+      console.error('[AntiAFK] Failed to register global input hooks:', err);
     }
 
     try {
@@ -1130,21 +1288,11 @@ if (gotTheLock) {
       console.error(error);
     }
 
-    const userId = await getUserId();
-    if (userId) {
-      console.log(`[Startup] App started. Resolved user ID: ${userId}. Tracking active sessions.`);
-      flushPendingClosedSessions();
-    }
+    // Perform first user resolution attempt
+    await checkUserResolution();
 
-    // Background sync worker: runs every 2 minutes
-    setInterval(flushPendingClosedSessions, 2 * 60 * 1000);
-
-    // Start tracking interval every 2 seconds
-    trackingInterval = setInterval(trackTick, 2000);
-    trackTick();
-
-    // Start inactivity check loop
-    startInactivityCheck();
+    // Start background user resolution retry loop running every 30 seconds
+    setInterval(checkUserResolution, 30000);
 
     // Pre-cache common system icons
     preCacheCommonIcons();
