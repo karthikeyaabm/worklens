@@ -57,6 +57,7 @@ function showAndFocusWindow() {
 }
 
 let cachedUserId = null;
+let usernameError = null;
 let currentRecord = null; // { appName, windowTitle, startTime, activityOn, status } -- no `id`, no PUT flow (POST-only API)
 let currentStatus = 'Active'; // 'Active' or 'Inactive'
 let trackingInterval = null;
@@ -269,7 +270,7 @@ function calculateDuration(startTime, endTime) {
 // Get or Cache Redmine User ID using OS username via REST API
 // Still needed for the numeric user_id in the activity-log POST body.
 async function getUserId() {
-  if (cachedUserId !== null) return cachedUserId;
+  if (cachedUserId !== null && !usernameError) return cachedUserId;
 
   try {
     const username = os.userInfo().username;
@@ -283,15 +284,20 @@ async function getUserId() {
 
     if (response && response.user) {
       cachedUserId = response.user.id;
+      usernameError = null;
       console.log(
         `[UserId Resolution] Resolved OS username "${username}" to Redmine user_id: ${cachedUserId}`
       );
     } else {
+      cachedUserId = null;
+      usernameError = `User "${username}" not found in Redmine database`;
       console.warn(
         `[UserId Resolution] No user found for OS username "${username}".`
       );
     }
   } catch (error) {
+    cachedUserId = null;
+    usernameError = error.message || String(error);
     console.error("Error resolving user ID via Redmine API:", error);
   }
 
@@ -794,7 +800,10 @@ function showInactivityPopup() {
 
 // IPC Handlers
 ipcMain.handle('get-username', () => {
-  return os.userInfo().username;
+  return {
+    username: os.userInfo().username,
+    error: usernameError
+  };
 });
 
 ipcMain.handle('get-app-version', () => {
@@ -811,12 +820,23 @@ ipcMain.handle('get-redmine-efforts', async () => {
     console.log('\n========== TODAY TIMESHEET RESPONSE ==========');
     console.log(JSON.stringify(response, null, 2));
 
-    const todayHours = parseFloat(response?.today?.hours ?? 0) || 0;
-    const yesterdayHours = parseFloat(response?.yesterday?.hours ?? 0) || 0;
+    if (response && response.user) {
+      const todayHours = parseFloat(response?.today?.hours ?? 0) || 0;
+      const yesterdayHours = parseFloat(response?.yesterday?.hours ?? 0) || 0;
 
-    cachedRedmineEfforts = { yesterday: yesterdayHours, today: todayHours };
+      cachedRedmineEfforts = { yesterday: yesterdayHours, today: todayHours };
+      usernameError = null;
+      if (response.user.id) {
+        cachedUserId = response.user.id;
+      }
+    } else {
+      cachedUserId = null;
+      usernameError = `User "${username}" not found in Redmine database`;
+    }
   } catch (error) {
     console.error('get-redmine-efforts error:', error);
+    cachedUserId = null;
+    usernameError = error.message || String(error);
   }
   return cachedRedmineEfforts;
 });
@@ -857,7 +877,13 @@ async function fetchActivitySummary() {
       };
 
       activitySummaryCache = { data: result, fetchedAt: Date.now() };
+      usernameError = null;
       return result;
+    } catch (error) {
+      console.error('[Sync] fetchActivitySummary error:', error);
+      cachedUserId = null;
+      usernameError = error.message || String(error);
+      throw error;
     } finally {
       activitySummaryInFlight = null; // release the lock whether success or failure
     }

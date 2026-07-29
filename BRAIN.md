@@ -374,7 +374,7 @@ Preload bridges access paths by mapping handlers across processes:
 
 | IPC Channel | Direction | Payload | Purpose |
 | :--- | :--- | :--- | :--- |
-| `get-username` | Invoked by UI | None | Returns OS user name string. |
+| `get-username` | Invoked by UI | None | Returns `{ username: string, error: string|null }` containing OS username and Redmine connection error details. |
 | `get-employee-id` | Invoked by UI | None | Returns numeric Redmine ID. |
 | `get-app-version` | Invoked by UI | None | Returns active semantic version string. |
 | `get-redmine-efforts` | Invoked by UI | None | Returns today's and yesterday's logged times. |

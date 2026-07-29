@@ -1,13 +1,24 @@
-// Get Windows Logged-in Username
+// Get Windows Logged-in Username or show connection error
 async function loadUsername() {
   try {
     if (!window.api || typeof window.api.getUsername !== 'function') return;
 
-    const username = await window.api.getUsername();
+    const result = await window.api.getUsername();
     const titleElement = document.getElementById('header-title');
 
     if (titleElement) {
-      titleElement.textContent = `${username}`;
+      if (result && result.error) {
+        titleElement.textContent = 'Not Connected';
+        titleElement.style.color = '#ef4444'; // Red color to indicate connection error
+        titleElement.style.fontWeight = 'bold';
+        titleElement.title = `${result.error}`; // Tooltip containing the full error details
+      } else {
+        const displayName = result && result.username ? result.username : 'Unknown User';
+        titleElement.textContent = displayName;
+        titleElement.style.color = '#ffffff'; // White color for successful connection
+        titleElement.style.fontWeight = '500';
+        titleElement.title = `Logged in as ${displayName}`;
+      }
     }
   } catch (error) {
     console.error('Failed to load username:', error);
@@ -83,6 +94,9 @@ async function loadVersion() {
 async function loadWidgetData() {
   try {
     if (!window.api) return;
+
+    // Load connection status/username periodically
+    await loadUsername();
 
     // 1. Redmine Efforts
     if (typeof window.api.getRedmineEfforts === 'function') {
