@@ -115,6 +115,7 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
       end_time: endFormatted,
       duration: duration,
       closed: session.closed !== undefined ? session.closed : chunks[index].closed,
+      reason: session.reason !== undefined ? session.reason : chunks[index].reason,
       updated_at: new Date().toISOString()
     };
     writeChunks(chunks);
@@ -131,6 +132,7 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
       duration: duration,
       activity_on: actOnFormatted,
       status: (session.status || 'Active').toLowerCase(),
+      reason: session.reason || null,
       closed: session.closed !== undefined ? session.closed : false,
       synced: false,
       retry_count: 0,
@@ -239,6 +241,7 @@ function getUnsyncedTodayDuration(userId) {
     .filter(c => {
       if (c.synced) return false;
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
+      if (c.status && c.status.toLowerCase() !== 'active') return false;
       return c.start_time && c.start_time.startsWith(todayStr);
     })
     .reduce((sum, c) => sum + (c.duration || 0), 0);

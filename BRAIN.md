@@ -47,6 +47,7 @@ graph TD
 | **Core Framework** | Electron | `^42.4.1` (Chromium + Node.js) |
 | **Runtime Environment** | Node.js | Native inside Electron package |
 | **Active Window Tracking** | `active-win` | `^8.2.1` (polls front window executable names/titles) |
+| **Global Input Hook** | `uiohook-napi` | `^1.5.5` (global keyboard and mouse event listener) |
 | **Local Cache Store** | JSON Lines File (JSONL) | `activity_queue.jsonl` managed in `%APPDATA%/WorkLens` |
 | **API Client** | Native `fetch` wrapper | Standard JS fetch in Node.js (with custom header auth) |
 | **Logging Utility** | `electron-log` | `^5.4.4` (7-day rotation, max 10MB per file) |
@@ -76,6 +77,7 @@ WorkLens/
 │   ├── renderer.js             # Main widget interface controller (triggers UI sync and event listeners)
 │   └── style.css               # Main widget layout styling
 ├── activityStore.js            # Offline database manager (handles JSONL operations and pruning)
+├── antiAfkDetector.js          # Core Anti-AFK / Anti-Fake Activity detection engine
 ├── CHANGELOG.md                # Evolution log of the desktop app
 ├── inactivityPopup.html        # Nudge UI & Web Audio beep synthesized tone code
 ├── logger.js                   # log configurations (resolves and purges logs older than 7 days)
@@ -220,6 +222,22 @@ sequenceDiagram
     *   *Accessibility:* Full keyboard access is supported via `tabindex="0"`, `role="button"`, dynamic `aria-expanded` status, and Enter/Space key toggling.
     *   *Data:* Aggregates window tracking durations by unique title and sorts child activities descending.
 *   **Icon Caching:** Resolves executable file icons on the main thread using standard shell queries (`Get-Process`) and converts them to base64 images to prevent CPU overhead in the rendering process.
+
+### 6. Anti-AFK / Anti-Fake Activity Detection
+*   **Purpose:** Detect continuous repetitive keyboard input (like physical weights placed on keys) and long key holds (> 30s) to prevent cheating and exclude inactive periods from active time calculations.
+*   **Files Involved:**
+    *   [antiAfkDetector.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/antiAfkDetector.js) (Core detection logic, scoring, and rolling history)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (Listens to global inputs via `uiohook-napi` and runs evaluation on active sessions)
+    *   [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js) (Supports `reason` field in database entries and filters inactive sessions in local calculations)
+*   **Key Logic Rules:**
+    *   **Rolling History:** Stores the last 200 key down events.
+    *   **Scoring System:**
+        *   `+40` Continuous same key (same key ratio >= 95% within the last 60s)
+        *   `+25` Very low entropy (Shannon entropy < 1.0)
+        *   `+20` Key held continuously for > 30s (this also directly triggers inactive status)
+        *   `+15` No mouse movement or clicks within the last 60s
+        *   If the total score is `>= 70`, the system flags fake activity.
+    *   **Graceful Recovery:** The inactive state is cleared immediately when a natural interaction occurs (different key pressed, mouse moves, mouse clicks, or active window switches focus). History is reset upon recovery to avoid immediately re-flagging.
 
 ---
 
@@ -626,6 +644,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.0.9 - Inactivity Nudge:** Visual popups with audio alerts for idle sessions.
 *   **v1.1.0 - Offline Sync:** JSONL-based local storage queue with automatic retry handling and session consolidation.
 *   **v1.1.1 - Expandable Activity Details:** Added chevrons and interactive expansion dropdowns in the Active Time details popup to view specific window titles and durations with smooth CSS Grid animations and keyboard accessibility.
+*   **v1.2.0 - Anti-AFK & Anti-Fake Activity Detection:** Integrated global input hooks using `uiohook-napi` and implemented a scoring detector to automatically filter out key-weights and held-key cheating behaviors from active productivity calculations.
 
 ---
 

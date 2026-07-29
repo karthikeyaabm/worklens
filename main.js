@@ -18,6 +18,8 @@ const {
   getUnsyncedTodayDuration,
   getUnsyncedTodayLogs
 } = require('./activityStore');
+const antiAfkDetector = require('./antiAfkDetector');
+const { uIOhook } = require('uiohook-napi');
 
 // Inactivity Nudge Configuration
 const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger threshold
@@ -378,7 +380,7 @@ async function flushPendingClosedSessions() {
   }
 }
 
-function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date()) {
+function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null) {
   const cleanStatus = status.toLowerCase();
 
   if (currentRecord) {
@@ -386,8 +388,9 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     const isSameTitle = currentRecord.windowTitle === windowTitle;
     const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
     const isSameDay = new Date(currentRecord.startTime).toDateString() === now.toDateString();
+    const isSameReason = currentRecord.reason === reason;
 
-    if (isSameApp && isSameTitle && isSameStatus && isSameDay) {
+    if (isSameApp && isSameTitle && isSameStatus && isSameDay && isSameReason) {
       // Continue existing session
       currentRecord.endTime = now;
       currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
@@ -406,6 +409,7 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     endTime: now,
     activityOn: now,
     duration: 0,
+    reason: reason,
     closed: false
   };
   const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
@@ -452,6 +456,9 @@ async function trackTick() {
         currentApp = activeWindow.appName;
         currentTitle = activeWindow.windowTitle;
 
+        // Report active window to anti-AFK detector to detect focus switches as natural interaction
+        antiAfkDetector.recordWindowChange(currentApp, currentTitle);
+
         if (isPassiveTransferWindow(winInfo)) {
           newStatus = 'Inactive';
           console.log('[Passive Transfer] Transfer progress detected. Counting as Inactive.');
@@ -474,6 +481,7 @@ async function trackTick() {
           const activeWindow = applyActiveWindowInfo(winInfo);
           currentApp = activeWindow.appName;
           currentTitle = activeWindow.windowTitle;
+          antiAfkDetector.recordWindowChange(currentApp, currentTitle);
         } else {
           currentApp = 'Unknown';
           currentTitle = 'No Active Window';
@@ -483,10 +491,23 @@ async function trackTick() {
       }
     }
 
+    if (newStatus === 'Active' && currentApp === 'Unknown') {
+      newStatus = 'Inactive';
+      console.log('[Activity Tracking] Unknown active app detected. Counting as Inactive.');
+    }
+
+    // Evaluate anti-AFK detection
+    const afkEval = antiAfkDetector.evaluateActivity();
+    let antiAfkReason = null;
+    if (newStatus === 'Active' && afkEval.isSuspicious) {
+      newStatus = 'Inactive';
+      antiAfkReason = 'Continuous repetitive keyboard input detected.';
+    }
+
     currentStatus = newStatus;
 
     const now = new Date();
-    startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now);
+    startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now, antiAfkReason);
   } catch (err) {
     console.error('Error in activity tracking tick:', err);
   }
@@ -1079,6 +1100,26 @@ if (gotTheLock) {
       console.error('[Startup] Failed to close orphaned sessions:', err);
     }
 
+    // Start global keyboard and mouse hooks via uiohook-napi
+    try {
+      uIOhook.on('keydown', (e) => {
+        antiAfkDetector.recordKeyDown(e.keycode);
+      });
+      uIOhook.on('keyup', (e) => {
+        antiAfkDetector.recordKeyUp(e.keycode);
+      });
+      uIOhook.on('mousemove', (e) => {
+        antiAfkDetector.recordMouseMove(e.x, e.y);
+      });
+      uIOhook.on('mousedown', (e) => {
+        antiAfkDetector.recordMouseClick(e.button, e.x, e.y);
+      });
+      uIOhook.start();
+      console.log('[AntiAFK] Global input hook started.');
+    } catch (err) {
+      console.error('[AntiAFK] Failed to start global input hook:', err);
+    }
+
     try {
       app.setLoginItemSettings({
         openAtLogin: true,
@@ -1190,6 +1231,14 @@ if (gotTheLock) {
     stopInactivityCheck();
     if (inactivityPopup && !inactivityPopup.isDestroyed()) {
       inactivityPopup.destroy();
+    }
+
+    // Stop global keyboard and mouse hooks
+    try {
+      uIOhook.stop();
+      console.log('[AntiAFK] Global input hook stopped.');
+    } catch (err) {
+      console.error('[AntiAFK] Failed to stop global input hook:', err);
     }
 
     if (!finalSyncDone) {
