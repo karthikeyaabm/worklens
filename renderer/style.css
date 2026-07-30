@@ -113,6 +113,39 @@ body {
   font-weight: 700;
 }
 
+.widget-close-button {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin-left: 6px;
+  border-radius: 4px;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-app-region: no-drag;
+}
+
+.widget-close-button:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.widget-close-button:active {
+  background: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+
+.widget-close-button svg {
+  width: 8px;
+  height: 8px;
+  stroke-width: 3px;
+}
+
 /* ================= GRID ================= */
 
 .widget-grid {

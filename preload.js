@@ -93,5 +93,9 @@ contextBridge.exposeInMainWorld('api', {
 
   triggerSync: async () => {
     return await ipcRenderer.invoke('trigger-sync');
+  },
+
+  hideMainWindow: async () => {
+    return await ipcRenderer.invoke('hide-main-window');
   }
 });

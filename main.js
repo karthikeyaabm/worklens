@@ -841,6 +841,10 @@ function createWindow() {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
+      if (activityWindow && activityWindow.isVisible()) {
+        activityWindow.hide();
+        activityWindow.webContents.send('popup-status-changed', 'closed');
+      }
     }
   });
 }
@@ -957,6 +961,12 @@ function showInactivityPopup() {
 
 
 // IPC Handlers
+ipcMain.handle('hide-main-window', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
+});
+
 ipcMain.handle('get-username', () => {
   const isUserExplicitlyInvalid = usernameError && (
     usernameError.toLowerCase().includes('not found') ||
@@ -1230,14 +1240,6 @@ function createTray() {
       label: 'Open WorkLens',
       click: () => {
         showAndFocusWindow();
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'Exit',
-      click: () => {
-        isQuitting = true;
-        app.quit();
       }
     }
   ]);

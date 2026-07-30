@@ -184,6 +184,7 @@ sequenceDiagram
     *   *Time Logs (Redmine Summary):* Shows yesterday's (Y) and today's (T) logged times returned by Redmine.
     *   *Active Time (Local Tracked Time):* Shows local tracked active time yesterday (Y) and today (T).
     *   *Status Dot:* A pulsing indicator representing "Active (Online)" (Green), "Active (Offline)" (Blue), or "Inactive" (Orange) states.
+    *   *Close Button:* A Fluent-style close button (`widget-close-btn`) next to the date display. Clicking it gracefully hides the main widget and detail popup to run in the background (restorable via the system tray).
 
 ### 2. Active Window Tracking
 *   **Purpose:** Continuously poll the top-most window in the OS to track where the user's attention is focused.
@@ -406,6 +407,7 @@ Preload bridges access paths by mapping handlers across processes:
 | `fetch-activity-logs` | Invoked by UI | None | Returns sorted today logs + icon base64 mappings. |
 | `popup-ready` | Invoked by UI | None | Signals main process that the details window is ready. |
 | `trigger-sync` | Invoked by UI | None | Explicitly triggers an offline-queue sync. |
+| `hide-main-window` | Invoked by UI | None | Gracefully hides the main widget and detail popup, running tracking in the background. |
 | `popup-status-changed` | Sent by Main | Status string (`opened`/`closed`) | Controls background polling loops. |
 | `update-arrow-position` | Sent by Main | `arrowLeft` (int), `isBelow` (bool) | Updates pointer layout on details popup. |
 | `request-close` | Sent by Main | None | Triggers close transitions inside UI windows. |
@@ -650,6 +652,8 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.1.1 - Expandable Activity Details:** Added chevrons and interactive expansion dropdowns in the Active Time details popup to view specific window titles and durations with smooth CSS Grid animations and keyboard accessibility.
 *   **v1.2.0 - Anti-AFK & Anti-Fake Activity Detection:** Integrated global input hooks using `uiohook-napi` and implemented a scoring detector to automatically filter out key-weights and held-key cheating behaviors from active productivity calculations.
 *   **v1.3.0 - Username Change Auto-Recovery & Persistent Offline Tracking:** Implemented background username validation, persistent username display during reachability/network failures, and automatic recovery. Added start/stop service controllers to immediately halt tracking when explicit validation fails. Introduced pulsing Blue indicator beside Active Time for active offline tracking, pulsing Green for active online, and pulsing Orange for inactive. Paused sync interval during unreachable states and triggered auto-sync on recovery.
+*   **v1.3.1 - Widget Close Button to Tray:** Added a Fluent-style Close button to the main widget header next to the date. Clicking it gracefully hides both the widget and the active details popup to run in the background, allowing full control through the system tray.
+*   **v1.3.2 - Persistent Tray Tracking (Exit Removal):** Removed the Exit option from the system tray context menu, ensuring persistent tracking execution in the background by disabling user-facing exit controls.
 
 ---
 

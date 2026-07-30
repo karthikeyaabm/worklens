@@ -184,6 +184,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Add click listener for widget close button to hide to system tray
+  const closeBtn = document.getElementById('widget-close-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent triggering other click event handlers
+      if (window.api && typeof window.api.hideMainWindow === 'function') {
+        window.api.hideMainWindow().catch(err => console.error('Failed to hide window:', err));
+      }
+    });
+  }
+
   // Refresh clock every minute
   setInterval(updateDateDisplay, 60000);
 
