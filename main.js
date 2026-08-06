@@ -19,7 +19,7 @@ const {
   getUnsyncedTodayLogs,
   getUserIdFromLocalQueue
 } = require('./activityStore');
-const antiAfkDetector = require('./antiAfkDetector');
+const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { uIOhook } = require('uiohook-napi');
 
 // Inactivity Nudge Configuration
@@ -1275,6 +1275,13 @@ if (gotTheLock) {
       });
       uIOhook.on('mousedown', (e) => {
         if (isUiohookRunning) antiAfkDetector.recordMouseClick(e.button, e.x, e.y);
+      });
+      uIOhook.on('wheel', (e) => {
+        try {
+          if (isUiohookRunning) antiAfkDetector.recordMouseWheel(e.direction === 2, e.rotation);
+        } catch (err) {
+          console.error('[AntiAFK] Error recording wheel event:', err);
+        }
       });
     } catch (err) {
       console.error('[AntiAFK] Failed to register global input hooks:', err);

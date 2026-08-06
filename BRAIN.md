@@ -76,8 +76,21 @@ WorkLens/
 │   ├── index.html              # Main widget HTML layout
 │   ├── renderer.js             # Main widget interface controller (triggers UI sync and event listeners)
 │   └── style.css               # Main widget layout styling
+├── anti-afk/                   # Modular Behavior Analysis Engine
+│   ├── config.js               # Thresholds, weights, and decision levels
+│   ├── eventQueue.js           # Rolling in-memory event buffer
+│   ├── eventCollector.js       # Event collection and formatting
+│   ├── keyboardFeatures.js     # Keyboard metrics extraction
+│   ├── mouseFeatures.js        # Mouse metrics (distance, speed, curvature, clicks)
+│   ├── windowFeatures.js       # Window focus metrics (switches, stays, ping-pong)
+│   ├── idleFeatures.js         # Idle status and wake-up patterns
+│   ├── featureExtractor.js     # Primary feature extraction interface
+│   ├── behaviorAnalyzer.js     # Indicators for suspicious behaviors
+│   ├── scoreEngine.js          # Confidence scoring and developer overrides
+│   ├── decisionEngine.js       # Classification (Human, Watch, Suspicious, Likely Automation)
+│   └── antiAfkDetector.js      # Primary orchestrator and API endpoints
 ├── activityStore.js            # Offline database manager (handles JSONL operations and pruning)
-├── antiAfkDetector.js          # Core Anti-AFK / Anti-Fake Activity detection engine
+├── antiAfkDetector.js          # Backward compatibility wrapper for the anti-AFK engine
 ├── CHANGELOG.md                # Evolution log of the desktop app
 ├── inactivityPopup.html        # Nudge UI & Web Audio beep synthesized tone code
 ├── logger.js                   # log configurations (resolves and purges logs older than 7 days)
@@ -224,21 +237,31 @@ sequenceDiagram
     *   *Data:* Aggregates window tracking durations by unique title and sorts child activities descending.
 *   **Icon Caching:** Resolves executable file icons on the main thread using standard shell queries (`Get-Process`) and converts them to base64 images to prevent CPU overhead in the rendering process.
 
-### 6. Anti-AFK / Anti-Fake Activity Detection
-*   **Purpose:** Detect continuous repetitive keyboard input (like physical weights placed on keys) and long key holds (> 30s) to prevent cheating and exclude inactive periods from active time calculations.
+### 6. Anti-AFK & Enterprise Behavior Analysis Engine
+*   **Purpose:** Exclude fake or automated activity from active time logs by continuously collecting user interaction events and extracting features to detect key-weights, mouse jigglers, and window focus loops.
 *   **Files Involved:**
-    *   [antiAfkDetector.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/antiAfkDetector.js) (Core detection logic, scoring, and rolling history)
-    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (Listens to global inputs via `uiohook-napi` and runs evaluation on active sessions)
-    *   [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js) (Supports `reason` field in database entries and filters inactive sessions in local calculations)
-*   **Key Logic Rules:**
-    *   **Rolling History:** Stores the last 200 key down events.
-    *   **Scoring System:**
-        *   `+40` Continuous same key (same key ratio >= 95% within the last 60s)
-        *   `+25` Very low entropy (Shannon entropy < 1.0)
-        *   `+20` Key held continuously for > 30s (this also directly triggers inactive status)
-        *   `+15` No mouse movement or clicks within the last 60s
-        *   If the total score is `>= 70`, the system flags fake activity.
-    *   **Graceful Recovery:** The inactive state is cleared immediately when a natural interaction occurs (different key pressed, mouse moves, mouse clicks, or active window switches focus). History is reset upon recovery to avoid immediately re-flagging.
+    *   [anti-afk/antiAfkDetector.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/antiAfkDetector.js) (Pipeline Orchestration)
+    *   [anti-afk/config.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/config.js) (Weights & Threshold Constants)
+    *   [anti-afk/eventQueue.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/eventQueue.js) & [anti-afk/eventCollector.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/eventCollector.js) (Rolling 60s Queue & Formatter)
+    *   [anti-afk/keyboardFeatures.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/keyboardFeatures.js), [anti-afk/mouseFeatures.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/mouseFeatures.js), [anti-afk/windowFeatures.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/windowFeatures.js), [anti-afk/idleFeatures.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/idleFeatures.js) (Statistical Feature Extractors)
+    *   [anti-afk/behaviorAnalyzer.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/behaviorAnalyzer.js) (Suspicious Behavior Identification)
+    *   [anti-afk/scoreEngine.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/scoreEngine.js) (Confidence scoring with developer false-positive bypasses)
+    *   [anti-afk/decisionEngine.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/decisionEngine.js) (Classifies score levels: Human, Watch, Suspicious, Likely Automation)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (Fires hardware uIOhook key/mouse/scroll triggers and polls idle status)
+*   **Behavioral Indicators & Weights:**
+    *   `sameKeyRatio` (+25): Same key accounts for >= 95% of keyboard input in the rolling window.
+    *   `lowEntropy` (+15): Shannon entropy < 1.0, indicating highly predictable or repeating key patterns.
+    *   `constantInterval` (+20): Keystroke intervals have standard deviation < 15ms, showing regular artificial timing.
+    *   `periodicClicks` (+15): Click intervals have standard deviation < 20ms.
+    *   `pingPongSwitch` (+15): Switching back and forth (A-B-A-B) between windows. Bypassed for active developers if they show natural typing/clicks inside those windows.
+    *   `noMouseMovement` (+10): Zero mouse movements, clicks, or scrolls in the rolling window.
+    *   `longKeyHold` (+30): A key is held down continuously for >= 30 seconds. This also directly triggers the suspicious state.
+    *   `windowSwitchWithoutInteraction` (+20): Window focus switches occur without corresponding key/mouse actions inside the windows.
+    *   `softwareWindowSwitch` (+80): Window focus switches occur without any physical keyboard or mouse events (e.g. software API focus manipulation). Directly triggers suspicious state.
+    *   `artificialIdleRecovery`: Resume/unlock followed immediately by window switching without input events.
+*   **Loophole Prevention & Graceful Recovery:**
+    *   **Window Switch Loophole Fixed**: Switching active windows no longer resets the suspicion status. Only genuine user interaction (different key pressed, natural curved mouse movement, scroll, or click) can reduce suspicion.
+    *   **Recovery Mechanics**: If flagged as suspicious/automation, pressing a different key than the repeating one, scrolling, clicking, or moving the mouse with natural hand jitter (angle change > 0.05 rad) clears the flag, flushes historical queue events, and resets the scoring.
 
 ---
 
