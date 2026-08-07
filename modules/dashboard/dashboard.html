@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkLens Productivity Hub</title>
+  <link rel="stylesheet" href="styles/dashboard.css">
+</head>
+<body>
+  <!-- Dynamic pointer arrow indicating connection to the widget -->
+  <div id="arrow" class="arrow arrow-down"></div>
+  
+  <div id="popup-container">
+    <!-- Header Area -->
+    <div id="header-container"></div>
+    
+    <!-- Scrollable Main Viewport -->
+    <div class="scrollable-content">
+      <!-- Top Overview Stats Cards Grid -->
+      <div id="top-cards-container"></div>
+
+      <!-- Main Dashboard Grid Layout -->
+      <div class="dashboard-grid-layout">
+        <!-- Left Column: Tasks, Projects & Reports -->
+        <div class="dashboard-column left">
+          <div id="tasks-container"></div>
+          <div id="projects-container"></div>
+          <div id="reports-container"></div>
+        </div>
+
+        <!-- Right Column: Quick Actions, Activity Metrics, Documents & Notifications -->
+        <div class="dashboard-column right">
+          <div id="actions-container"></div>
+          <div id="activity-container"></div>
+          <div id="documents-container"></div>
+          <div id="notifications-container"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

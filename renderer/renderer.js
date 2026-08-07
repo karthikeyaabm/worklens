@@ -184,6 +184,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Set pointer cursor and add click listener for Timelog card to open dashboard popup
+  const timelogCard = document.querySelector('.time-logs-card');
+  if (timelogCard) {
+    timelogCard.style.cursor = 'pointer';
+    timelogCard.addEventListener('click', () => {
+      if (window.api && typeof window.api.toggleDashboardPopup === 'function') {
+        window.api.toggleDashboardPopup();
+      }
+    });
+  }
+
   // Add click listener for widget close button to hide to system tray
   const closeBtn = document.getElementById('widget-close-btn');
   if (closeBtn) {

@@ -27,12 +27,14 @@ WorkLens is built on Electron's multi-process architecture. It consists of:
     1.  *Main Widget:* A minimalist, frameless desktop status window (185px × 60px) pinned to the bottom-right corner.
     2.  *Activity Detail Popup:* A glassmorphism/Fluent UI container presenting grouped active logs.
     3.  *Inactivity Nudge Card:* A transparent prompt playing audio alerts and displaying motivational quotes when idle time is exceeded.
+    4.  *Productivity Dashboard:* A pluggable glassmorphic Fluent UI panel (700px × 520px) displaying KPIs, task lists, projects, document spaces, notifications, activity metrics, and charts.
 
 ```mermaid
 graph TD
     A[Electron Main Process] -->|IPC / preload.js| B[Widget Renderer]
     A -->|IPC / preload.js| C[Activity Popup Renderer]
     A -->|IPC / preload.js| D[Inactivity Nudge Renderer]
+    A -->|IPC / preload.js| H[Productivity Dashboard Renderer]
     A -->|redmineClient.js| E[Redmine Server REST API]
     A -->|activityStore.js| F[(Local Store: activity_queue.jsonl)]
     A -->|logger.js| G[(Daily Rotated Logs)]
@@ -89,6 +91,13 @@ WorkLens/
 │   ├── scoreEngine.js          # Confidence scoring and developer overrides
 │   ├── decisionEngine.js       # Classification (Human, Watch, Suspicious, Likely Automation)
 │   └── antiAfkDetector.js      # Primary orchestrator and API endpoints
+├── modules/                    # Application Features & Modules
+│   └── dashboard/              # Pluggable Employee Productivity Dashboard
+│       ├── dashboard.html      # Hub window layout and container mapping
+│       ├── dashboard.js        # Dynamic Widget Registry & polling coordinator
+│       ├── components/         # Decoupled widgets (TaskList, QuickActions, SummaryCards, etc.)
+│       ├── services/           # Services Layer (task, project, doc, notifications, reports, activity)
+│       └── styles/             # Dark theme Fluent design glassmorphic CSS rules
 ├── activityStore.js            # Offline database manager (handles JSONL operations and pruning)
 ├── antiAfkDetector.js          # Backward compatibility wrapper for the anti-AFK engine
 ├── CHANGELOG.md                # Evolution log of the desktop app
@@ -429,6 +438,11 @@ Preload bridges access paths by mapping handlers across processes:
 | `close-inactivity-popup`| Invoked by UI | None | Closes/destroys the inactivity nudge window. |
 | `fetch-activity-logs` | Invoked by UI | None | Returns sorted today logs + icon base64 mappings. |
 | `popup-ready` | Invoked by UI | None | Signals main process that the details window is ready. |
+| `toggle-dashboard-popup` | Invoked by UI | None | Shows/hides the Employee Productivity Dashboard window. |
+| `close-dashboard-popup` | Invoked by UI | None | Closes/hides the dashboard popup. |
+| `dashboard-ready` | Invoked by UI | None | Signals main process that the dashboard window is ready. |
+| `get-employee-profile` | Invoked by UI | None | Returns employee details (OS username, resolved Redmine display name, user ID, resolution state). |
+| `get-dashboard-activity-metrics` | Invoked by UI | None | Returns today's active/idle/focus seconds and rolling hardware interaction counts (keystrokes, mouse moves/clicks/scrolls). |
 | `trigger-sync` | Invoked by UI | None | Explicitly triggers an offline-queue sync. |
 | `hide-main-window` | Invoked by UI | None | Gracefully hides the main widget and detail popup, running tracking in the background. |
 | `popup-status-changed` | Sent by Main | Status string (`opened`/`closed`) | Controls background polling loops. |

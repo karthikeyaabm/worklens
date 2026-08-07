@@ -60,12 +60,22 @@ function showAndFocusWindow() {
 }
 
 let cachedUserId = null;
+let cachedEmployeeName = null;
 let usernameError = null;
 let currentRecord = null; // { appName, windowTitle, startTime, activityOn, status } -- no `id`, no PUT flow (POST-only API)
 let currentStatus = 'Active'; // 'Active' or 'Inactive'
 let trackingInterval = null;
 let lastDbSyncTime = Date.now();
 let activeWin = null;
+
+// Dashboard window and stats variables
+let dashboardWindow = null;
+let isDashboardReady = false;
+let showDashboardOnReady = false;
+let todayKeystrokes = 0;
+let todayMouseMoves = 0;
+let todayMouseClicks = 0;
+let todayMouseScrolls = 0;
 
 let isUserResolved = false;
 let syncInterval = null;
@@ -381,6 +391,7 @@ async function checkUserResolution() {
 
     if (response && response.user) {
       const newUserId = response.user.id;
+      cachedEmployeeName = response.user.name || response.user.login || username;
       usernameError = null;
       isBackendReachable = true;
       
@@ -671,7 +682,7 @@ function createActivityWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      devTools: false
+      devTools: true
     }
   });
 
@@ -776,6 +787,11 @@ function positionActivityWindow() {
 function toggleActivityPopup() {
   if (!mainWindow) return;
 
+  if (dashboardWindow && dashboardWindow.isVisible()) {
+    dashboardWindow.hide();
+    dashboardWindow.webContents.send('popup-status-changed', 'closed');
+  }
+
   if (!activityWindow) {
     showPopupOnReady = true;
     createActivityWindow();
@@ -789,6 +805,141 @@ function toggleActivityPopup() {
     activityWindow.show();
     activityWindow.focus();
     activityWindow.webContents.send('popup-status-changed', 'opened');
+  }
+}
+
+function positionDashboardWindow() {
+  if (!mainWindow || !dashboardWindow) return;
+
+  const [wx, wy] = mainWindow.getPosition();
+  const primaryDisplay = screen.getDisplayNearestPoint({ x: wx, y: wy });
+  const { x: workX, y: workY, width: workWidth, height: workHeight } = primaryDisplay.workArea;
+
+  const popupWidth = 950;
+  const popupHeight = 520;
+  const widgetWidth = 185;
+  const widgetHeight = 60;
+
+  // The center of the TIMELOG card is at wx + 45
+  const timelogCardCenterX = wx + 45;
+
+  // Center horizontally relative to TIMELOG card, and clamp to screen bounds
+  let popupX = timelogCardCenterX - (popupWidth / 2);
+  if (popupX < workX) {
+    popupX = workX;
+  }
+  if (popupX + popupWidth > workX + workWidth) {
+    popupX = workX + workWidth - popupWidth;
+  }
+
+  // Determine vertical position (popupY)
+  const spaceAbove = wy - workY;
+  const spaceBelow = (workY + workHeight) - (wy + widgetHeight);
+
+  let popupY = 0;
+  let isBelow = false;
+
+  if (spaceAbove >= popupHeight + 8) {
+    popupY = wy - popupHeight - 8;
+    isBelow = false;
+  } else if (spaceBelow >= popupHeight + 8) {
+    popupY = wy + widgetHeight + 8;
+    isBelow = true;
+  } else {
+    if (spaceAbove > spaceBelow) {
+      popupY = wy - popupHeight - 8;
+      if (popupY < workY) popupY = workY;
+      isBelow = false;
+    } else {
+      popupY = wy + widgetHeight + 8;
+      if (popupY + popupHeight > workY + workHeight) {
+        popupY = workY + workHeight - popupHeight;
+      }
+      isBelow = true;
+    }
+  }
+
+  if (popupY < workY) {
+    popupY = workY;
+  }
+  if (popupY + popupHeight > workY + workHeight) {
+    popupY = workY + workHeight - popupHeight;
+  }
+
+  dashboardWindow.setBounds({
+    x: Math.round(popupX),
+    y: Math.round(popupY),
+    width: popupWidth,
+    height: popupHeight
+  });
+
+  // Calculate arrow pointer's horizontal offset relative to the popup's left edge
+  let arrowLeft = timelogCardCenterX - popupX;
+  if (arrowLeft < 20) arrowLeft = 20;
+  if (arrowLeft > popupWidth - 20) arrowLeft = popupWidth - 20;
+
+  dashboardWindow.webContents.send('update-arrow-position', arrowLeft, isBelow);
+}
+
+function createDashboardWindow() {
+  if (dashboardWindow) return dashboardWindow;
+
+  dashboardWindow = new BrowserWindow({
+    width: 950,
+    height: 520,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    movable: true,
+    focusable: true,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: true
+    }
+  });
+
+  dashboardWindow.loadFile(path.join(__dirname, 'modules', 'dashboard', 'dashboard.html'));
+
+  dashboardWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      dashboardWindow.hide();
+      dashboardWindow.webContents.send('popup-status-changed', 'closed');
+    }
+  });
+
+  return dashboardWindow;
+}
+
+function toggleDashboardPopup() {
+  if (!mainWindow) return;
+
+  if (activityWindow && activityWindow.isVisible()) {
+    activityWindow.hide();
+    activityWindow.webContents.send('popup-status-changed', 'closed');
+  }
+
+  if (!dashboardWindow) {
+    showDashboardOnReady = true;
+    createDashboardWindow();
+    return;
+  }
+
+  if (dashboardWindow.isVisible()) {
+    dashboardWindow.webContents.send('request-close');
+  } else {
+    positionDashboardWindow();
+    dashboardWindow.show();
+    dashboardWindow.focus();
+    dashboardWindow.webContents.send('popup-status-changed', 'opened');
   }
 }
 
@@ -844,6 +995,10 @@ function createWindow() {
       if (activityWindow && activityWindow.isVisible()) {
         activityWindow.hide();
         activityWindow.webContents.send('popup-status-changed', 'closed');
+      }
+      if (dashboardWindow && dashboardWindow.isVisible()) {
+        dashboardWindow.hide();
+        dashboardWindow.webContents.send('popup-status-changed', 'closed');
       }
     }
   });
@@ -1005,6 +1160,7 @@ ipcMain.handle('get-redmine-efforts', async () => {
 
       cachedRedmineEfforts = { yesterday: yesterdayHours, today: todayHours };
       usernameError = null;
+      cachedEmployeeName = response.user.name || response.user.login || username;
       if (response.user.id) {
         cachedUserId = response.user.id;
       }
@@ -1229,6 +1385,112 @@ ipcMain.handle('popup-ready', () => {
   }
 });
 
+ipcMain.handle('toggle-dashboard-popup', async () => {
+  toggleDashboardPopup();
+});
+
+ipcMain.handle('close-dashboard-popup', async () => {
+  if (dashboardWindow) {
+    dashboardWindow.hide();
+    dashboardWindow.webContents.send('popup-status-changed', 'closed');
+  }
+});
+
+ipcMain.handle('dashboard-ready', () => {
+  isDashboardReady = true;
+  if (showDashboardOnReady) {
+    showDashboardOnReady = false;
+    positionDashboardWindow();
+    dashboardWindow.show();
+    dashboardWindow.focus();
+    dashboardWindow.webContents.send('popup-status-changed', 'opened');
+  }
+});
+
+ipcMain.handle('get-employee-profile', async () => {
+  const username = os.userInfo().username;
+  return {
+    username: username,
+    displayName: cachedEmployeeName || username,
+    userId: cachedUserId,
+    isUserResolved: isUserResolved,
+    isBackendReachable: isBackendReachable
+  };
+});
+
+ipcMain.handle('get-dashboard-activity-metrics', async () => {
+  let activeSeconds = 0;
+  let idleSeconds = 0;
+
+  try {
+    const summary = await fetchActivitySummary();
+    let totalSeconds = summary.today;
+
+    const userId = await getUserId();
+    if (userId) {
+      const unsyncedDuration = getUnsyncedTodayDuration(userId);
+      totalSeconds += unsyncedDuration;
+    }
+
+    if (currentRecord && currentRecord.status === 'active') {
+      const now = new Date();
+      if (now.toDateString() === currentRecord.startTime.toDateString()) {
+        totalSeconds += Math.round((now - currentRecord.startTime) / 1000);
+      }
+    }
+    activeSeconds = totalSeconds;
+  } catch (err) {
+    console.error('Error calculating active seconds for dashboard:', err);
+  }
+
+  try {
+    const userId = await getUserId();
+    let logs = [];
+    if (userId) {
+      const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+      const isResponseArray = Array.isArray(response);
+      if (isResponseArray) {
+        logs = [...response];
+      } else if (response && Array.isArray(response.entries)) {
+        logs = [...response.entries];
+      }
+
+      const unsyncedToday = getUnsyncedTodayLogs(userId);
+      const unsyncedMapped = unsyncedToday.map(c => ({
+        duration: c.duration,
+        status: c.status
+      }));
+      logs = [...unsyncedMapped, ...logs];
+    }
+
+    logs.forEach(log => {
+      const status = (log.status || '').toLowerCase();
+      if (status === 'inactive') {
+        idleSeconds += (log.duration || 0);
+      }
+    });
+
+    if (currentRecord && currentRecord.status === 'inactive') {
+      const now = new Date();
+      if (now.toDateString() === currentRecord.startTime.toDateString()) {
+        idleSeconds += Math.round((now - currentRecord.startTime) / 1000);
+      }
+    }
+  } catch (err) {
+    console.error('Error calculating idle seconds for dashboard:', err);
+  }
+
+  return {
+    activeSeconds,
+    focusSeconds: activeSeconds,
+    idleSeconds,
+    keystrokes: todayKeystrokes,
+    mouseMoves: todayMouseMoves,
+    mouseClicks: todayMouseClicks,
+    mouseScrolls: todayMouseScrolls
+  };
+});
+
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   let trayIcon = nativeImage.createFromPath(iconPath);
@@ -1265,20 +1527,34 @@ if (gotTheLock) {
     // Register global keyboard and mouse hooks callbacks (starts stopped, controlled via service manager)
     try {
       uIOhook.on('keydown', (e) => {
-        if (isUiohookRunning) antiAfkDetector.recordKeyDown(e.keycode);
+        if (isUiohookRunning) {
+          todayKeystrokes++;
+          antiAfkDetector.recordKeyDown(e.keycode);
+        }
       });
       uIOhook.on('keyup', (e) => {
-        if (isUiohookRunning) antiAfkDetector.recordKeyUp(e.keycode);
+        if (isUiohookRunning) {
+          antiAfkDetector.recordKeyUp(e.keycode);
+        }
       });
       uIOhook.on('mousemove', (e) => {
-        if (isUiohookRunning) antiAfkDetector.recordMouseMove(e.x, e.y);
+        if (isUiohookRunning) {
+          todayMouseMoves++;
+          antiAfkDetector.recordMouseMove(e.x, e.y);
+        }
       });
       uIOhook.on('mousedown', (e) => {
-        if (isUiohookRunning) antiAfkDetector.recordMouseClick(e.button, e.x, e.y);
+        if (isUiohookRunning) {
+          todayMouseClicks++;
+          antiAfkDetector.recordMouseClick(e.button, e.x, e.y);
+        }
       });
       uIOhook.on('wheel', (e) => {
         try {
-          if (isUiohookRunning) antiAfkDetector.recordMouseWheel(e.direction === 2, e.rotation);
+          if (isUiohookRunning) {
+            todayMouseScrolls++;
+            antiAfkDetector.recordMouseWheel(e.direction === 2, e.rotation);
+          }
         } catch (err) {
           console.error('[AntiAFK] Error recording wheel event:', err);
         }
