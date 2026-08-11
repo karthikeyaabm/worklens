@@ -157,6 +157,12 @@ class EventCollector {
     const now = Date.now();
     let focusedDuration = 0;
 
+    if (this.lastWindowFocus &&
+        this.lastWindowFocus.appName === appName &&
+        this.lastWindowFocus.windowTitle === windowTitle) {
+      return;
+    }
+
     if (this.lastWindowFocus) {
       focusedDuration = now - this.lastWindowFocus.timestamp;
       this.queue.pushWindow({

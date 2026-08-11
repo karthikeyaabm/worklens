@@ -20,7 +20,8 @@ const config = require('./config');
  * @param {number} now - Target timestamp in milliseconds
  */
 function extractFeatures(events, heldKeys, lastWindowFocus, currentIdleTime, now = Date.now()) {
-  const cutoff = now - (config.rollingWindowSeconds * 1000);
+  const windowSeconds = config.evaluationWindowSeconds || config.rollingWindowSeconds;
+  const cutoff = now - (windowSeconds * 1000);
 
   const keyboard = extractKeyboardFeatures(events.keyboard, heldKeys, cutoff, now);
   const mouse = extractMouseFeatures(events.mouse, cutoff, now);

@@ -7,7 +7,8 @@
 
 module.exports = {
   // Global settings
-  rollingWindowSeconds: 60, // Size of the rolling event buffer
+  rollingWindowSeconds: 300, // Size of the rolling event buffer
+  evaluationWindowSeconds: 60, // Size of the window used to evaluate behavior features
   historySize: 200,         // Maximum keyboard events in buffer
   scoreThreshold: 70,       // Suspicion score threshold to flag fake activity
   loggingEnabled: true,     // Enable structured debug logging

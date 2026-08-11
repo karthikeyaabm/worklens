@@ -43,8 +43,8 @@ function extractKeyboardFeatures(keyboardEvents, heldKeys, cutoff, now) {
 
   const contentKeys = keydowns.filter(e => !CONTROL_KEYS.has(e.keyCode)).length;
 
-  const rollingWindowSeconds = config.rollingWindowSeconds;
-  const typingSpeed = totalKeys / (rollingWindowSeconds / 60); // Keys per minute
+  const windowSeconds = config.evaluationWindowSeconds || config.rollingWindowSeconds;
+  const typingSpeed = totalKeys / (windowSeconds / 60); // Keys per minute
   const typingDiversity = totalKeys > 0 ? uniqueKeys / totalKeys : 1.0;
 
   // Same key ratio (ratio of the most typed key to total keydowns)

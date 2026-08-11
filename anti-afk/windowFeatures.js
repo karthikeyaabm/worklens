@@ -30,7 +30,7 @@ function extractWindowFeatures(windowEvents, cutoff, now, lastWindowFocus) {
     });
   }
 
-  const windowSwitchCount = allEvents.length;
+  const windowSwitchCount = events.length;
   const uniqueWindows = new Set(allEvents.map(e => `${e.applicationName}::${e.windowTitle}`));
   const uniqueWindowCount = uniqueWindows.size;
 
@@ -58,7 +58,7 @@ function extractWindowFeatures(windowEvents, cutoff, now, lastWindowFocus) {
   }
 
   // Transition frequency (switches/minute)
-  const windowSeconds = config.rollingWindowSeconds;
+  const windowSeconds = config.evaluationWindowSeconds || config.rollingWindowSeconds;
   const transitionFrequency = windowSwitchCount / (windowSeconds / 60);
 
   // Ping-pong ratio detection (A -> B -> A -> B app focus switches)
