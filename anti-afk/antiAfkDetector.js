@@ -18,6 +18,25 @@ const log = require('../logger');
 let isFakeActivityDetected = false;
 let fakeActivityReason = '';
 
+// system control and navigation key scan codes in uIOhook
+const CONTROL_KEYS = new Set([
+  1,     // Escape
+  15,    // Tab
+  29,    // Left Ctrl
+  42,    // Left Shift
+  54,    // Right Shift
+  56,    // Left Alt
+  58,    // Caps Lock
+  3613,  // Right Ctrl
+  3640,  // Right Alt
+  3675,  // Left Win / Cmd
+  3676,  // Right Win / Cmd
+  57416, // Up Arrow
+  57419, // Left Arrow
+  57421, // Right Arrow
+  57424  // Down Arrow
+]);
+
 /**
  * Helper to check if a debug log should be output.
  */
@@ -32,8 +51,9 @@ function logDebug(tag, message, details = '') {
  * Record a key down event.
  */
 function recordKeyDown(keycode) {
-  // Graceful recovery: press of a DIFFERENT key clears fake activity flag.
-  if (isFakeActivityDetected) {
+  // Graceful recovery: press of a DIFFERENT content key clears fake activity flag.
+  // This prevents control/modifier keys (like Alt, Tab) from clearing suspicion.
+  if (isFakeActivityDetected && !CONTROL_KEYS.has(keycode)) {
     const events = eventCollector.getEvents();
     const keydowns = events.keyboard.filter(e => e.type === 'keydown');
     if (keydowns.length > 0) {
@@ -80,12 +100,12 @@ function recordMouseMove(x, y) {
       const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
       const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 
-      if (len1 > 0.5 && len2 > 0.5) {
+      if (len1 > 3.0 && len2 > 3.0) {
         const dot = dx1 * dx2 + dy1 * dy2;
         const cosTheta = Math.max(-1, Math.min(1, dot / (len1 * len2)));
         const theta = Math.acos(cosTheta);
-        // If angle change exceeds 0.05 radians (approx 3 degrees), it shows natural hand jitter
-        if (theta > 0.05) {
+        // If angle change exceeds 0.05 radians (approx 3 degrees) and is not a sharp reversal (e.g. < 3.0 rad)
+        if (theta > 0.05 && theta < 3.0) {
           resumeActivity('Natural mouse movement detected');
         }
       }
@@ -251,7 +271,7 @@ module.exports = {
   evaluateActivity,
   isUserActive,
   CONFIG: {
-    sameKeyWindow: config.rollingWindowSeconds,
+    sameKeyWindow: config.evaluationWindowSeconds || config.rollingWindowSeconds,
     sameKeyThreshold: config.behavior.sameKeyThreshold,
     keyHoldSeconds: config.behavior.keyHoldThresholdSeconds,
     historySize: config.historySize,

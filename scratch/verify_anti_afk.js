@@ -175,6 +175,8 @@ runTest('Automation: Software-initiated Window Focus Switches', () => {
 
 runTest('Automation: AHK Alt+Tab and 1-pixel Mouse Jiggler', () => {
   // Simulate the KeepAwake function: Alt+Tab and 2 1-pixel mouse moves
+  detector.recordWindowChange('chrome.exe', 'Outlook');
+  fakeTime += 100;
   detector.recordWindowChange('firefox.exe', 'OrangeScape');
   fakeTime += 100;
   
