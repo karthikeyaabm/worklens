@@ -87,26 +87,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('popup-ready');
   },
 
-  sendDashboardReady: () => {
-    ipcRenderer.invoke('dashboard-ready');
-  },
-
-  toggleDashboardPopup: async () => {
-    return await ipcRenderer.invoke('toggle-dashboard-popup');
-  },
-
-  closeDashboardPopup: async () => {
-    return await ipcRenderer.invoke('close-dashboard-popup');
-  },
-
-  getEmployeeProfile: async () => {
-    return await ipcRenderer.invoke('get-employee-profile');
-  },
-
-  getDashboardActivityMetrics: async () => {
-    return await ipcRenderer.invoke('get-dashboard-activity-metrics');
-  },
-
   closeInactivityPopup: async () => {
     return await ipcRenderer.invoke('close-inactivity-popup');
   },
