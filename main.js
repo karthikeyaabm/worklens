@@ -290,6 +290,7 @@ function isTeamsWindow(winInfo) {
 
 function isTeamsMeetingWindow(winInfo) {
   if (!isTeamsWindow(winInfo)) return false;
+  if (isTeamsChatWindow(winInfo)) return false;
 
   const title = (winInfo.title || '').trim();
   if (!title) return true;
@@ -297,6 +298,13 @@ function isTeamsMeetingWindow(winInfo) {
   return TEAMS_MEETING_TITLE_PATTERNS.some(pattern => pattern.test(title)) ||
     title.toLowerCase() === 'microsoft teams' ||
     title.toLowerCase().endsWith('| microsoft teams');
+}
+
+function isTeamsChatWindow(winInfo) {
+  if (!isTeamsWindow(winInfo)) return false;
+  const title = (winInfo.title || '').trim();
+  if (!title) return false;
+  return /\bchat\b/i.test(title) || /\bconversation\b/i.test(title) || title.toLowerCase().startsWith('chat');
 }
 
 function isWinScpApp(appName = '', appPath = '') {
@@ -596,6 +604,12 @@ async function trackTick() {
           newStatus = 'Inactive';
           console.log('[Passive Transfer] Transfer progress detected. Counting as Inactive.');
         }
+      } else if (isTeamsChatWindow(winInfo) && idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
+        newStatus = 'Inactive';
+        console.log('[Teams Chat] User is idle for 5+ minutes in Teams chat. Setting status to Inactive.');
+        const activeWindow = applyActiveWindowInfo(winInfo);
+        currentApp = activeWindow.appName;
+        currentTitle = activeWindow.windowTitle;
       } else if (!winInfo) {
         currentApp = 'Unknown';
         currentTitle = 'No Active Window';
