@@ -295,9 +295,7 @@ function isTeamsMeetingWindow(winInfo) {
   const title = (winInfo.title || '').trim();
   if (!title) return true;
 
-  return TEAMS_MEETING_TITLE_PATTERNS.some(pattern => pattern.test(title)) ||
-    title.toLowerCase() === 'microsoft teams' ||
-    title.toLowerCase().endsWith('| microsoft teams');
+  return TEAMS_MEETING_TITLE_PATTERNS.some(pattern => pattern.test(title));
 }
 
 function isTeamsChatWindow(winInfo) {
@@ -607,6 +605,11 @@ async function trackTick() {
       } else if (isTeamsChatWindow(winInfo) && idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
         newStatus = 'Inactive';
         console.log('[Teams Chat] User is idle for 5+ minutes in Teams chat. Setting status to Inactive.');
+        const activeWindow = applyActiveWindowInfo(winInfo);
+        currentApp = activeWindow.appName;
+        currentTitle = activeWindow.windowTitle;
+      } else if (isTeamsWindow(winInfo) && !isTeamsMeetingWindow(winInfo)) {
+        newStatus = idleTime >= INACTIVITY_THRESHOLD_SECONDS ? 'Inactive' : 'Active';
         const activeWindow = applyActiveWindowInfo(winInfo);
         currentApp = activeWindow.appName;
         currentTitle = activeWindow.windowTitle;
