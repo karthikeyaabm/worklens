@@ -192,7 +192,7 @@ function evaluateActivity() {
   logDebug('[Score]', `Calculated confidence score: ${scoreResult.score}`, scoreResult.activeWeights);
 
   // Stage 5: Decision classification
-  const decision = processDecision(scoreResult.score, analysis.reasons, metrics);
+  const decision = processDecision(scoreResult.score, analysis.reasons, metrics, analysis.indicators);
   logDebug('[Decision]', `Status classified as [${decision.status}] with score ${decision.confidenceScore}%`);
 
   // Handle suspicious status flag transitions

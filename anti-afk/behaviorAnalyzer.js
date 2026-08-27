@@ -76,6 +76,16 @@ function analyzeBehavior(metrics, rawEvents) {
     reasons.push('Artificial mouse movement: straight-line paths detected without natural human curvature.');
   }
 
+  // 5b. Vibration-Like Mouse Activity (high-frequency micro-movements suggesting a vibrating device)
+  indicators.vibrationLikeActivity =
+    ms.vibrationFrequency >= config.behavior.vibrationFrequencyThreshold &&
+    ms.clickCount === 0 &&
+    ms.scrollCount === 0 &&
+    ms.movementDistance < config.behavior.vibrationMaxDistanceThreshold;
+  if (indicators.vibrationLikeActivity) {
+    reasons.push(`Vibration-like mouse activity: ${ms.vibrationFrequency.toFixed(1)} micro-movements/sec detected with minimal displacement.`);
+  }
+
   // 6. Window Switch Without Interaction
   // Window focus switches occur, but keyboard or mouse inputs are absent
   const hasWindowSwitches = win.windowSwitchCount >= 1;
