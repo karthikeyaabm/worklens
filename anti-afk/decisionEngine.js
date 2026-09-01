@@ -25,18 +25,16 @@ function classifyScore(score) {
  * @param {number} score - Confidence score (0-100)
  * @param {Array} reasons - Trigger reasons list
  * @param {Object} metrics - Extracted behavioral features
- * @param {Object} indicators - Behavior anomaly flags
  */
-function processDecision(score, reasons, metrics, indicators) {
+function processDecision(score, reasons, metrics) {
   const status = classifyScore(score);
   
-  // Directly trigger suspicion if key hold exceeds threshold, vibration-like activity, or score >= threshold
+  // Directly trigger suspicion if key hold exceeds threshold or score >= threshold
   const hasLongHold = metrics.keyboard.keyHoldDuration >= config.behavior.keyHoldThresholdSeconds;
-  const hasVibrationLikeActivity = indicators && indicators.vibrationLikeActivity;
-  const isSuspicious = score >= config.scoreThreshold || hasLongHold || hasVibrationLikeActivity;
+  const isSuspicious = score >= config.scoreThreshold || hasLongHold;
 
   return {
-    status: hasLongHold ? 'Likely Automation' : status,
+    status: hasLongHold ? 'Likely Automation' : status, // Elevate status if long hold is active
     confidenceScore: score,
     isSuspicious,
     reasons,

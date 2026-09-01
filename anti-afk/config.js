@@ -23,8 +23,7 @@ module.exports = {
     noMouseMovement: 10,
     longKeyHold: 30,
     windowSwitchWithoutInteraction: 20,
-    softwareWindowSwitch: 80,
-    vibrationLikeActivity: 20
+    softwareWindowSwitch: 80
   },
 
   // Feature Extraction and Behavioral thresholds
@@ -36,15 +35,7 @@ module.exports = {
     periodicClicksIntervalStdDevThreshold: 20, // Mouse click interval standard deviation (ms)
     pingPongCountThreshold: 3,              // Number of window focus switches required to evaluate ping-pong pattern
     pingPongRatioThreshold: 0.75,           // Ratio of A-B-A-B switching to total switches
-    mouseIdleThresholdSeconds: 60,          // Duration without mouse movement to flag as idle
-    vibrationFrequencyThreshold: 15,        // Micro-movements per second suggesting a vibrating device on the mouse
-    vibrationMaxDistanceThreshold: 200,     // Max total movement distance (px) for vibration pattern over evaluation window
-
-    // Mouse Activity Analysis thresholds
-    microMovementFrequencyThreshold: 12,    // Micro-moves per second to flag as high-frequency micro-movement
-    lowSpeedThreshold: 20,                  // Pixels per second below which speed is considered very low
-    minInteractionCount: 1,                 // Minimum clicks or scrolls to consider activity as interactive
-    longActivityDurationMs: 60000           // Activity duration (ms) beyond which repetitive low-interaction patterns are more suspicious
+    mouseIdleThresholdSeconds: 60           // Duration without mouse movement to flag as idle
   },
 
   // Decision Classification Levels (Phase 5)
