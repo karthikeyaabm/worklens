@@ -23,7 +23,7 @@ async function loadUsername() {
         titleElement.textContent = displayName;
         titleElement.style.color = '#ffffff'; // White color for successful connection
         titleElement.style.fontWeight = '500';
-        titleElement.title = `Logged in as ${displayName}`;
+        titleElement.title = `Logged in as ${displayName} (Click card to open Dashboard)`;
       }
     }
   } catch (error) {
@@ -34,26 +34,15 @@ async function loadUsername() {
 // Function to update the date and day displays dynamically
 function updateDateDisplay() {
   const dateElement = document.getElementById('date-display');
-  //const dayElement = document.getElementById('day-display');
-
   if (!dateElement) return;
 
   const now = new Date();
-
   const dateOptions = {
     month: 'short',
-    day: 'numeric',
-    //year: 'numeric'
+    day: 'numeric'
   };
   const dateString = now.toLocaleDateString('en-US', dateOptions);
-
-  /*const dayOptions = {
-    weekday: 'long'
-  };*/
-  //const dayString = now.toLocaleDateString('en-US', dayOptions);
-
   dateElement.textContent = dateString;
-  //dayElement.textContent = dayString;
 }
 
 function formatSeconds(seconds) {
@@ -139,13 +128,13 @@ async function updateStatusDot() {
       if (dotEl) {
         if (status === 'Active') {
           dotEl.className = 'status-dot active';
-          dotEl.title = 'Active (Online)';
+          dotEl.title = 'Active (Online) - Click to open Dashboard';
         } else if (status === 'Offline') {
           dotEl.className = 'status-dot offline';
-          dotEl.title = 'Active (Offline)';
+          dotEl.title = 'Active (Offline) - Click to open Dashboard';
         } else {
           dotEl.className = 'status-dot inactive';
-          dotEl.title = 'Inactive';
+          dotEl.title = 'Inactive - Click to open Dashboard';
         }
       }
     }
@@ -166,6 +155,12 @@ async function updateActiveTimeToday() {
   }
 }
 
+function openDashboard() {
+  if (window.api && typeof window.api.openDashboard === 'function') {
+    window.api.openDashboard();
+  }
+}
+
 // Initialization on DOM load
 document.addEventListener('DOMContentLoaded', () => {
   loadUsername();
@@ -173,14 +168,20 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDateDisplay();
   loadWidgetData();
 
-  // Set pointer cursor and add click listener for Active Time card to open details popup
+  // Set pointer cursor and add click listener for Active Time card & Time Logs card to open Dashboard
   const activeTimeCard = document.querySelector('.active-time-card');
   if (activeTimeCard) {
     activeTimeCard.style.cursor = 'pointer';
     activeTimeCard.addEventListener('click', () => {
-      if (window.api && typeof window.api.toggleActivityPopup === 'function') {
-        window.api.toggleActivityPopup();
-      }
+      openDashboard();
+    });
+  }
+
+  const timeLogsCard = document.querySelector('.time-logs-card');
+  if (timeLogsCard) {
+    timeLogsCard.style.cursor = 'pointer';
+    timeLogsCard.addEventListener('click', () => {
+      openDashboard();
     });
   }
 

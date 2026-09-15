@@ -24,15 +24,15 @@ It solves:
 WorkLens is built on Electron's multi-process architecture. It consists of:
 *   **Main Process:** Controls system-level events, active window tracking, idle state monitoring, power hooks (sleep/resume/lock/unlock), automated updates, and a local offline JSONL database.
 *   **Renderer Processes:**
-    1.  *Main Widget:* A minimalist, frameless desktop status window (185px × 60px) pinned to the bottom-right corner.
-    2.  *Activity Detail Popup:* A glassmorphism/Fluent UI container presenting grouped active logs.
+    1.  *Desktop Widget (`mainWindow`):* A minimalist, frameless desktop status window (185px × 60px) pinned to the bottom-right corner that displays username, date, Redmine Time Logs, and Active Time with live status dot. Clicking the widget opens the Dashboard window.
+    2.  *WorkLens Dashboard (`dashboardWindow`):* A comprehensive, dark-themed SaaS desktop application window that opens maximized to fill the full desktop window (with restore dimensions of 1280px × 820px, resizable) featuring a left navigation sidebar, top search/user bar, Home overview (Project Tasks, IT Help Desk, and Admin Help Desk metrics, Recent Tasks table, Task Distribution donut chart, Upcoming Deadlines, Quick Actions, and Recent Activity timeline), and an integrated Active Time Dashboard view.
     3.  *Inactivity Nudge Card:* A transparent prompt playing audio alerts and displaying motivational quotes when idle time is exceeded.
 
 ```mermaid
 graph TD
-    A[Electron Main Process] -->|IPC / preload.js| B[Widget Renderer]
-    A -->|IPC / preload.js| C[Activity Popup Renderer]
-    A -->|IPC / preload.js| D[Inactivity Nudge Renderer]
+    A[Electron Main Process] -->|IPC / preload.js| B[Desktop Widget (index.html)]
+    A -->|IPC / preload.js| C[Dashboard Window (dashboard.html)]
+    A -->|IPC / preload.js| D[Inactivity Nudge (inactivityPopup.html)]
     A -->|redmineClient.js| E[Redmine Server REST API]
     A -->|activityStore.js| F[(Local Store: activity_queue.jsonl)]
     A -->|logger.js| G[(Daily Rotated Logs)]
@@ -70,12 +70,12 @@ WorkLens/
 ├── dist/                       # Output folder for production builders (ignored)
 ├── node_modules/               # Dependencies (ignored)
 ├── renderer/                   # Front-end renderer window files
-│   ├── activity-popup.css      # Style details for the glassmorphism activity details popup
-│   ├── activity-popup.html     # HTML structure of the activity details popup
-│   ├── activity-popup.js       # Reconciler and UI handler for the activity details popup
-│   ├── index.html              # Main widget HTML layout
-│   ├── renderer.js             # Main widget interface controller (triggers UI sync and event listeners)
-│   └── style.css               # Main widget layout styling
+│   ├── index.html              # Desktop Widget layout (185px × 60px desktop status widget)
+│   ├── renderer.js             # Desktop Widget controller (polls stats, opens Dashboard)
+│   ├── style.css               # Desktop Widget styling
+│   ├── dashboard.html          # WorkLens Reference Dashboard layout (Home & Active Time views)
+│   ├── dashboard.js            # WorkLens Dashboard controller, navigation, and metrics
+│   └── dashboard.css           # WorkLens Dashboard dark-theme styling
 ├── anti-afk/                   # Modular Behavior Analysis Engine
 │   ├── config.js               # Thresholds, weights, and decision levels
 │   ├── eventQueue.js           # Rolling in-memory event buffer
@@ -91,14 +91,18 @@ WorkLens/
 │   └── antiAfkDetector.js      # Primary orchestrator and API endpoints
 ├── activityStore.js            # Offline database manager (handles JSONL operations and pruning)
 ├── antiAfkDetector.js          # Backward compatibility wrapper for the anti-AFK engine
+├── dashboardStore.js           # Multi-tenant custom dashboard persistence & credential masking
+├── dashboardService.js         # External API client with SSRF protection, timeouts & error formatting
 ├── CHANGELOG.md                # Evolution log of the desktop app
 ├── inactivityPopup.html        # Nudge UI & Web Audio beep synthesized tone code
 ├── logger.js                   # log configurations (resolves and purges logs older than 7 days)
-├── main.js                     # Main Electron process driver (lifecycle, window creation, active-win tracking)
+├── main.js                     # Main Electron process driver (lifecycle, window creation, active-win tracking, dashboard IPC)
 ├── package.json                # Project configurations, builder targets, dependencies list
 ├── preload.js                  # IPC context bridge exposing APIs securely to renderer windows
 ├── quotes.js                   # Local quotes storage array for inactivity nudges
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
+├── tests/                      # Automated test suite
+│   └── dashboard.test.js       # Dynamic dashboard store, service, and renderer test suite
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -129,8 +133,8 @@ This is the application startup handler. Execution flows as follows:
 The bridge scripts run before renderer files load. It exposes a restricted `window.api` namespace containing method call mappings. It acts as a security barrier preventing the UI from executing arbitrary Node.js scripts.
 
 ### 3. Renderer Scripts
-*   **[renderer/renderer.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/renderer.js):** Coordinates values displayed by `renderer/index.html`. Handles clicks on the "Active Time" card to trigger details popups.
-*   **[renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js):** Runs inside the glassmorphism details window. Polls logging details from the main process and binds CSS layouts.
+*   **[renderer/renderer.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/renderer.js):** Coordinates values displayed by the Desktop Widget (`renderer/index.html`). Handles clicks on the "Active Time" and "Time Logs" cards to open the full Dashboard window, and handles hide-to-tray actions.
+*   **[renderer/dashboard.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/dashboard.js):** Coordinates UI views and real-time state for the WorkLens Dashboard (`renderer/dashboard.html`). Handles tab navigation (Home, Active Time Dashboard, Project Tasks, IT Help Desk, Admin Help Desk), search filtering, task creation modals, notification dropdowns, live telemetry polling, and desktop window controls.
 
 ---
 
@@ -223,18 +227,17 @@ sequenceDiagram
     *   [inactivityPopup.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/inactivityPopup.html)
 *   **Behavior Details:** Plays a dual-tone beep at 800Hz for 120ms (repeated after a 250ms delay). Auto-closes when user activity is detected, or after a 15-second timeout if no interaction occurs.
 
-### 5. Detailed Activity Log View (with Expandable Activity Details)
-*   **Purpose:** Provide users with an interactive, categorized breakdown of their active time per application, with the ability to expand each application row to view individual window/activity titles and durations.
+### 5. Integrated Active Time Dashboard View
+*   **Purpose:** Provide users with an interactive, categorized breakdown of their active time per application, telemetry indicators, today/yesterday comparisons, and Redmine synchronization metrics directly within the WorkLens desktop application.
 *   **Files Involved:** 
-    *   [renderer/activity-popup.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.html)
-    *   [renderer/activity-popup.css](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.css)
-    *   [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js)
-*   **Expansion Mechanics:** 
-    *   Visuals: Each application row has a chevron SVG icon on the far left that rotates 90 degrees downward when expanded. Hover highlights, subtle list borders, indent offsets (44px padding-left), and constrained title widths (using `min-width: 0` to prevent layout overflow from long titles pushing duration times off-screen) are applied.
-    *   *Behavior:* Clicking anywhere on an application row toggles its expansion state. Only one application group can remain expanded at a time; expanding another collapses the previously active one.
-    *   *Animations:* A smooth 250ms CSS Grid transition of `grid-template-rows` from `0fr` to `1fr` is used on the details wrapper to expand/collapse without JS-forced reflows.
-    *   *Accessibility:* Full keyboard access is supported via `tabindex="0"`, `role="button"`, dynamic `aria-expanded` status, and Enter/Space key toggling.
-    *   *Data:* Aggregates window tracking durations by unique title and sorts child activities descending.
+    *   [renderer/dashboard.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/dashboard.html)
+    *   [renderer/dashboard.css](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/dashboard.css)
+    *   [renderer/dashboard.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/dashboard.js)
+*   **Mechanics:**
+    *   *Navigation:* Accessible directly from the sidebar via the "Active time dashboard" button.
+    *   *Telemetry Cards:* Displays Today Active Time, Yesterday Active Time, Today Redmine Effort, and Yesterday Redmine Effort alongside a live pulsing status pill (`Active`, `Inactive`, or `Offline`).
+    *   *Application Breakdown:* Aggregates local offline queue logs and remote Redmine logs, calculates duration and relative usage percentage bars, and maps cached application icons.
+    *   *Manual Sync:* Includes a "Sync Now" action to immediately trigger an offline-queue sync via `window.api.triggerSync()`.
 *   **Icon Caching:** Resolves executable file icons on the main thread using standard shell queries (`Get-Process`) and converts them to base64 images to prevent CPU overhead in the rendering process.
 
 ### 6. Anti-AFK & Enterprise Behavior Analysis Engine
@@ -423,17 +426,18 @@ Preload bridges access paths by mapping handlers across processes:
 | `get-active-time-today` | Invoked by UI | None | Returns total local tracked seconds today (including unsynced). |
 | `get-active-time-yesterday` | Invoked by UI | None | Returns total local tracked seconds yesterday. |
 | `get-current-status` | Invoked by UI | None | Returns active state (`Active`/`Inactive`). |
-| `toggle-activity-popup` | Invoked by UI | None | Shows/hides the activity log details window. |
-| `open-activity-popup` | Invoked by UI | None | Positions and displays the activity popup. |
-| `close-activity-popup` | Invoked by UI | None | Closes/hides the activity popup. |
+| `open-dashboard` | Invoked by UI | None | Creates/shows and focuses the WorkLens Dashboard window. |
+| `close-dashboard` | Invoked by UI | None | Hides the WorkLens Dashboard window. |
+| `show-main-window` | Invoked by UI | None | Focuses and restores the Desktop Widget on screen. |
+| `window-minimize` | Invoked by UI | None | Minimizes the active desktop window. |
+| `window-maximize` | Invoked by UI | None | Toggles maximize / restore for the dashboard window. |
+| `is-window-maximized` | Invoked by UI | None | Returns boolean (`true`/`false`) indicating if the active window is currently maximized. |
+| `window-state-changed` | Main to UI | `{ isMaximized: boolean }` | WebContents event fired on window maximize/unmaximize to synchronize UI control states. |
+| `window-close` | Invoked by UI | None | Hides the active desktop window to background/tray. |
 | `close-inactivity-popup`| Invoked by UI | None | Closes/destroys the inactivity nudge window. |
-| `fetch-activity-logs` | Invoked by UI | None | Returns sorted today logs + icon base64 mappings. |
-| `popup-ready` | Invoked by UI | None | Signals main process that the details window is ready. |
+| `fetch-activity-logs` | Invoked by UI | None | Returns sorted today logs + icon base64 mappings for the Active Time dashboard view. |
 | `trigger-sync` | Invoked by UI | None | Explicitly triggers an offline-queue sync. |
-| `hide-main-window` | Invoked by UI | None | Gracefully hides the main widget and detail popup, running tracking in the background. |
-| `popup-status-changed` | Sent by Main | Status string (`opened`/`closed`) | Controls background polling loops. |
-| `update-arrow-position` | Sent by Main | `arrowLeft` (int), `isBelow` (bool) | Updates pointer layout on details popup. |
-| `request-close` | Sent by Main | None | Triggers close transitions inside UI windows. |
+| `hide-main-window` | Invoked by UI | None | Gracefully hides the main window, running tracking in the background. |
 
 ---
 
@@ -645,7 +649,98 @@ npm run release
 
 ---
 
-## 24. AI Development Rules
+## 24. Dynamic Dashboard Creation & API Integration System
+
+WorkLens includes a dynamic dashboard management and external API integration system. Users can create, test, and manage custom API dashboards directly from a dedicated **Settings** interface. Newly created dashboards are automatically mounted in the main sidebar without restarting or reloading the application.
+
+```mermaid
+graph TD
+    A[Renderer Process: dashboard.html / dashboard.js] -->|window.api IPC| B[Preload Bridge: preload.js]
+    B -->|IPC Main Channels| C[Main Process: main.js]
+    C -->|CRUD & Tenant Isolation| D[(Local Store: dashboards.json)]
+    C -->|Execute API Request & SSRF Check| E[dashboardService.js]
+    E -->|HTTPS / Header Auth| F[External Third-Party REST API]
+    F -->|Raw JSON Response| E
+    E -->|Normalized Payload & Errors| C
+    C -->|IPC Reply| B
+    B -->|Generic Data Renderer| A
+```
+
+### 1. Data Model & Storage (`dashboardStore.js`)
+Dashboards are persisted locally in `%APPDATA%/WorkLens/dashboards.json` (or `.worklens-data/dashboards.json` in development).
+
+```json
+{
+  "id": "dash_a1b2c3d4",
+  "company_id": "default-company",
+  "name": "IT Desk",
+  "endpoint": "https://api.example.com/tickets",
+  "method": "GET",
+  "auth_type": "bearer",
+  "credentials": {
+    "token": "raw-secret-token",
+    "username": "",
+    "password": ""
+  },
+  "status": "connected",
+  "created_by": "Karthikeya",
+  "created_at": "2026-09-15T10:00:00.000Z",
+  "updated_at": "2026-09-15T10:00:00.000Z"
+}
+```
+
+*   **Credential Masking:** Tokens are never returned to the renderer process in plain text. On `listDashboards` and `getDashboard`, credentials are sanitized as `{ hasToken: true, maskedToken: "••••••••" }`.
+*   **Tenant Isolation:** Dashboards are keyed by `company_id` (defaulting to `process.env.TENANT_ID || 'default-company'`). Tenants can never access or overwrite dashboards belonging to another organization. Duplicate dashboard names are prohibited within the same tenant.
+*   **Role Authorization:** `Admin` and `Manager` roles are authorized to create, update, and delete dashboards. `Employee` users are restricted to read-only viewing.
+
+### 2. External API Service & Security (`dashboardService.js`)
+*   **SSRF Protection:** Loopback addresses (`127.0.0.1`, `localhost`, `0.0.0.0`, `::1`) and private RFC-1918 subnets (`10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`, `169.254.0.0/16`) are blocked by default to prevent internal network scanning. Can be bypassed for local mock testing by setting `ALLOW_LOCAL_DASHBOARD_APIS=true`.
+*   **Protocol Enforcement:** Only `http:` and `https:` schemes are accepted; dangerous URI protocols like `javascript:`, `file:`, or `data:` are rejected immediately.
+*   **Authentication Schemes:**
+    *   `Bearer Token`: Injects `Authorization: Bearer <token>`.
+    *   `API Key`: Injects `X-API-Key: <token>` and `Authorization: ApiKey <token>`.
+    *   `Basic Auth`: Injects `Authorization: Basic <base64(user:pass)>`.
+    *   `No Authentication`: Standard outbound request without auth headers.
+*   **Timeouts & Error Mapping:** 10-second timeout managed via `AbortController`. Standardized friendly error messages for HTTP 401, 403, 404, 429, 500+, timeouts, and invalid JSON payloads.
+
+### 3. IPC Communication Channels
+
+| IPC Channel | Direction | Payload | Return Value | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `dashboards:list` | Renderer -> Main | `{ companyId?, role? }` | `Dashboard[]` (masked) | Fetch all dashboards for current tenant |
+| `dashboards:get` | Renderer -> Main | `id` | `Dashboard` (masked) | Retrieve single dashboard metadata |
+| `dashboards:create` | Renderer -> Main | `{ name, endpoint, method, authType, token, ... }` | `Dashboard` (masked) | Create and persist new dashboard |
+| `dashboards:update` | Renderer -> Main | `{ id, ...updates }` | `Dashboard` (masked) | Update existing dashboard |
+| `dashboards:delete` | Renderer -> Main | `id` | `{ success: true, id }` | Remove dashboard from store |
+| `dashboards:test` | Renderer -> Main | `{ endpoint, method, authType, token, ... }` | `{ success, message, sample? }` | Test API connection before creating |
+| `dashboards:fetch-data` | Renderer -> Main | `id` | `{ success, data?, error?, status }` | Proxy third-party API call using stored credentials |
+
+### 4. UI Components & User Experience
+*   **Settings View (`#view-settings`):** Accessible from the sidebar. Contains the **Dashboard Management** table showing Dashboard Name, API Endpoint, HTTP Method, Authentication Type, Live Status Badge, and Action buttons (`Test`, `View`, `Edit`, `Delete`). Displays an empty state banner when no custom dashboards exist.
+*   **Create / Edit Dashboard Modal (`#dashboard-modal`):**
+    *   Fields: Dashboard Name (2-50 chars, unique), API Endpoint (valid URL), HTTP Method (GET/POST), Authentication Type (API Key, Bearer, Basic, None), Masked API Key/Token with toggle visibility button.
+    *   **Pre-creation API Test:** Clicking "Create Dashboard" automatically triggers an API connectivity pre-test with visual loading spinner and "Testing API...". Only successful API responses proceed to save the configuration.
+    *   **Viewport & Alignment Safeguards:** Modal card is constrained to `max-height: 85vh` with a scrollable `modal-body` (`max-height: calc(85vh - 130px)`) and fixed header/footer (`flex-shrink: 0`) to prevent modal clipping on standard laptop displays. Alert boxes and test banners enforce strict SVG dimensions (`18px x 18px`) and inline/CSS hidden toggle rules (`.modal-alert-box.hidden`, `.test-spinner.hidden`) to prevent unconstrained icon expansion and layout displacement.
+*   **Delete Confirmation Modal (`#dashboard-delete-modal`):** Prompts for confirmation before permanent removal.
+*   **Dynamic Sidebar Integration:** Newly created dashboards immediately appear under the `CUSTOM DASHBOARDS` header in the sidebar without page reload.
+*   **Dynamic Route & View (`#/dashboard/:id`):**
+    *   Header: Dynamic dashboard name, endpoint path, live status pill (`Connected` / `Error`), and actions (`Refresh`, `Edit`, `Delete`).
+    *   **Generic Data Renderer:**
+        1.  *Numeric KPI Cards Grid:* Automatically detects and displays numeric metric counters (e.g. `totalTickets: 120`, `openTickets: 40`).
+        2.  *Interactive Data Table:* Detects root arrays or nested collections (`tickets`, `data`, `items`, `records`), generates dynamic column headers, formats badges for status/priority, and includes live text search filtering.
+        3.  *Key-Value Attributes Card:* Renders object metadata and scalar properties.
+        4.  *Raw JSON Inspector:* Collapsible formatted JSON payload viewer for developers.
+
+### 5. Automated Verification
+A comprehensive test suite is located in `tests/dashboard.test.js` and can be run via:
+```powershell
+npm test
+```
+Covers store persistence, name uniqueness, tenant isolation, role authorization, SSRF blocking, auth headers, API proxying, and generic renderer parsing logic.
+
+---
+
+## 25. AI Development Rules
 
 When adding features or modifying code in WorkLens, AI assistants must adhere to the following rules:
 
@@ -657,15 +752,17 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 ### 2. Forbidden Modifications
 *   **Do NOT expose native Node APIs directly to the renderer.** Always route communication through the context bridge in `preload.js`.
 *   **Do NOT remove file-archival or pruning routines.** Database and log files must be kept small.
+*   **Do NOT store sensitive API keys in plaintext in frontend renderer state permanently.**
 
 ### 3. Review Checklist for Changes
 - [ ] Verify that UI changes work on Windows 11 and match the Fluent/glassmorphism design guidelines.
-- [ ] Confirm that all database operations in `activityStore.js` run asynchronously and do not block the main process thread.
+- [ ] Confirm that all database operations run asynchronously and do not block the main process thread.
 - [ ] Check that new API endpoints have proper error handling and fallback values.
+- [ ] Ensure all code changes are accurately reflected in `BRAIN.md`.
 
 ---
 
-## 25. Change Log Summary
+## 26. Change Log Summary
 
 *   **v1.0.1 - Initial Version:** Frameless widget layout with active window tracking.
 *   **v1.0.7 - System Tray:** Runs in the system tray with single-instance locking.
@@ -677,12 +774,14 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.0 - Username Change Auto-Recovery & Persistent Offline Tracking:** Implemented background username validation, persistent username display during reachability/network failures, and automatic recovery. Added start/stop service controllers to immediately halt tracking when explicit validation fails. Introduced pulsing Blue indicator beside Active Time for active offline tracking, pulsing Green for active online, and pulsing Orange for inactive. Paused sync interval during unreachable states and triggered auto-sync on recovery.
 *   **v1.3.1 - Widget Close Button to Tray:** Added a Fluent-style Close button to the main widget header next to the date. Clicking it gracefully hides both the widget and the active details popup to run in the background, allowing full control through the system tray.
 *   **v1.3.2 - Persistent Tray Tracking (Exit Removal):** Removed the Exit option from the system tray context menu, ensuring persistent tracking execution in the background by disabling user-facing exit controls.
+*   **v1.4.0 - Dynamic Dashboard Creation & API Integration:** Added dynamic custom dashboard management from the Settings view, live API pre-testing, multi-tenant persistence with masked credential storage, SSRF protection, generic auto-rendering (KPI cards, data tables, key-value grids), dynamic sidebar updating without page reload, and responsive modal layout with bounded alert icon sizing and viewport constraint safeguards.
 
 ---
 
-## 26. Glossary
+## 27. Glossary
 
 *   **Active Time:** Duration in seconds where the user is active on the workstation.
+*   **Dynamic Dashboard:** Custom API telemetry dashboard configured by users at runtime and mounted into the sidebar.
 *   **Inactivity Nudge:** Visual and audio alert triggered when the system is idle for 5 minutes.
 *   **JSONL (JSON Lines):** A text-based format where each line is a valid JSON object.
 *   **Redmine Client:** Native client wrapper that handles authentication and API calls to the Redmine server.
@@ -690,21 +789,24 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 
 ---
 
-## 27. Quick Start For AI
+## 28. Quick Start For AI
 
 ```
 1. Set up connection parameters in the .env file.
 2. Run "npm install" to install dependencies.
 3. Run "npm start" to launch the widget in development.
-4. Main Process Entry Point: main.js
-5. Database operations & queue: activityStore.js
-6. API Request Client: redmineClient.js
-7. UI Views: renderer/index.html & renderer/activity-popup.html
+4. Run "npm test" to execute the test suite.
+5. Main Process Entry Point: main.js
+6. Database operations & queue: activityStore.js
+7. Dashboard Storage: dashboardStore.js
+8. External API Proxy & SSRF: dashboardService.js
+9. API Request Client: redmineClient.js
+10. UI Views: renderer/index.html (Desktop Widget) & renderer/dashboard.html (Reference & Dynamic Dashboards)
 ```
 
 ---
 
-## 28. Update Instructions
+## 29. Update Instructions
 
 > [!IMPORTANT]
 > Whenever code changes, this `BRAIN.md` must also be updated.

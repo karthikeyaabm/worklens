@@ -21,6 +21,8 @@ const {
 } = require('./activityStore');
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { uIOhook } = require('uiohook-napi');
+const dashboardStore = require('./dashboardStore');
+const dashboardService = require('./dashboardService');
 
 // Inactivity Nudge Configuration
 const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger threshold
@@ -40,9 +42,7 @@ const log = require('./logger');
 autoUpdater.logger = log;
 
 let mainWindow = null;
-let activityWindow = null;
-let isPopupReady = false;
-let showPopupOnReady = false;
+let dashboardWindow = null;
 let tray = null;
 let isQuitting = false;
 let finalSyncDone = false;
@@ -57,6 +57,79 @@ function showAndFocusWindow() {
     mainWindow.focus();
     mainWindow.setAlwaysOnTop(true, 'screen-saver');
   }
+}
+
+function createOrShowDashboard() {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+    dashboardWindow.maximize();
+    if (!dashboardWindow.isVisible()) dashboardWindow.show();
+    dashboardWindow.focus();
+    return dashboardWindow;
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
+
+  const windowWidth = 1280;
+  const windowHeight = 820;
+
+  const x = Math.round(workX + (workWidth - windowWidth) / 2);
+  const y = Math.round(workY + (workHeight - windowHeight) / 2);
+
+  dashboardWindow = new BrowserWindow({
+    width: windowWidth,
+    height: windowHeight,
+    minWidth: 1080,
+    minHeight: 680,
+    x,
+    y,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#0b1320',
+    alwaysOnTop: false,
+    skipTaskbar: false,
+    resizable: true,
+    movable: true,
+    minimizable: true,
+    maximizable: true,
+    fullscreenable: true,
+    hasShadow: true,
+    show: false,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false
+    }
+  });
+
+  dashboardWindow.maximize();
+  dashboardWindow.show();
+
+  dashboardWindow.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
+
+  dashboardWindow.on('maximize', () => {
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('window-state-changed', { isMaximized: true });
+    }
+  });
+
+  dashboardWindow.on('unmaximize', () => {
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('window-state-changed', { isMaximized: false });
+    }
+  });
+
+  dashboardWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      dashboardWindow.hide();
+    }
+  });
+
+  return dashboardWindow;
 }
 
 let cachedUserId = null;
@@ -667,148 +740,6 @@ async function trackTick() {
   }
 }
 
-function createActivityWindow() {
-  if (activityWindow) return activityWindow;
-
-  activityWindow = new BrowserWindow({
-    width: 700,
-    height: 520,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    show: false,
-    skipTaskbar: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    movable: true,
-    focusable: true,
-    icon: path.join(__dirname, 'assets', 'icon.png'),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      devTools: false
-    }
-  });
-
-  activityWindow.loadFile(path.join(__dirname, 'renderer', 'activity-popup.html'));
-
-  activityWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      activityWindow.hide();
-      activityWindow.webContents.send('popup-status-changed', 'closed');
-    }
-  });
-
-  return activityWindow;
-}
-
-function positionActivityWindow() {
-  if (!mainWindow || !activityWindow) return;
-
-  const [wx, wy] = mainWindow.getPosition();
-  const primaryDisplay = screen.getDisplayNearestPoint({ x: wx, y: wy });
-  const { x: workX, y: workY, width: workWidth, height: workHeight } = primaryDisplay.workArea;
-
-  const popupWidth = 700;
-  const popupHeight = 520;
-  const widgetWidth = 185;
-  const widgetHeight = 60;
-
-  // The center of the ACTIVE TIME card is at wx + 140
-  const activeTimeCardCenterX = wx + 140;
-
-  // 1. Determine horizontal position (popupX)
-  let popupX = wx + widgetWidth - popupWidth + 15;
-  if (popupX < workX) {
-    popupX = workX;
-  }
-  if (popupX + popupWidth > workX + workWidth) {
-    popupX = workX + workWidth - popupWidth;
-  }
-
-  // 2. Determine vertical position (popupY)
-  // Calculate available space above and below the widget
-  const spaceAbove = wy - workY;
-  const spaceBelow = (workY + workHeight) - (wy + widgetHeight);
-
-  let popupY = 0;
-  let isBelow = false;
-
-  // Prefer opening above if we have enough space, otherwise check space below
-  if (spaceAbove >= popupHeight + 8) {
-    // Open above
-    popupY = wy - popupHeight - 8;
-    isBelow = false;
-  } else if (spaceBelow >= popupHeight + 8) {
-    // Open below
-    popupY = wy + widgetHeight + 8;
-    isBelow = true;
-  } else {
-    // Neither side has enough space for the full height without overflow.
-    // Place it where there is more room, and clamp it to screen bounds.
-    if (spaceAbove > spaceBelow) {
-      // Place above and clamp
-      popupY = wy - popupHeight - 8;
-      if (popupY < workY) {
-        popupY = workY;
-      }
-      isBelow = false;
-    } else {
-      // Place below and clamp
-      popupY = wy + widgetHeight + 8;
-      if (popupY + popupHeight > workY + workHeight) {
-        popupY = workY + workHeight - popupHeight;
-      }
-      isBelow = true;
-    }
-  }
-
-  // Final safety clamp to absolute screen boundaries to prevent any overflow/cut-offs
-  if (popupY < workY) {
-    popupY = workY;
-  }
-  if (popupY + popupHeight > workY + workHeight) {
-    popupY = workY + workHeight - popupHeight;
-  }
-
-  activityWindow.setBounds({
-    x: Math.round(popupX),
-    y: Math.round(popupY),
-    width: popupWidth,
-    height: popupHeight
-  });
-
-  // Calculate arrow pointer's horizontal offset relative to the popup's left edge
-  let arrowLeft = activeTimeCardCenterX - popupX;
-  if (arrowLeft < 20) arrowLeft = 20;
-  if (arrowLeft > popupWidth - 20) arrowLeft = popupWidth - 20;
-
-  // Send styling and position variables to the popup renderer
-  activityWindow.webContents.send('update-arrow-position', arrowLeft, isBelow);
-}
-
-function toggleActivityPopup() {
-  if (!mainWindow) return;
-
-  if (!activityWindow) {
-    showPopupOnReady = true;
-    createActivityWindow();
-    return;
-  }
-
-  if (activityWindow.isVisible()) {
-    activityWindow.webContents.send('request-close');
-  } else {
-    positionActivityWindow();
-    activityWindow.show();
-    activityWindow.focus();
-    activityWindow.webContents.send('popup-status-changed', 'opened');
-  }
-}
-
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
@@ -835,7 +766,6 @@ function createWindow() {
     movable: true,
     minimizable: true,
     maximizable: true,
-    //closable: false,
     fullscreenable: false,
     hasShadow: false,
     show: !startHidden,
@@ -850,18 +780,12 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  //mainWindow.webContents.openDevTools();
-
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
-      if (activityWindow && activityWindow.isVisible()) {
-        activityWindow.hide();
-        activityWindow.webContents.send('popup-status-changed', 'closed');
-      }
     }
   });
 }
@@ -1139,27 +1063,46 @@ ipcMain.handle('get-current-status', () => {
   return currentStatus;
 });
 
-// Activity Popup IPC Handlers
-ipcMain.handle('toggle-activity-popup', () => {
-  toggleActivityPopup();
+// Window Control IPC Handlers
+ipcMain.handle('open-dashboard', () => {
+  createOrShowDashboard();
 });
 
-ipcMain.handle('open-activity-popup', () => {
-  if (!activityWindow) {
-    createActivityWindow();
-  }
-  if (!activityWindow.isVisible()) {
-    positionActivityWindow();
-    activityWindow.show();
-    activityWindow.focus();
-    activityWindow.webContents.send('popup-status-changed', 'opened');
+ipcMain.handle('close-dashboard', () => {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.hide();
   }
 });
 
-ipcMain.handle('close-activity-popup', () => {
-  if (activityWindow && activityWindow.isVisible()) {
-    activityWindow.hide();
-    activityWindow.webContents.send('popup-status-changed', 'closed');
+ipcMain.handle('show-main-window', () => {
+  showAndFocusWindow();
+});
+
+ipcMain.handle('window-minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.minimize();
+});
+
+ipcMain.handle('window-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+  }
+});
+
+ipcMain.handle('is-window-maximized', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return win ? win.isMaximized() : false;
+});
+
+ipcMain.handle('window-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    win.hide();
   }
 });
 
@@ -1235,16 +1178,81 @@ ipcMain.handle('get-employee-id', async () => {
   return await getUserId();
 });
 
-ipcMain.handle('popup-ready', () => {
-  isPopupReady = true;
-  if (showPopupOnReady) {
-    showPopupOnReady = false;
-    positionActivityWindow();
-    activityWindow.show();
-    activityWindow.focus();
-    activityWindow.webContents.send('popup-status-changed', 'opened');
-  }
+// Dynamic Dashboards Management IPC Handlers
+ipcMain.handle('dashboards:list', async (_event, options = {}) => {
+  const companyId = (options && options.companyId) || process.env.TENANT_ID || 'default-company';
+  const role = (options && options.role) || 'Admin';
+  return dashboardStore.listDashboards(companyId, role);
 });
+
+ipcMain.handle('dashboards:get', async (_event, id) => {
+  const companyId = process.env.TENANT_ID || 'default-company';
+  return dashboardStore.getDashboard(id, companyId);
+});
+
+ipcMain.handle('dashboards:create', async (_event, data) => {
+  const companyId = (data && data.companyId) || process.env.TENANT_ID || 'default-company';
+  const createdBy = os.userInfo().username || 'User';
+  const userRole = (data && data.userRole) || 'Admin';
+  return dashboardStore.createDashboard({
+    ...data,
+    companyId,
+    createdBy,
+    userRole
+  });
+});
+
+ipcMain.handle('dashboards:update', async (_event, data) => {
+  const { id, ...updates } = data || {};
+  const companyId = updates.companyId || process.env.TENANT_ID || 'default-company';
+  const userRole = updates.userRole || 'Admin';
+  return dashboardStore.updateDashboard(id, updates, companyId, userRole);
+});
+
+ipcMain.handle('dashboards:delete', async (_event, id) => {
+  const companyId = process.env.TENANT_ID || 'default-company';
+  return dashboardStore.deleteDashboard(id, companyId, 'Admin');
+});
+
+ipcMain.handle('dashboards:test', async (_event, config) => {
+  return await dashboardService.testApiConnection(config || {});
+});
+
+ipcMain.handle('dashboards:fetch-data', async (_event, id) => {
+  const companyId = process.env.TENANT_ID || 'default-company';
+  const dashboard = dashboardStore.getDashboardWithSecrets(id, companyId);
+  if (!dashboard) {
+    return {
+      success: false,
+      error: 'Dashboard configuration not found.'
+    };
+  }
+  const result = await dashboardService.executeApiRequest({
+    endpoint: dashboard.endpoint,
+    method: dashboard.method || 'GET',
+    authType: dashboard.auth_type,
+    credentials: dashboard.credentials || {},
+    timeoutMs: 12000
+  });
+
+  // Track status update on store
+  try {
+    const newStatus = result.success ? 'connected' : 'error';
+    if (dashboard.status !== newStatus) {
+      dashboardStore.updateDashboard(id, { status: newStatus }, companyId, 'Admin');
+    }
+  } catch (err) {
+    console.error('[Dashboard] Failed to persist connection status:', err);
+  }
+
+  return {
+    ...result,
+    dashboardName: dashboard.name
+  };
+});
+
+
+
 
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
@@ -1254,9 +1262,23 @@ function createTray() {
   tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Open WorkLens',
+      label: 'Open Desktop Widget',
       click: () => {
         showAndFocusWindow();
+      }
+    },
+    {
+      label: 'Open Dashboard',
+      click: () => {
+        createOrShowDashboard();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Exit WorkLens',
+      click: () => {
+        isQuitting = true;
+        app.quit();
       }
     }
   ]);

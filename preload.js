@@ -47,44 +47,42 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('get-app-version');
   },
 
-  // Activity Popup APIs
-  toggleActivityPopup: async () => {
-    return await ipcRenderer.invoke('toggle-activity-popup');
-  },
-
-  openActivityPopup: async () => {
-    return await ipcRenderer.invoke('open-activity-popup');
-  },
-
-  closeActivityPopup: async () => {
-    return await ipcRenderer.invoke('close-activity-popup');
-  },
-
   fetchActivityLogs: async () => {
     return await ipcRenderer.invoke('fetch-activity-logs');
   },
 
-  // Activity Popup Listeners/Signals
-  onPopupStatusChanged: (callback) => {
-    const listener = (event, status) => callback(status);
-    ipcRenderer.on('popup-status-changed', listener);
-    return () => ipcRenderer.removeListener('popup-status-changed', listener);
+  openDashboard: async () => {
+    return await ipcRenderer.invoke('open-dashboard');
   },
 
-  onUpdateArrowPosition: (callback) => {
-    const listener = (event, arrowLeft, isBelow) => callback(arrowLeft, isBelow);
-    ipcRenderer.on('update-arrow-position', listener);
-    return () => ipcRenderer.removeListener('update-arrow-position', listener);
+  closeDashboard: async () => {
+    return await ipcRenderer.invoke('close-dashboard');
   },
 
-  onRequestClose: (callback) => {
-    const listener = () => callback();
-    ipcRenderer.on('request-close', listener);
-    return () => ipcRenderer.removeListener('request-close', listener);
+  showMainWindow: async () => {
+    return await ipcRenderer.invoke('show-main-window');
   },
 
-  sendPopupReady: () => {
-    ipcRenderer.invoke('popup-ready');
+  minimizeWindow: async () => {
+    return await ipcRenderer.invoke('window-minimize');
+  },
+
+  maximizeWindow: async () => {
+    return await ipcRenderer.invoke('window-maximize');
+  },
+
+  isWindowMaximized: async () => {
+    return await ipcRenderer.invoke('is-window-maximized');
+  },
+
+  onWindowStateChange: (callback) => {
+    if (typeof callback === 'function') {
+      ipcRenderer.on('window-state-changed', (_event, data) => callback(data));
+    }
+  },
+
+  closeWindow: async () => {
+    return await ipcRenderer.invoke('window-close');
   },
 
   closeInactivityPopup: async () => {
@@ -97,5 +95,34 @@ contextBridge.exposeInMainWorld('api', {
 
   hideMainWindow: async () => {
     return await ipcRenderer.invoke('hide-main-window');
+  },
+
+  // Dynamic Dashboard Creation & API Integration
+  getDashboards: async (options) => {
+    return await ipcRenderer.invoke('dashboards:list', options);
+  },
+
+  getDashboard: async (id) => {
+    return await ipcRenderer.invoke('dashboards:get', id);
+  },
+
+  createDashboard: async (data) => {
+    return await ipcRenderer.invoke('dashboards:create', data);
+  },
+
+  updateDashboard: async (id, data) => {
+    return await ipcRenderer.invoke('dashboards:update', { id, ...data });
+  },
+
+  deleteDashboard: async (id) => {
+    return await ipcRenderer.invoke('dashboards:delete', id);
+  },
+
+  testDashboardApi: async (config) => {
+    return await ipcRenderer.invoke('dashboards:test', config);
+  },
+
+  fetchDashboardData: async (id) => {
+    return await ipcRenderer.invoke('dashboards:fetch-data', id);
   }
 });

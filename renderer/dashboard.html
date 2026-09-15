@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkLens | One Platform. All Teams.</title>
+  <meta name="description" content="WorkLens - Desktop Task & Activity Dashboard for teams.">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body>
+  <div class="app-layout">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-container">
+          <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="#165dcd" />
+            <path d="M8 11C8 9.34315 9.34315 8 11 8H21C22.6569 8 24 9.34315 24 11V21C24 22.6569 22.6569 24 21 24H11C9.34315 24 8 22.6569 8 21V11Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 16L15 19L20 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="brand-text">
+            <h1 class="brand-name">WorkLens</h1>
+            <p class="brand-tagline">One Platform. All Teams.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Menu -->
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="home" id="nav-home">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          <span class="nav-label">Home</span>
+        </button>
+
+        <button class="nav-item" data-view="active-time" id="nav-active-time">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span class="nav-label">Active time dashboard</span>
+        </button>
+
+        <button class="nav-item" data-view="project-tasks" id="nav-project-tasks">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          <span class="nav-label">Project Tasks</span>
+        </button>
+
+        <button class="nav-item" data-view="it-helpdesk" id="nav-it-helpdesk">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+          </svg>
+          <span class="nav-label">IT Help desk</span>
+        </button>
+
+        <button class="nav-item" data-view="admin-helpdesk" id="nav-admin-helpdesk">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="21" x2="21" y2="21"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            <polyline points="5 6 12 3 19 6"></polyline>
+            <line x1="4" y1="10" x2="4" y2="21"></line>
+            <line x1="20" y1="10" x2="20" y2="21"></line>
+            <line x1="8" y1="14" x2="8" y2="17"></line>
+            <line x1="12" y1="14" x2="12" y2="17"></line>
+            <line x1="16" y1="14" x2="16" y2="17"></line>
+          </svg>
+          <span class="nav-label">Admin Help desk</span>
+        </button>
+
+        <!-- Dynamically Created Dashboards Section -->
+        <div class="sidebar-section-divider" id="dynamic-dashboards-divider" style="display: none;"></div>
+        <div class="sidebar-section-header" id="dynamic-dashboards-header" style="display: none;">
+          <span class="section-title-label">CUSTOM DASHBOARDS</span>
+        </div>
+        <div class="dynamic-nav-group" id="dynamic-dashboards-container"></div>
+
+        <!-- Settings Option -->
+        <button class="nav-item" data-view="settings" id="nav-settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span class="nav-label">Settings</span>
+        </button>
+      </nav>
+
+      <!-- User Profile Card Bottom -->
+      <div class="sidebar-footer">
+        <div class="user-profile-card">
+          <div class="user-avatar" id="sidebar-user-avatar">KK</div>
+          <div class="user-details">
+            <span class="user-name" id="sidebar-user-name">Karthikeya</span>
+            <span class="user-role">Employee</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Application Area -->
+    <div class="main-wrapper">
+      <!-- Top Bar -->
+      <header class="topbar">
+        <div class="topbar-search">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="Search tasks, tickets, projects..." />
+        </div>
+
+        <div class="topbar-actions">
+          <!-- Notification Bell -->
+          <div class="notification-wrapper">
+            <button class="icon-btn" id="notification-btn" title="Notifications">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              <span class="badge-count">3</span>
+            </button>
+
+            <!-- Notifications Dropdown -->
+            <div class="dropdown-menu hidden" id="notifications-dropdown">
+              <div class="dropdown-header">
+                <h3>Notifications</h3>
+                <span class="badge-sm">3 New</span>
+              </div>
+              <div class="notification-list">
+                <div class="notification-item unread">
+                  <div class="notif-dot blue"></div>
+                  <div class="notif-content">
+                    <p class="notif-title">New IT ticket assigned to you</p>
+                    <span class="notif-time">10 minutes ago</span>
+                  </div>
+                </div>
+                <div class="notification-item unread">
+                  <div class="notif-dot green"></div>
+                  <div class="notif-content">
+                    <p class="notif-title">Server configuration marked completed</p>
+                    <span class="notif-time">1 hour ago</span>
+                  </div>
+                </div>
+                <div class="notification-item unread">
+                  <div class="notif-dot amber"></div>
+                  <div class="notif-content">
+                    <p class="notif-title">Approaching deadline: TASK-1026</p>
+                    <span class="notif-time">2 hours ago</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- User Profile Dropdown Pill -->
+          <div class="user-pill-wrapper">
+            <button class="user-pill" id="user-pill-btn">
+              <div class="user-avatar-sm" id="topbar-user-avatar">KK</div>
+              <span class="user-pill-name" id="topbar-user-name">Karthikeya</span>
+              <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="dropdown-menu user-menu hidden" id="user-dropdown">
+              <div class="user-menu-info">
+                <strong id="menu-user-name">Karthikeya</strong>
+                <span id="menu-user-id">Employee</span>
+              </div>
+              <div class="menu-divider"></div>
+              <button class="menu-item" id="menu-widget-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                Focus Desktop Widget
+              </button>
+              <button class="menu-item" id="menu-refresh-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Sync Data Now
+              </button>
+              <button class="menu-item text-danger" id="menu-quit-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                Exit WorkLens
+              </button>
+            </div>
+          </div>
+
+          <!-- Window Control Buttons (Frameless Desktop Support) -->
+          <div class="window-controls">
+            <button class="win-btn" id="win-min-btn" title="Minimize">
+              <svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.2"/></svg>
+            </button>
+            <button class="win-btn" id="win-max-btn" title="Maximize">
+              <svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+            </button>
+            <button class="win-btn win-close" id="win-close-btn" title="Close">
+              <svg viewBox="0 0 12 12"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5" stroke="currentColor" stroke-width="1.2"/><line x1="9.5" y1="2.5" x2="2.5" y2="9.5" stroke="currentColor" stroke-width="1.2"/></svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Scrollable Main Content Container -->
+      <main class="content-container">
+
+        <!-- ================= VIEW 1: HOME (REFERENCE DASHBOARD) ================= -->
+        <section class="dashboard-view active" id="view-home">
+          <!-- Welcome Banner -->
+          <div class="welcome-header">
+            <div class="welcome-left">
+              <h2 class="welcome-title">Good Morning, <span id="welcome-name">Karthikeya</span>! 👋</h2>
+              <p class="welcome-sub">Here's your task overview across projects and help desks.</p>
+            </div>
+            <div class="welcome-right">
+              <div class="date-badge" id="current-date-badge">Mon, 8 Sep 2026</div>
+              <span class="productive-text">Stay productive!</span>
+            </div>
+          </div>
+
+          <!-- Top 3 Stat Cards -->
+          <div class="stat-cards-grid">
+            <div class="stat-card" id="card-project-tasks">
+              <div class="stat-icon-box blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="stat-project-count">12</span>
+                <span class="stat-label">Project Tasks</span>
+              </div>
+            </div>
+
+            <div class="stat-card" id="card-it-desk">
+              <div class="stat-icon-box purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                  <polyline points="2 17 12 22 22 17"></polyline>
+                  <polyline points="2 12 12 17 22 12"></polyline>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="stat-it-count">5</span>
+                <span class="stat-label">IT Help Desk</span>
+              </div>
+            </div>
+
+            <div class="stat-card" id="card-admin-desk">
+              <div class="stat-icon-box green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                  <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="stat-admin-count">8</span>
+                <span class="stat-label">Admin Help Desk</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Middle Row: Recent Tasks (Left) & Task Distribution / Deadlines (Right) -->
+          <div class="middle-grid">
+            <!-- Left: Recent Tasks Table -->
+            <div class="card recent-tasks-card">
+              <div class="card-header">
+                <div class="card-title-group">
+                  <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                  </svg>
+                  <h3>Recent Tasks</h3>
+                </div>
+                <button class="link-btn" id="view-all-tasks-btn">View All →</button>
+              </div>
+
+              <div class="table-responsive">
+                <table class="tasks-table" id="tasks-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Task / Ticket</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Priority</th>
+                      <th>Due Date</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tasks-tbody">
+                    <!-- TASK-1024 -->
+                    <tr data-type="IT Help Desk" data-status="In Progress">
+                      <td class="task-id">TASK-1024</td>
+                      <td class="task-title">Update server configuration</td>
+                      <td><span class="badge badge-type-it">IT Help Desk</span></td>
+                      <td><span class="badge badge-status-inprogress">In Progress</span></td>
+                      <td><span class="priority-cell"><span class="dot dot-high"></span>High</span></td>
+                      <td class="task-date">08 Sep 2026</td>
+                      <td><button class="action-btn" title="Options">···</button></td>
+                    </tr>
+                    <!-- TASK-1025 -->
+                    <tr data-type="Admin Help Desk" data-status="Pending">
+                      <td class="task-id">TASK-1025</td>
+                      <td class="task-title">Employee Onboarding</td>
+                      <td><span class="badge badge-type-admin">Admin Help Desk</span></td>
+                      <td><span class="badge badge-status-pending">Pending</span></td>
+                      <td><span class="priority-cell"><span class="dot dot-medium"></span>Medium</span></td>
+                      <td class="task-date">10 Sep 2026</td>
+                      <td><button class="action-btn" title="Options">···</button></td>
+                    </tr>
+                    <!-- TASK-1026 -->
+                    <tr data-type="Project" data-status="In Progress">
+                      <td class="task-id">TASK-1026</td>
+                      <td class="task-title">Sales Dashboard Bug Fix</td>
+                      <td><span class="badge badge-type-project">Project</span></td>
+                      <td><span class="badge badge-status-inprogress">In Progress</span></td>
+                      <td><span class="priority-cell"><span class="dot dot-high"></span>High</span></td>
+                      <td class="task-date text-urgent">09 Sep 2026</td>
+                      <td><button class="action-btn" title="Options">···</button></td>
+                    </tr>
+                    <!-- TASK-1027 -->
+                    <tr data-type="IT Help Desk" data-status="Completed">
+                      <td class="task-id">TASK-1027</td>
+                      <td class="task-title">Laptop Request</td>
+                      <td><span class="badge badge-type-it">IT Help Desk</span></td>
+                      <td><span class="badge badge-status-completed">Completed</span></td>
+                      <td><span class="priority-cell"><span class="dot dot-low"></span>Low</span></td>
+                      <td class="task-date">05 Sep 2026</td>
+                      <td><button class="action-btn" title="Options">···</button></td>
+                    </tr>
+                    <!-- TASK-1028 -->
+                    <tr data-type="Admin Help Desk" data-status="Pending">
+                      <td class="task-id">TASK-1028</td>
+                      <td class="task-title">Access Card Request</td>
+                      <td><span class="badge badge-type-admin">Admin Help Desk</span></td>
+                      <td><span class="badge badge-status-pending">Pending</span></td>
+                      <td><span class="priority-cell"><span class="dot dot-medium"></span>Medium</span></td>
+                      <td class="task-date">11 Sep 2026</td>
+                      <td><button class="action-btn" title="Options">···</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Right Column: Task Distribution & Upcoming Deadlines -->
+            <div class="right-stack">
+              <!-- Task Distribution Donut Chart -->
+              <div class="card distribution-card">
+                <div class="card-header">
+                  <div class="card-title-group">
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <h3>Task Distribution</h3>
+                  </div>
+                </div>
+
+                <div class="donut-chart-container">
+                  <div class="donut-chart-wrapper">
+                    <svg class="donut-svg" viewBox="0 0 140 140">
+                      <!-- Project Tasks Arc (12 / 24 = 50%) Blue -->
+                      <circle class="donut-segment segment-project" cx="70" cy="70" r="48" fill="transparent" stroke="#2563eb" stroke-width="16" stroke-dasharray="150.8 150.8" stroke-dashoffset="0"></circle>
+                      <!-- IT Help Desk Arc (8 / 24 = 33.3%) Purple -->
+                      <circle class="donut-segment segment-it" cx="70" cy="70" r="48" fill="transparent" stroke="#7c3aed" stroke-width="16" stroke-dasharray="100.5 201" stroke-dashoffset="-150.8"></circle>
+                      <!-- Admin Help Desk Arc (4 / 24 = 16.7%) Green -->
+                      <circle class="donut-segment segment-admin" cx="70" cy="70" r="48" fill="transparent" stroke="#10b981" stroke-width="16" stroke-dasharray="50.3 251.3" stroke-dashoffset="-251.3"></circle>
+                    </svg>
+                    <div class="donut-center-text">
+                      <span class="donut-total">29</span>
+                      <span class="donut-label">Total</span>
+                    </div>
+                  </div>
+
+                  <div class="chart-legend">
+                    <div class="legend-item">
+                      <div class="legend-left">
+                        <span class="legend-dot dot-blue"></span>
+                        <span class="legend-name">Project Tasks</span>
+                      </div>
+                      <span class="legend-val">12</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-left">
+                        <span class="legend-dot dot-purple"></span>
+                        <span class="legend-name">IT Help Desk</span>
+                      </div>
+                      <span class="legend-val">8</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-left">
+                        <span class="legend-dot dot-green"></span>
+                        <span class="legend-name">Admin Help Desk</span>
+                      </div>
+                      <span class="legend-val">4</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Upcoming Deadlines Card -->
+              <div class="card deadlines-card">
+                <div class="card-header">
+                  <div class="card-title-group">
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <h3>Upcoming Deadlines</h3>
+                  </div>
+                  <button class="link-btn">View All →</button>
+                </div>
+
+                <div class="deadlines-list">
+                  <div class="deadline-item">
+                    <div class="deadline-date-badge urgent">
+                      <span class="day">08</span>
+                      <span class="month">Sep</span>
+                    </div>
+                    <div class="deadline-details">
+                      <p class="deadline-title">Update server configuration</p>
+                      <span class="deadline-category">IT Help Desk</span>
+                    </div>
+                    <span class="priority-indicator"><span class="dot dot-high"></span>High</span>
+                  </div>
+
+                  <div class="deadline-item">
+                    <div class="deadline-date-badge urgent">
+                      <span class="day">09</span>
+                      <span class="month">Sep</span>
+                    </div>
+                    <div class="deadline-details">
+                      <p class="deadline-title">Sales Dashboard Bug Fix</p>
+                      <span class="deadline-category">Project</span>
+                    </div>
+                    <span class="priority-indicator"><span class="dot dot-high"></span>High</span>
+                  </div>
+
+                  <div class="deadline-item">
+                    <div class="deadline-date-badge">
+                      <span class="day">10</span>
+                      <span class="month">Sep</span>
+                    </div>
+                    <div class="deadline-details">
+                      <p class="deadline-title">Employee Onboarding</p>
+                      <span class="deadline-category">Admin Help Desk</span>
+                    </div>
+                    <span class="priority-indicator"><span class="dot dot-medium"></span>Medium</span>
+                  </div>
+
+                  <div class="deadline-item">
+                    <div class="deadline-date-badge">
+                      <span class="day">11</span>
+                      <span class="month">Sep</span>
+                    </div>
+                    <div class="deadline-details">
+                      <p class="deadline-title">Access Card Request</p>
+                      <span class="deadline-category">Admin Card Desk</span>
+                    </div>
+                    <span class="priority-indicator"><span class="dot dot-medium"></span>Medium</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Row: Quick Actions (Left) & Recent Activity (Right) -->
+          <div class="bottom-grid">
+            <!-- Quick Actions -->
+            <div class="card quick-actions-card">
+              <div class="card-header">
+                <div class="card-title-group">
+                  <svg class="section-icon text-blue" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                  </svg>
+                  <h3>Quick Actions</h3>
+                </div>
+              </div>
+
+              <div class="actions-buttons-row">
+                <button class="action-tile action-tile-blue" id="btn-create-project-task">
+                  <div class="tile-icon-circle">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </div>
+                  <span class="tile-text">Create Project Task</span>
+                </button>
+
+                <button class="action-tile action-tile-purple" id="btn-create-it-ticket">
+                  <div class="tile-icon-circle">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                      <polyline points="2 17 12 22 22 17"></polyline>
+                      <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                  </div>
+                  <span class="tile-text">Create IT Help Desk</span>
+                </button>
+
+                <button class="action-tile action-tile-green" id="btn-create-admin-ticket">
+                  <div class="tile-icon-circle">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                    </svg>
+                  </div>
+                  <span class="tile-text">Create Admin Help Desk</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Recent Activity Timeline -->
+            <div class="card activity-timeline-card">
+              <div class="card-header">
+                <div class="card-title-group">
+                  <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                  <h3>Recent Activity</h3>
+                </div>
+                <button class="link-btn">View All →</button>
+              </div>
+
+              <div class="timeline-container">
+                <div class="timeline-track"></div>
+
+                <div class="timeline-item">
+                  <div class="timeline-node node-green"></div>
+                  <div class="timeline-info">
+                    <p class="timeline-title">You updated a task</p>
+                    <span class="timeline-desc">Server configuration</span>
+                  </div>
+                  <span class="timeline-time">10:24 AM</span>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-node node-cyan"></div>
+                  <div class="timeline-info">
+                    <p class="timeline-title">New IT ticket assigned to you</p>
+                    <span class="timeline-desc">Laptop Request</span>
+                  </div>
+                  <span class="timeline-time">09:15 AM</span>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-node node-blue"></div>
+                  <div class="timeline-info">
+                    <p class="timeline-title">Project task marked complete</p>
+                    <span class="timeline-desc">Sales Report Automation</span>
+                  </div>
+                  <span class="timeline-time">Yesterday</span>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-node node-orange"></div>
+                  <div class="timeline-info">
+                    <p class="timeline-title">New admin request raised</p>
+                    <span class="timeline-desc">Access Card Request</span>
+                  </div>
+                  <span class="timeline-time">Yesterday</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= VIEW 2: ACTIVE TIME DASHBOARD ================= -->
+        <section class="dashboard-view hidden" id="view-active-time">
+          <div class="welcome-header">
+            <div class="welcome-left">
+              <h2 class="welcome-title">Active Time Dashboard ⏱️</h2>
+              <p class="welcome-sub">Real-time telemetry, active window monitoring, and Redmine synchronization.</p>
+            </div>
+            <div class="welcome-right">
+              <div class="status-pill" id="live-status-pill">
+                <span class="status-pulse-dot active" id="live-status-dot"></span>
+                <span id="live-status-text">Active (Online)</span>
+              </div>
+              <button class="btn btn-secondary" id="active-refresh-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Sync Now
+              </button>
+            </div>
+          </div>
+
+          <!-- Telemetry Summary Cards -->
+          <div class="stat-cards-grid telemetry-cards-grid">
+            <div class="stat-card">
+              <div class="stat-icon-box blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="active-time-today-val">0h</span>
+                <span class="stat-label">Active Time Today</span>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon-box purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 14 10"></polyline>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="active-time-yesterday-val">0h</span>
+                <span class="stat-label">Active Time Yesterday</span>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon-box green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="redmine-effort-today-val">0h</span>
+                <span class="stat-label">Redmine Effort Today</span>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon-box amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-number" id="redmine-effort-yesterday-val">0h</span>
+                <span class="stat-label">Redmine Effort Yesterday</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Application Activity Logs Table -->
+          <div class="card app-activity-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                  <line x1="9" y1="20" x2="15" y2="20"></line>
+                  <line x1="12" y1="4" x2="12" y2="20"></line>
+                </svg>
+                <h3>Tracked Applications & Websites Today</h3>
+              </div>
+              <span class="badge badge-type-it" id="log-count-badge">0 applications recorded</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="tasks-table" id="activity-log-table">
+                <thead>
+                  <tr>
+                    <th>Application</th>
+                    <th>Recent Window Title</th>
+                    <th>Status</th>
+                    <th>Active Duration</th>
+                    <th>Share</th>
+                  </tr>
+                </thead>
+                <tbody id="activity-log-tbody">
+                  <tr>
+                    <td colspan="5" class="empty-cell">
+                      <div class="loading-spinner"></div>
+                      <p>Loading application activity...</p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= VIEW 3: SETTINGS (DASHBOARD MANAGEMENT) ================= -->
+        <section class="dashboard-view hidden" id="view-settings">
+          <div class="welcome-header">
+            <div class="welcome-left">
+              <h2 class="welcome-title">Settings ⚙️</h2>
+              <p class="welcome-sub">Manage workspace preferences, team configurations, and external API dashboards.</p>
+            </div>
+            <div class="welcome-right">
+              <span class="badge badge-type-it" id="tenant-badge">Tenant: Default Organization</span>
+            </div>
+          </div>
+
+          <!-- Dashboard Management Card -->
+          <div class="card dashboard-mgmt-card">
+            <div class="card-header flex-between">
+              <div class="card-title-group">
+                <svg class="section-icon text-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="3" y1="9" x2="21" y2="9"></line>
+                  <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg>
+                <div>
+                  <h3 class="mgmt-title">Dashboard Management</h3>
+                  <p class="mgmt-desc">Create and manage custom dashboards by connecting external APIs.</p>
+                </div>
+              </div>
+              <button class="btn btn-primary" id="btn-open-create-dashboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                + Create Dashboard
+              </button>
+            </div>
+
+            <!-- Dashboards Table -->
+            <div class="table-responsive" id="dashboards-table-container">
+              <table class="tasks-table" id="dashboards-table">
+                <thead>
+                  <tr>
+                    <th>Dashboard</th>
+                    <th>API Endpoint</th>
+                    <th>Method</th>
+                    <th>Authentication</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboards-tbody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State for Custom Dashboards -->
+            <div class="empty-dashboards-state hidden" id="dashboards-empty-state">
+              <div class="empty-icon-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+              </div>
+              <h4>No custom dashboards yet.</h4>
+              <p>Connect an API and create your first WorkLens dashboard.</p>
+              <button class="btn btn-primary mt-3" id="btn-empty-create-dashboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                + Create Dashboard
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= VIEW 4: DYNAMIC DASHBOARD (GENERIC API RENDERER) ================= -->
+        <section class="dashboard-view hidden" id="view-dynamic-dashboard">
+          <div class="welcome-header dyn-header">
+            <div class="welcome-left">
+              <div class="dyn-title-row">
+                <h2 class="welcome-title" id="dyn-dash-title">Dynamic Dashboard</h2>
+                <div class="status-pill ml-3" id="dyn-dash-status-pill">
+                  <span class="status-pulse-dot active" id="dyn-dash-status-dot"></span>
+                  <span id="dyn-dash-status-text">Connected</span>
+                </div>
+              </div>
+              <p class="welcome-sub font-mono" id="dyn-dash-endpoint">https://api.example.com/data</p>
+            </div>
+            <div class="welcome-right flex-gap-2">
+              <button class="btn btn-secondary" id="dyn-dash-refresh-btn" title="Refresh Dashboard Data">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                Refresh
+              </button>
+              <button class="btn btn-outline" id="dyn-dash-edit-btn" title="Edit Configuration">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                Edit
+              </button>
+              <button class="btn btn-danger-outline" id="dyn-dash-delete-btn" title="Delete Dashboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Delete
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Loading Shimmer -->
+          <div class="dyn-loading-container hidden" id="dyn-dash-loading">
+            <div class="stat-cards-grid">
+              <div class="stat-card shimmer-box"></div>
+              <div class="stat-card shimmer-box"></div>
+              <div class="stat-card shimmer-box"></div>
+            </div>
+            <div class="card mt-4 shimmer-box h-300"></div>
+          </div>
+
+          <!-- Dynamic Error Alert -->
+          <div class="dyn-error-card hidden" id="dyn-dash-error">
+            <div class="error-icon-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div class="error-details">
+              <h4 id="dyn-dash-error-title">Unable to fetch dashboard data</h4>
+              <p id="dyn-dash-error-desc">Please verify your network connection, API endpoint, and authentication token.</p>
+            </div>
+            <div class="error-actions">
+              <button class="btn btn-secondary" id="dyn-dash-error-retry-btn">Retry Connection</button>
+              <button class="btn btn-outline" id="dyn-dash-error-edit-btn">Edit Settings</button>
+            </div>
+          </div>
+
+          <!-- Dynamic Rendered Content (KPI Cards, Tables, Key-Values) -->
+          <div class="dyn-content-body" id="dyn-dash-content">
+            <!-- Numeric KPI Cards Grid -->
+            <div class="stat-cards-grid dyn-kpi-grid hidden" id="dyn-dash-kpi-grid"></div>
+
+            <!-- Dynamic Table for Array Data -->
+            <div class="card dyn-table-card hidden" id="dyn-dash-table-card">
+              <div class="card-header flex-between">
+                <div class="card-title-group">
+                  <svg class="section-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                  </svg>
+                  <h3 id="dyn-table-title">Data Records</h3>
+                </div>
+                <div class="table-search-box">
+                  <input type="text" id="dyn-table-search" class="search-input-sm" placeholder="Filter rows..." />
+                  <span class="badge badge-sm" id="dyn-table-count">0 items</span>
+                </div>
+              </div>
+              <div class="table-responsive max-h-500">
+                <table class="tasks-table dyn-auto-table" id="dyn-auto-table">
+                  <thead id="dyn-table-thead"></thead>
+                  <tbody id="dyn-table-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Dynamic Key-Value Grid for Object Data -->
+            <div class="card dyn-kv-card hidden" id="dyn-dash-kv-card">
+              <div class="card-header">
+                <div class="card-title-group">
+                  <svg class="section-icon text-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                    <line x1="9" y1="20" x2="15" y2="20"></line>
+                    <line x1="12" y1="4" x2="12" y2="20"></line>
+                  </svg>
+                  <h3>Key / Value Attributes</h3>
+                </div>
+              </div>
+              <div class="kv-grid" id="dyn-kv-grid"></div>
+            </div>
+
+            <!-- Collapsible Raw Response Inspector -->
+            <div class="card dyn-raw-card" id="dyn-dash-raw-card">
+              <div class="card-header cursor-pointer" id="dyn-raw-toggle-btn">
+                <div class="card-title-group">
+                  <svg class="section-icon text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"></polyline>
+                    <polyline points="8 6 2 12 8 18"></polyline>
+                  </svg>
+                  <h3>Raw API Response Payload</h3>
+                </div>
+                <span class="link-btn" id="dyn-raw-toggle-label">Expand ▼</span>
+              </div>
+              <div class="raw-json-container hidden" id="dyn-raw-content">
+                <pre class="raw-code-block" id="dyn-raw-json"></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Quick Modal for Task Creation -->
+  <div class="modal-overlay hidden" id="task-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Create New Task</h3>
+        <button class="modal-close-btn" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="task-input-title">Task / Ticket Title</label>
+          <input type="text" id="task-input-title" class="form-input" placeholder="e.g. Deploy staging database patch" />
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="task-input-type">Category</label>
+            <select id="task-input-type" class="form-select">
+              <option value="Project">Project Task</option>
+              <option value="IT Help Desk">IT Help Desk</option>
+              <option value="Admin Help Desk">Admin Help Desk</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="task-input-priority">Priority</label>
+            <select id="task-input-priority" class="form-select">
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="task-input-due">Due Date</label>
+          <input type="date" id="task-input-due" class="form-input" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="modal-submit-btn">Create Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Create / Edit Dashboard -->
+  <div class="modal-overlay hidden" id="dashboard-modal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-header-with-icon">
+          <div class="modal-icon-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <path d="M3 9h18M9 21V9"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 id="dash-modal-title">Create Dashboard</h3>
+            <p class="modal-sub">Configure external API integration for real-time visualization</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="dash-modal-close-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Error / Validation Banner -->
+        <div class="modal-alert-box alert-error hidden" id="dash-form-alert" style="display: none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" class="alert-icon">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span id="dash-form-alert-msg">Validation error</span>
+        </div>
+
+        <!-- Connection Test Status Banner -->
+        <div class="modal-alert-box alert-info hidden" id="dash-test-banner" style="display: none;">
+          <div class="test-spinner" id="dash-test-spinner" style="display: none;"></div>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" class="alert-icon hidden" id="dash-test-success-icon" style="display: none;">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" class="alert-icon hidden" id="dash-test-fail-icon" style="display: none;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          <span id="dash-test-banner-msg">Testing API...</span>
+        </div>
+
+        <!-- Field 1: Dashboard Name -->
+        <div class="form-group">
+          <label for="dash-input-name">Dashboard Name <span class="text-danger">*</span></label>
+          <input type="text" id="dash-input-name" class="form-input" placeholder="Enter dashboard name (e.g. IT Desk, Admin Desk, Redmine)" />
+          <span class="field-hint" id="dash-name-hint">Name must be 2-50 characters and unique per tenant.</span>
+        </div>
+
+        <!-- Field 2: API Endpoint -->
+        <div class="form-group">
+          <label for="dash-input-endpoint">API Endpoint <span class="text-danger">*</span></label>
+          <input type="url" id="dash-input-endpoint" class="form-input font-mono" placeholder="https://example.com/api/data" />
+          <span class="field-hint">Full HTTP or HTTPS endpoint returning JSON data.</span>
+        </div>
+
+        <!-- Row: Method & Auth Type -->
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="dash-input-method">HTTP Method</label>
+            <select id="dash-input-method" class="form-select">
+              <option value="GET" selected>GET</option>
+              <option value="POST">POST</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-2">
+            <label for="dash-input-auth-type">Authentication Type</label>
+            <select id="dash-input-auth-type" class="form-select">
+              <option value="apikey" selected>API Key</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="basic">Basic Auth</option>
+              <option value="none">No Authentication</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Token / Key Input (Masked) -->
+        <div class="form-group" id="dash-group-token">
+          <label for="dash-input-token">API Key / Token <span class="text-danger" id="dash-token-required-star">*</span></label>
+          <div class="password-input-wrapper">
+            <input type="password" id="dash-input-token" class="form-input font-mono" placeholder="Enter API key or Bearer token" />
+            <button type="button" class="btn-toggle-mask" id="dash-btn-toggle-mask" title="Show / Hide">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mask-icon">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <span class="field-hint" id="dash-token-hint">Masked upon saving. Credentials are proxy-dispatched by the backend.</span>
+        </div>
+
+        <!-- Basic Auth inputs (conditionally shown) -->
+        <div class="form-row hidden" id="dash-group-basic">
+          <div class="form-group flex-1">
+            <label for="dash-input-username">Username</label>
+            <input type="text" id="dash-input-username" class="form-input" placeholder="Enter username" />
+          </div>
+          <div class="form-group flex-1">
+            <label for="dash-input-password">Password</label>
+            <input type="password" id="dash-input-password" class="form-input" placeholder="Enter password" />
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="dash-modal-cancel-btn">Cancel</button>
+        <button class="btn btn-outline" id="dash-modal-test-btn">Test Connection</button>
+        <button class="btn btn-primary" id="dash-modal-submit-btn">Create Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Dashboard Confirmation Modal -->
+  <div class="modal-overlay hidden" id="dashboard-delete-modal">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h3 class="text-danger">Delete Dashboard</h3>
+        <button class="modal-close-btn" id="dash-delete-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-prompt-text">
+          Are you sure you want to delete <strong id="delete-dash-name-target">this dashboard</strong>?
+        </p>
+        <p class="modal-prompt-sub text-muted">
+          This will permanently remove the configuration and remove it from the sidebar navigation.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="dash-delete-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="dash-delete-confirm-btn">Delete Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="dashboard.js"></script>
+</body>
+
+</html>

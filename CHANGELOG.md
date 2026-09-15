@@ -4,6 +4,19 @@ All notable changes to the WorkLens Desktop Timelog application are documented b
 
 ---
 
+## [1.2.0] - 2026-09-08
+### Added
+- **WorkLens Desktop Dashboard**: Transformed the application from a small pinned widget into a comprehensive, modern dark-themed SaaS desktop dashboard (1280px × 820px, resizable) based on the reference design.
+- **Unified Navigation Sidebar**: Added quick navigation across Home, Active Time Dashboard, Project Tasks, IT Help Desk, and Admin Help Desk, with user profile footer.
+- **Home Overview Hub**: Added real-time Project, IT, and Admin stat cards, Recent Tasks table with status and priority badges, Task Distribution SVG donut chart, Upcoming Deadlines, Quick Action triggers, and Recent Activity vertical timeline.
+- **Integrated Active Time Dashboard**: Elevated the active tracking metrics and application/window usage logs into a dedicated view with duration analytics and cached process icons.
+- **Custom Desktop Window Controls**: Integrated minimize, maximize/restore, and close window controls for the frameless desktop interface.
+
+### Removed
+- **Activity Popup Window**: Removed the legacy separate `activity-popup.html`, `activity-popup.css`, `activity-popup.js`, and associated IPC channels (`toggle-activity-popup`, `open-activity-popup`, `close-activity-popup`, `popup-ready`).
+
+---
+
 ## [1.1.0] - 2026-07-23
 ### Added
 - **API Server Load Optimization**: Redesigned the sync behavior from active 15-second POST intervals to an offline-first batched sync mechanism.
