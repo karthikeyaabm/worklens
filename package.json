@@ -16,6 +16,7 @@
   "build": {
     "appId": "com.worklens.desktop",
     "productName": "WorkLens",
+    "publisherName": "ABM Knowledgeware Ltd.",
     "icon": "assets/icon.png",
     "files": [
       "**/*"
