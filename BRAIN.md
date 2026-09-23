@@ -121,9 +121,9 @@ This is the application startup handler. Execution flows as follows:
 *   Acquires the single-instance lock via `app.requestSingleInstanceLock()`.
 *   Sets up system tray hooks and registers background loops:
     *   **Inactivity Check Interval (1 sec):** Closed-loop verification of user idle status.
-    *   **Activity Tracking Tick (2 sec):** Queries active window titles and appends/consolidates them.
-    *   **Flush Sync Worker (2 min):** Flushes local cache records to the Redmine API.
-*   Executes update validations and binds power monitor state listeners (suspend, resume, lock, unlock).
+    *   **Activity Tracking Tick (2 sec):** Queries active window titles and appends/consolidates them with clock skew / time jump protection.
+    *   **Flush Sync Worker (2 min):** Flushes local cache records to the Redmine API with duration and date sanity filtering.
+*   Executes update validations and binds power monitor and system lifecycle state listeners (suspend, resume, shutdown, session-end, lock, unlock).
 
 ### 2. IPC Context Bridge: [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js)
 The bridge scripts run before renderer files load. It exposes a restricted `window.api` namespace containing method call mappings. It acts as a security barrier preventing the UI from executing arbitrary Node.js scripts.
@@ -258,6 +258,17 @@ sequenceDiagram
     *   `longKeyHold` (+30): A key is held down continuously for >= 30 seconds. This also directly triggers the suspicious state.
     *   `windowSwitchWithoutInteraction` (+20): Window focus switches occur without corresponding key/mouse actions inside the windows.
     *   `softwareWindowSwitch` (+80): Window focus switches occur without any physical keyboard or mouse events (e.g. software API focus manipulation). Directly triggers suspicious state.
+
+### 7. Sanity Guards & Time Skew Protection
+*   **Purpose:** Prevent corrupted, inflated, or anomalous time entries caused by system sleep/wake, lid closes, CMOS battery glitches, or Windows Time Service clock jumps (e.g. Secure Time Seeding jumping to future years like 2050).
+*   **Files Involved:**
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js)
+    *   [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js)
+*   **Implemented Guards:**
+    *   **Time-Jump / Clock Skew Guard (`CLOCK_SKEW_THRESHOLD_MS = 15000`):** If the elapsed time between two 2-second tracking ticks exceeds 15 seconds (system suspended, laptop lid closed, or clock jumped forward) or is negative (< -5s, clock jumped backward), the active session is safely closed at the last valid tick timestamp rather than stretching over the sleep duration.
+    *   **Max Session Duration Cap (`MAX_SESSION_DURATION = 43200`):** Caps any individual continuous session at a strict maximum of 12 hours (43,200 seconds). Prevents abnormal sessions (such as 88 hours or 210,384 hours) from ever being recorded.
+    *   **Future Year & Corrupt Date Filter:** In `flushPendingClosedSessions()` and `getEligibleClosedSessions()`, any session whose start/end year is in the future (`> currentYear + 1`) or precedes `2024`, or whose duration exceeds 12 hours, is rejected from syncing to Redmine and purged.
+    *   **System Shutdown & Session-End Handlers:** Binds `powerMonitor.on('shutdown')` and Electron `app.on('session-end')` to guarantee graceful session closure before Windows terminates the process on logoff or shutdown.
     *   `artificialIdleRecovery`: Resume/unlock followed immediately by window switching without input events.
 *   **Loophole Prevention & Graceful Recovery:**
     *   **Window Switch Loophole Fixed**: Switching active windows no longer resets the suspicion status. Only genuine user interaction (different key pressed, natural curved mouse movement, scroll, or click) can reduce suspicion.

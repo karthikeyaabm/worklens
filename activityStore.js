@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
+const MAX_SESSION_DURATION = 12 * 60 * 60; // 12 hours (43,200s) max session limit
+
 let queueFilePath = null;
 
 function getQueueFilePath() {
@@ -106,7 +108,11 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
 
   const startDateObj = new Date(start);
   const endDateObj = new Date(end);
-  const duration = session.duration !== undefined ? session.duration : Math.floor((endDateObj - startDateObj) / 1000);
+  let duration = session.duration !== undefined ? session.duration : Math.floor((endDateObj - startDateObj) / 1000);
+  if (duration < 0) duration = 0;
+  if (duration > MAX_SESSION_DURATION) {
+    duration = MAX_SESSION_DURATION;
+  }
 
   if (index >= 0) {
     // Update existing session
@@ -158,8 +164,13 @@ function closeOrphanedSessions() {
   const updated = chunks.map(c => {
     if (!c.closed) {
       modified = true;
+      let duration = c.duration || 0;
+      if (duration > MAX_SESSION_DURATION) {
+        duration = MAX_SESSION_DURATION;
+      }
       return {
         ...c,
+        duration: duration,
         closed: true,
         updated_at: new Date().toISOString()
       };
@@ -175,9 +186,20 @@ function closeOrphanedSessions() {
 function getEligibleClosedSessions() {
   const chunks = readChunks();
   const now = Date.now();
+  const currentYear = new Date().getFullYear();
   return chunks.filter(c => {
     if (!c.closed) return false;
     if (c.synced) return false;
+
+    // Sanity Guard: Filter out corrupt/future year dates or excessive durations
+    if (c.duration && c.duration > MAX_SESSION_DURATION) return false;
+    const startYear = c.start_time ? new Date(c.start_time).getFullYear() : null;
+    const endYear = c.end_time ? new Date(c.end_time).getFullYear() : null;
+    if ((startYear && (startYear > currentYear + 1 || startYear < 2024)) ||
+        (endYear && (endYear > currentYear + 1 || endYear < 2024))) {
+      return false;
+    }
+
     if (c.retry_count === 0) return true;
 
     // Exponential backoff logic: 2^(retry_count - 1) minutes, max 60 minutes

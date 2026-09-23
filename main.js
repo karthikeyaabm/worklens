@@ -28,6 +28,11 @@ const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger thresh
 const IDLE_CHECK_INTERVAL_MS = 1000; // 1 second interval to close quickly on user activity
 const POPUP_AUTO_CLOSE_MS = 15000; // 15 seconds auto-close if no user action
 
+// Sanity Guard Configuration
+const MAX_SESSION_DURATION = 12 * 60 * 60; // 12 hours (43,200 seconds) max session limit
+const CLOCK_SKEW_THRESHOLD_MS = 15 * 1000; // 15 seconds max tick gap (sleep / clock jump)
+let lastTickTimestamp = Date.now();
+
 let inactivityPopup = null;
 let inactivityPopupShown = false;
 let isSystemLocked = false;
@@ -498,6 +503,21 @@ async function flushPendingClosedSessions() {
         continue;
       }
 
+      // Sanity Guard: Invalidate sessions exceeding 12h or corrupt/future dates
+      if (session.duration > MAX_SESSION_DURATION) {
+        console.warn(`[Sanity Guard] Dropping session ${session.local_id}: duration ${session.duration}s exceeds 12h limit.`);
+        markSessionSynced(session.local_id);
+        continue;
+      }
+
+      const sessionDate = new Date(session.end_time || session.start_time);
+      const currentYear = new Date().getFullYear();
+      if (isNaN(sessionDate.getTime()) || sessionDate.getFullYear() > currentYear + 1 || sessionDate.getFullYear() < 2024) {
+        console.warn(`[Sanity Guard] Dropping session ${session.local_id}: year ${sessionDate.getFullYear()} is invalid.`);
+        markSessionSynced(session.local_id);
+        continue;
+      }
+
       if (!session.user_id) {
         const uId = await getUserId();
         if (uId) {
@@ -539,8 +559,10 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
     const isSameDay = new Date(currentRecord.startTime).toDateString() === now.toDateString();
     const isSameReason = currentRecord.reason === reason;
+    const sessionDuration = Math.floor((now - currentRecord.startTime) / 1000);
+    const isDurationExceeded = sessionDuration >= MAX_SESSION_DURATION;
 
-    if (isSameApp && isSameTitle && isSameStatus && isSameDay && isSameReason) {
+    if (isSameApp && isSameTitle && isSameStatus && isSameDay && isSameReason && !isDurationExceeded) {
       // Continue existing session - update activity_type from latest evaluation
       currentRecord.endTime = now;
       currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
@@ -572,8 +594,18 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
 
 function closeCurrentSession(endTime = new Date()) {
   if (!currentRecord) return;
+  // Sanity Guard: Ensure valid end time and cap duration at 12 hours max
+  if (endTime < currentRecord.startTime) {
+    endTime = new Date(currentRecord.startTime);
+  }
+  let duration = Math.floor((endTime - currentRecord.startTime) / 1000);
+  if (duration > MAX_SESSION_DURATION) {
+    console.warn(`[Sanity Guard] Capping session duration from ${duration}s to ${MAX_SESSION_DURATION}s.`);
+    duration = MAX_SESSION_DURATION;
+    endTime = new Date(currentRecord.startTime.getTime() + MAX_SESSION_DURATION * 1000);
+  }
   currentRecord.endTime = endTime;
-  currentRecord.duration = Math.floor((endTime - currentRecord.startTime) / 1000);
+  currentRecord.duration = duration;
   currentRecord.closed = true;
 
   saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
@@ -584,6 +616,22 @@ function closeCurrentSession(endTime = new Date()) {
 // Main tracking tick
 async function trackTick() {
   try {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const elapsedSinceLastTick = nowMs - lastTickTimestamp;
+
+    // Guard 1: Time-Jump / Clock Skew Guard (Sleep / Wakeup / Lid Close / Clock Jumps)
+    // Normal interval is 2000ms. If elapsed > 15000ms or clock jumped backward (< -5000ms)
+    if (lastTickTimestamp && (elapsedSinceLastTick > CLOCK_SKEW_THRESHOLD_MS || elapsedSinceLastTick < -5000)) {
+      console.warn(`[Sanity Guard] System time jump/sleep detected! Elapsed: ${Math.round(elapsedSinceLastTick / 1000)}s.`);
+      if (currentRecord) {
+        // Safely close the previous session at the last known valid tick time
+        const safeCloseTime = new Date(Math.min(lastTickTimestamp + 2000, nowMs));
+        closeCurrentSession(safeCloseTime);
+      }
+    }
+    lastTickTimestamp = nowMs;
+
     const userId = await getUserId();
     if (!userId) return;
 
@@ -677,7 +725,7 @@ async function trackTick() {
       currentStatus = 'Inactive';
     }
 
-    const now = new Date();
+    // Reuse now from tick start
     startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now, antiAfkReason, activityType);
   } catch (err) {
     console.error('Error in activity tracking tick:', err);
@@ -1401,7 +1449,14 @@ if (gotTheLock) {
 
     powerMonitor.on('resume', async () => {
       console.log('System resumed, restarting tracking...');
+      lastTickTimestamp = Date.now();
       trackTick();
+      flushPendingClosedSessions();
+    });
+
+    powerMonitor.on('shutdown', () => {
+      console.log('System shutting down, closing current activity...');
+      closeCurrentSession(new Date());
       flushPendingClosedSessions();
     });
 
@@ -1418,6 +1473,12 @@ if (gotTheLock) {
   });
 
   // Graceful exit
+  app.on('session-end', () => {
+    console.log('[System] Windows session ending (logoff/shutdown), closing session...');
+    closeCurrentSession(new Date());
+    flushPendingClosedSessions();
+  });
+
   app.on('before-quit', async (event) => {
     isQuitting = true;
     stopInactivityCheck();
