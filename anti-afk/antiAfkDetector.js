@@ -157,6 +157,65 @@ function resumeActivity(context) {
 }
 
 /**
+ * Maps an evaluation result to an activity_type string based on behavior indicators.
+ * Uses the indicators from behavior analysis (not hardcoded status) to determine type.
+ * @param {Object} evaluation - Result from evaluateActivity()
+ * @returns {string} activity_type classification
+ */
+function mapDecisionToActivityType(evaluation) {
+  if (!evaluation) return 'Unknown';
+
+  const indicators = evaluation.indicators || {};
+  const metrics = evaluation.metrics || {};
+
+  // Check for any activity: mouse, window, or keyboard
+  const hasMouseMovement = (metrics.mouseDistance || 0) > 5;
+  const hasWindowActivity = (metrics.windowSwitchCount || 0) > 0;
+  const hasKeyboardActivity = !!(
+    indicators.sameKeyRatio ||
+    indicators.constantInterval ||
+    indicators.lowEntropy ||
+    indicators.longKeyHold
+  );
+
+  if (!hasMouseMovement && !hasWindowActivity && !hasKeyboardActivity) {
+    return 'No Activity';
+  }
+
+  // Mouse automation patterns
+  if (indicators.repeatedMouseMovement) return 'Mouse Fake Activity';
+  if (indicators.periodicClicks) return 'Periodic Clicks';
+
+  // Keyboard automation patterns
+  if (indicators.sameKeyRatio || indicators.constantInterval || indicators.lowEntropy) {
+    return 'Keyboard Fake Activity';
+  }
+  if (indicators.longKeyHold) return 'Key Press Pattern';
+
+  // Window switching patterns
+  if (indicators.pingPongSwitch) return 'Back and Forth';
+
+  // Software-initiated or interaction-less window switches
+  if (indicators.softwareWindowSwitch || indicators.windowSwitchWithoutInteraction) {
+    return 'Unknown';
+  }
+
+  // Watch status: some minor suspicious indicators but below threshold
+  if (evaluation.status === 'Watch') return 'Unknown';
+
+  return 'Human Activity';
+}
+
+/**
+ * Returns the current activity_type classification based on the latest evaluation.
+ * @returns {string}
+ */
+function getActivityType() {
+  const evaluation = evaluateActivity();
+  return mapDecisionToActivityType(evaluation);
+}
+
+/**
  * Resets all internal state and clears queues (primarily for testing).
  */
 function clear() {
@@ -270,6 +329,8 @@ module.exports = {
   recordWindowChange,
   evaluateActivity,
   isUserActive,
+  getActivityType,
+  mapDecisionToActivityType,
   CONFIG: {
     sameKeyWindow: config.evaluationWindowSeconds || config.rollingWindowSeconds,
     sameKeyThreshold: config.behavior.sameKeyThreshold,

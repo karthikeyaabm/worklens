@@ -136,11 +136,13 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
       duration: duration,
       activity_on: actOnFormatted,
       status: (session.status || 'Active').toLowerCase(),
+      activity_type: session.activityType || 'Unknown',
       reason: session.reason || null,
       closed: session.closed !== undefined ? session.closed : false,
       synced: false,
       retry_count: 0,
       last_error: null,
+      local_created_on: formatDateTime(new Date()),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };

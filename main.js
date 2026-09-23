@@ -20,6 +20,7 @@ const {
   getUserIdFromLocalQueue
 } = require('./activityStore');
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
+const { getActivityType, mapDecisionToActivityType } = antiAfkDetector;
 const { uIOhook } = require('uiohook-napi');
 
 // Inactivity Nudge Configuration
@@ -442,6 +443,10 @@ async function checkUserResolution() {
 }
 
 async function syncChunkToApi(chunk) {
+  const redmineCreatedOn = formatDateTime(new Date());
+  const localCreatedOn = chunk.local_created_on || formatDateTime(new Date(chunk.created_at));
+  const activityType = chunk.activity_type || 'Unknown';
+
   const body = {
     user_id: chunk.user_id,
     app_name: chunk.app_name,
@@ -450,10 +455,16 @@ async function syncChunkToApi(chunk) {
     end_time: chunk.end_time,
     duration: chunk.duration,
     activity_on: chunk.activity_on,
-    status: chunk.status.toLowerCase()
+    status: chunk.status.toLowerCase(),
+    version: app.getVersion(),
+    activity_type: activityType,
+    redmine_created_on: redmineCreatedOn,
+    local_created_on: localCreatedOn
   };
 
-  console.log(`[Sync] POST chunk user=${body.user_id} app="${body.app_name}" duration=${body.duration}s`);
+  console.log(`[Sync] POST chunk user=${body.user_id} app="${body.app_name}" duration=${body.duration}s activity_type=${body.activity_type}`);
+  console.log('[Sync] Full POST payload:', JSON.stringify(body, null, 2));
+
   await redmineClient.post('/user_system_activity_logs.json', body);
   return true;
 }
@@ -519,7 +530,7 @@ async function flushPendingClosedSessions() {
   }
 }
 
-function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null) {
+function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null, activityType = 'Unknown') {
   const cleanStatus = status.toLowerCase();
 
   if (currentRecord) {
@@ -530,9 +541,10 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     const isSameReason = currentRecord.reason === reason;
 
     if (isSameApp && isSameTitle && isSameStatus && isSameDay && isSameReason) {
-      // Continue existing session
+      // Continue existing session - update activity_type from latest evaluation
       currentRecord.endTime = now;
       currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
+      currentRecord.activityType = activityType;
       saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
       return;
     } else {
@@ -549,6 +561,7 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     activityOn: now,
     duration: 0,
     reason: reason,
+    activityType: activityType,
     closed: false
   };
   const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
@@ -654,6 +667,10 @@ async function trackTick() {
       antiAfkReason = 'Continuous repetitive keyboard input detected.';
     }
 
+    // Derive activity_type from Anti-AFK classification
+    const activityType = mapDecisionToActivityType(afkEval);
+    console.log(`[AntiAFK] Activity type classification: ${activityType} (score=${afkEval.score}, status=${afkEval.status})`);
+
     if (newStatus === 'Active') {
       currentStatus = isBackendReachable ? 'Active' : 'Offline';
     } else {
@@ -661,7 +678,7 @@ async function trackTick() {
     }
 
     const now = new Date();
-    startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now, antiAfkReason);
+    startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now, antiAfkReason, activityType);
   } catch (err) {
     console.error('Error in activity tracking tick:', err);
   }
@@ -1199,7 +1216,8 @@ ipcMain.handle('fetch-activity-logs', async () => {
         end_time: c.end_time,
         duration: c.duration,
         activity_on: c.activity_on,
-        status: c.status
+        status: c.status,
+        activity_type: c.activity_type || 'Unknown'
       }));
 
       logs = [...unsyncedMapped, ...logs];

@@ -342,7 +342,11 @@ All API communications are handled in [redmineClient.js](file:///c:/Users/karthi
       "end_time": "2026-07-27T11:05:00",
       "duration": 300,
       "activity_on": "2026-07-27",
-      "status": "active"
+      "status": "active",
+      "version": "1.1.4",
+      "activity_type": "Human",
+      "redmine_created_on": "2026-07-27T11:05:00",
+      "local_created_on": "2026-07-27T11:00:00"
     }
     ```
 *   **Sync Behavior:** Batched every 2 minutes. Failed logs are retried with an exponential backoff delay.
