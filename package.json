@@ -27,7 +27,6 @@
       }
     ],
     "win": {
-      "publisherName": "ABM Knowledgeware Ltd.",
       "target": "nsis",
       "icon": "assets/icon.png",
       "artifactName": "${productName}-Setup-${version}.${ext}"
