@@ -2,7 +2,7 @@
   "name": "worklens",
   "version": "1.1.5",
   "description": "WorkLens | Employee Timelog & Activity Tracking",
-  "publisher": "ABM Knowledgeware Ltd.",
+  "author": "ABM Knowledgeware Ltd.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -16,7 +16,6 @@
   "build": {
     "appId": "com.worklens.desktop",
     "productName": "WorkLens",
-    "publisherName": "ABM Knowledgeware Ltd.",
     "icon": "assets/icon.png",
     "files": [
       "**/*"
@@ -28,6 +27,7 @@
       }
     ],
     "win": {
+      "publisherName": "ABM Knowledgeware Ltd.",
       "target": "nsis",
       "icon": "assets/icon.png",
       "artifactName": "${productName}-Setup-${version}.${ext}"
