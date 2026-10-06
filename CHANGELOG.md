@@ -1,6 +1,17 @@
 # Changelog - WorkLens Desktop App
 
-All notable changes to the WorkLens Desktop Timelog application are documented below, spanning from **v1.0.0** to **v1.1.0**.
+All notable changes to the WorkLens Desktop Timelog application are documented below.
+
+---
+
+## [1.3.3] - 2026-10-06
+### Added
+- **WorkLens Watchdog & Auto-Recovery**: Implemented decoupled background supervisor mechanism (`watchdog/worklens-watchdog.ps1`, `watchdog/worklens-watchdog.vbs`, `watchdog/watchdog.js`) to continuously monitor and recover the WorkLens process.
+- **Crash & Task Manager "End Task" Auto-Restart**: Watchdog detects process termination and automatically relaunches WorkLens within a 5-second grace period.
+- **Restart-Loop Protection**: Limits automatic restarts to a maximum of 3 attempts within 5 minutes, displaying an alert notification if consecutive failures occur.
+- **Controlled Shutdown State Coordination**: Uses `%APPDATA%/WorkLens/watchdog-state.json` to distinguish abnormal terminations from intentional logoffs, OS reboots, or auto-updater restarts.
+- **Windows Startup Alignment**: Automatically configures the watchdog to start with Windows (`HKCU\...\Run\WorkLensWatchdog`), launching WorkLens immediately on user login.
+- **Auto-Recovery Notification**: Passes `--recovered` flag upon restart to notify the user via a native Windows notification.
 
 ---
 

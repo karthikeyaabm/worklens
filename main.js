@@ -1,12 +1,100 @@
 require('dotenv').config(); // Load environment variables from .env
-const { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, Tray, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, Tray, nativeImage, dialog, Notification } = require('electron');
 
 // Disable autoplay policy to allow inactivity popup beep sound without user gesture
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 const { exec } = require('child_process');
+
+// Watchdog State and Lifecycle Helpers
+const appDataDir = process.env.APPDATA || (process.platform === 'win32'
+  ? path.join(os.homedir(), 'AppData', 'Roaming')
+  : path.join(os.homedir(), '.config'));
+const watchdogStatePath = path.join(appDataDir, 'WorkLens', 'watchdog-state.json');
+
+function updateWatchdogState(patch = {}) {
+  try {
+    const dir = path.dirname(watchdogStatePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    let current = {};
+    if (fs.existsSync(watchdogStatePath)) {
+      try {
+        current = JSON.parse(fs.readFileSync(watchdogStatePath, 'utf8'));
+      } catch (_) {}
+    }
+    const updated = {
+      ...current,
+      execPath: process.execPath,
+      appPath: app.getAppPath ? app.getAppPath() : __dirname,
+      isPackaged: app.isPackaged,
+      pid: process.pid,
+      timestamp: Date.now(),
+      ...patch
+    };
+    fs.writeFileSync(watchdogStatePath, JSON.stringify(updated, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[WatchdogState] Error writing watchdog state:', err);
+  }
+}
+
+function ensureWatchdogRunning() {
+  if (process.platform !== 'win32') return;
+
+  const watchdogLockPath = path.join(appDataDir, 'WorkLens', 'watchdog.lock');
+  if (fs.existsSync(watchdogLockPath)) {
+    try {
+      const lockPid = parseInt(fs.readFileSync(watchdogLockPath, 'utf8').trim(), 10);
+      if (lockPid) {
+        exec(`powershell -NoProfile -Command "Get-Process -Id ${lockPid} -ErrorAction SilentlyContinue"`, (err, stdout) => {
+          if (err || !stdout || !stdout.trim()) {
+            launchWatchdog();
+          } else {
+            console.log(`[Watchdog] Watchdog is already running (PID: ${lockPid}).`);
+          }
+        });
+        return;
+      }
+    } catch (_) {}
+  }
+  launchWatchdog();
+}
+
+function launchWatchdog() {
+  const vbsPath = path.join(__dirname, 'watchdog', 'worklens-watchdog.vbs');
+  if (fs.existsSync(vbsPath)) {
+    console.log('[Watchdog] Launching watchdog via silent VBS launcher...');
+    exec(`wscript.exe "${vbsPath}"`, { windowsHide: true });
+  } else {
+    const psScriptPath = path.join(__dirname, 'watchdog', 'worklens-watchdog.ps1');
+    if (fs.existsSync(psScriptPath)) {
+      console.log('[Watchdog] Launching watchdog via PowerShell...');
+      exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${psScriptPath}"`, { windowsHide: true });
+    }
+  }
+}
+
+function configureWatchdogStartup() {
+  if (process.platform !== 'win32') return;
+  try {
+    const vbsPath = path.join(__dirname, 'watchdog', 'worklens-watchdog.vbs');
+    if (fs.existsSync(vbsPath)) {
+      const regCommand = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /t REG_SZ /d "wscript.exe \\"${vbsPath}\\"" /f`;
+      exec(regCommand, (err) => {
+        if (err) {
+          console.error('[Watchdog] Failed to register startup registry:', err);
+        } else {
+          console.log('[Watchdog] Registered WorkLensWatchdog in Windows Startup registry.');
+        }
+      });
+    }
+  } catch (err) {
+    console.error('[Watchdog] configureWatchdogStartup error:', err);
+  }
+}
+
 const quotes = require('./quotes');
 const {
   saveOrUpdateActiveSessionLocal,
@@ -1382,15 +1470,35 @@ if (gotTheLock) {
       console.error('[AntiAFK] Failed to register global input hooks:', err);
     }
 
+    // Register watchdog in Windows Startup and ensure watchdog supervisor is running
     try {
-      app.setLoginItemSettings({
-        openAtLogin: true,
-        openAsHidden: true,
-        path: process.execPath
-      });
+      configureWatchdogStartup();
+      ensureWatchdogRunning();
     } catch (error) {
-      console.error(error);
+      console.error('[Watchdog] Startup setup error:', error);
     }
+
+    // Check if WorkLens was recovered/restarted by watchdog
+    if (process.argv.includes('--recovered') || process.argv.includes('--watchdog-restart')) {
+      try {
+        if (Notification.isSupported()) {
+          const recoveryNotification = new Notification({
+            title: 'WorkLens Restarted',
+            body: 'WorkLens was not running and has been automatically restarted.',
+            icon: path.join(__dirname, 'assets', 'icon.png')
+          });
+          recoveryNotification.show();
+        }
+      } catch (notifErr) {
+        console.error('[Watchdog] Notification error:', notifErr);
+      }
+    }
+
+    // Record runtime paths and clear intentional shutdown flag
+    updateWatchdogState({
+      intentionalShutdown: false,
+      startTime: Date.now()
+    });
 
     // 1. Recover identity from persistent user profile cache (or legacy queue fallback)
     const currentOsUser = os.userInfo().username;
@@ -1424,6 +1532,11 @@ if (gotTheLock) {
         createWindow();
       }
     });
+
+    app.on('second-instance', () => {
+      showAndFocusWindow();
+    });
+
     log.info(`Installed version: ${app.getVersion()}`);
 
     autoUpdater.on("checking-for-update", () => {
@@ -1451,6 +1564,8 @@ if (gotTheLock) {
 
     autoUpdater.on('update-downloaded', (info) => {
       log.info(`[AutoUpdate] Update downloaded: v${info.version}. Installing now...`);
+      // Signal watchdog this is a controlled updater restart
+      updateWatchdogState({ intentionalShutdown: true, reason: 'auto-update', timestamp: Date.now() });
       // Closes the app and installs the new version immediately.
       // currentRecord is already being flushed by the existing 'before-quit' handler.
       autoUpdater.quitAndInstall();
@@ -1483,6 +1598,7 @@ if (gotTheLock) {
 
     powerMonitor.on('shutdown', () => {
       console.log('System shutting down, closing current activity...');
+      updateWatchdogState({ intentionalShutdown: true, reason: 'shutdown', timestamp: Date.now() });
       closeCurrentSession(new Date());
       flushPendingClosedSessions();
     });
@@ -1502,12 +1618,14 @@ if (gotTheLock) {
   // Graceful exit
   app.on('session-end', () => {
     console.log('[System] Windows session ending (logoff/shutdown), closing session...');
+    updateWatchdogState({ intentionalShutdown: true, reason: 'session-end', timestamp: Date.now() });
     closeCurrentSession(new Date());
     flushPendingClosedSessions();
   });
 
   app.on('before-quit', async (event) => {
     isQuitting = true;
+    updateWatchdogState({ intentionalShutdown: true, reason: 'before-quit', timestamp: Date.now() });
     stopInactivityCheck();
     if (inactivityPopup && !inactivityPopup.isDestroyed()) {
       inactivityPopup.destroy();
@@ -1546,4 +1664,6 @@ if (gotTheLock) {
       }
     }
   });
+} else {
+  app.quit();
 }

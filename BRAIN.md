@@ -89,6 +89,10 @@ WorkLens/
 │   ├── scoreEngine.js          # Confidence scoring and developer overrides
 │   ├── decisionEngine.js       # Classification (Human, Watch, Suspicious, Likely Automation)
 │   └── antiAfkDetector.js      # Primary orchestrator and API endpoints
+├── watchdog/                   # Watchdog & Auto-Recovery Subsystem
+│   ├── worklens-watchdog.ps1   # Primary Windows PowerShell background watchdog monitor
+│   ├── worklens-watchdog.vbs   # Zero-console stealth launcher for Windows startup
+│   └── watchdog.js             # Node.js supervisor engine for dev/cross-platform supervision
 ├── activityStore.js            # Offline database manager (handles JSONL operations and pruning)
 ├── antiAfkDetector.js          # Backward compatibility wrapper for the anti-AFK engine
 ├── CHANGELOG.md                # Evolution log of the desktop app
@@ -119,16 +123,26 @@ This is the application startup handler. Execution flows as follows:
 *   Initializes the environment using `dotenv`.
 *   Appends arguments like `--autoplay-policy=no-user-gesture-required` to enable automatic browser beep triggers.
 *   Acquires the single-instance lock via `app.requestSingleInstanceLock()`.
+*   Ensures the independent Watchdog supervisor is running and registered in Windows Startup.
+*   Detects `--recovered` argument to display the recovery notification if automatically restarted.
 *   Sets up system tray hooks and registers background loops:
     *   **Inactivity Check Interval (1 sec):** Closed-loop verification of user idle status.
     *   **Activity Tracking Tick (2 sec):** Queries active window titles and appends/consolidates them with clock skew / time jump protection.
     *   **Flush Sync Worker (2 min):** Flushes local cache records to the Redmine API with duration and date sanity filtering.
 *   Executes update validations and binds power monitor and system lifecycle state listeners (suspend, resume, shutdown, session-end, lock, unlock).
 
-### 2. IPC Context Bridge: [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js)
+### 2. Watchdog Supervisor: [watchdog/worklens-watchdog.ps1](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/worklens-watchdog.ps1) & [watchdog/worklens-watchdog.vbs](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/worklens-watchdog.vbs)
+Independent background process monitoring WorkLens health:
+*   Runs separately from `WorkLens.exe` (immune to Task Manager "End Task" on WorkLens).
+*   Polls process health every 3 seconds.
+*   Enforces 5-second grace period before recovery restart.
+*   Implements restart-loop protection (maximum 3 restarts within a sliding 5-minute window).
+*   Reads `%APPDATA%/WorkLens/watchdog-state.json` to avoid restarting during intentional system shutdowns, logoffs, or auto-updates.
+
+### 3. IPC Context Bridge: [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js)
 The bridge scripts run before renderer files load. It exposes a restricted `window.api` namespace containing method call mappings. It acts as a security barrier preventing the UI from executing arbitrary Node.js scripts.
 
-### 3. Renderer Scripts
+### 4. Renderer Scripts
 *   **[renderer/renderer.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/renderer.js):** Coordinates values displayed by `renderer/index.html`. Handles clicks on the "Active Time" card to trigger details popups.
 *   **[renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js):** Runs inside the glassmorphism details window. Polls logging details from the main process and binds CSS layouts.
 
@@ -503,9 +517,86 @@ WorkLens runs several key background processes:
 *   **Interval:** Every 30 seconds.
 *   **Logic:** Retries validating the local Windows username against the Redmine backend `/today_timesheet.json` API. If validation fails (due to backend username changes), all tracking services are stopped immediately. If validation succeeds again, cached user info is updated and all tracking/sync services are resumed automatically. Allows recovering user IDs from local queues during offline boot-up.
 
+### 7. Watchdog Health Polling Loop
+*   **Interval:** Every 3 seconds.
+*   **Location:** [watchdog/worklens-watchdog.ps1](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/worklens-watchdog.ps1) (and [watchdog/watchdog.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/watchdog.js)).
+*   **Logic:** Supervises WorkLens process availability independently of the Electron runtime:
+    *   Detects unexpected termination (crashes, Task Manager "End Task").
+    *   Checks `%APPDATA%/WorkLens/watchdog-state.json` to avoid false restarts during intentional shutdowns.
+    *   Waits a 5-second grace period before relaunching.
+    *   Enforces restart-loop protection (max 3 restarts within 5 minutes).
+    *   Passes `--recovered` flag on restart to display recovery notifications.
+
 ---
 
-## 12. Configuration & Environment
+## 12. Watchdog & Auto-Recovery Subsystem
+
+### 1. Architectural Motivation
+If an employee terminates WorkLens using Windows **Task Manager → End Task**, or if the Electron application encounters an unexpected native crash (e.g. GPU process crash or out-of-memory error), the WorkLens main process cannot recover itself. A completely separate, decoupled watchdog process is required.
+
+### 2. Supervision Architecture
+
+```
+Windows Boot / Login
+        │
+        ▼
+WorkLens Watchdog (Hidden PowerShell / VBS)
+        │
+        ├── Check WorkLens process
+        │
+        ├── WorkLens Running?
+        │       │
+        │       ├── YES ──► Sleep 3s ──► Check again
+        │       │
+        │       └── NO
+        │            │
+        │            ├── Intentional Shutdown flag set?
+        │            │      ├── YES ──► Skip restart (honor user/OS shutdown)
+        │            │      └── NO
+        │            │           │
+        │            ▼           ▼
+        │       Wait 5-second grace period
+        │            │
+        │            ├── Check Restart Loop Limit (≤ 3 attempts in 5 mins)
+        │            │      ├── EXCEEDED ──► Halt restarts & display alert dialog
+        │            │      └── OK
+        │            │           ▼
+        │                   Start WorkLens with `--recovered`
+        │                        │
+        │                        ▼
+        │                   Log recovery event & display user toast notification
+```
+
+### 3. Key Components
+1. **[watchdog/worklens-watchdog.ps1](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/worklens-watchdog.ps1):**
+   *   Core Windows PowerShell monitor running hidden in background.
+   *   Consumes ~15–20 MB memory with ~0% CPU.
+   *   Isolated from WorkLens process tree (Task Manager "End Task" on WorkLens leaves PowerShell running).
+   *   Maintains single watchdog instance lock at `%APPDATA%/WorkLens/watchdog.lock`.
+2. **[watchdog/worklens-watchdog.vbs](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/worklens-watchdog.vbs):**
+   *   Stealth launcher using Windows Script Host (`wscript.exe`) to execute the PowerShell monitor with window style `0` (hidden), preventing command prompt flashes.
+3. **[watchdog/watchdog.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/watchdog.js):**
+   *   Node.js supervisor equivalent for developers and cross-platform verification (`npm run watchdog`).
+4. **State File (`%APPDATA%/WorkLens/watchdog-state.json`):**
+   *   Tracks `execPath`, `appPath`, `isPackaged`, `pid`, and `intentionalShutdown`.
+   *   When WorkLens performs a clean exit (`before-quit`, `powerMonitor.on('shutdown')`, `app.on('session-end')`, or `autoUpdater.quitAndInstall()`), `intentionalShutdown` is set to `true`.
+   *   When killed unexpectedly via Task Manager, no flag is written, allowing the watchdog to identify the termination as an abnormal event.
+
+### 4. Restart-Loop Protection
+*   The watchdog maintains an in-memory queue of restart timestamps.
+*   Timestamps older than 300 seconds (5 minutes) are pruned.
+*   If 3 restart attempts occur within 5 minutes, automatic restarts are suspended to prevent infinite crash loops.
+*   A native Windows dialog is displayed: *"WorkLens could not be started after multiple attempts. Please contact support."*
+
+### 5. Windows Auto-Start Integration
+*   WorkLens registers `WorkLensWatchdog` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+*   Points to: `wscript.exe "<projectRoot>\watchdog\worklens-watchdog.vbs"`.
+*   Direct startup item (`electron.app.WorkLens`) is disabled to prevent duplicate race conditions on login.
+*   On Windows login, the watchdog initializes first, detects WorkLens is not yet active, launches WorkLens, and begins supervision.
+
+---
+
+## 13. Configuration & Environment
 
 Configuration parameters are loaded from the environment:
 
@@ -523,7 +614,7 @@ const POPUP_AUTO_CLOSE_MS = 15000;         // 15s nudge auto-close timeout
 
 ---
 
-## 13. External Integrations
+## 14. External Integrations
 
 ### Redmine Server
 *   **Authentication:** API token auth via the `X-Redmine-API-Key` header and the `?key=` query parameter.
@@ -543,7 +634,7 @@ const POPUP_AUTO_CLOSE_MS = 15000;         // 15s nudge auto-close timeout
 
 ---
 
-## 14. Build & Release Process
+## 15. Build & Release Process
 
 WorkLens uses `electron-builder` to package the application.
 
@@ -564,7 +655,7 @@ npm run release
 
 ---
 
-## 15. Coding Standards
+## 16. Coding Standards
 
 *   **Separation of Concerns:** Keep OS API calls, window states, and process logic in the Main Process. Renderer files should focus on UI rendering and styles.
 *   **Secure Preload Exposure:** Do not expose Node's `require` or native bindings to the renderer. Use the context bridge to define APIs.
@@ -574,7 +665,7 @@ npm run release
 
 ---
 
-## 16. Known Issues & Limitations
+## 17. Known Issues & Limitations
 
 1.  **Browser Title Overloads:** Tracking browser windows can create multiple short log entries when switching tabs rapidly. (Mitigated by the 2-minute sync interval and session consolidation rules).
 2.  **OS Support:** Platform-specific window titles (such as the Windows lock screen `lockapp.exe`) must be configured manually for other operating systems.
@@ -582,7 +673,7 @@ npm run release
 
 ---
 
-## 17. TODO Roadmap
+## 18. TODO Roadmap
 
 *   [ ] **Ignore List UI:** Allow users to filter out specific processes (such as games or system apps) from being tracked.
 *   [ ] **Category Mapping:** Automatically group application logs into categories like "Development", "Meetings", or "System Admin".
@@ -591,7 +682,7 @@ npm run release
 
 ---
 
-## 18. Important Business Logic
+## 19. Important Business Logic
 
 ### Session Consolidation Algorithm
 *   Calculates active intervals by comparing process parameters every 2 seconds.
@@ -627,14 +718,14 @@ npm run release
 
 ---
 
-## 19. Security Notes
+## 20. Security Notes
 
 *   **API Credentials:** Keep the `REDMINE_API_KEY` token secure in the `.env` file. Do not commit `.env` files to git.
 *   **Execution Sandbox:** Keep `nodeIntegration` disabled and `contextIsolation` enabled in all BrowserWindow instances to prevent unauthorized shell access.
 
 ---
 
-## 20. Performance Notes
+## 21. Performance Notes
 
 *   **Request De-duplication:** Employs an in-flight promise lock (`activitySummaryInFlight`) in [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js#L830) to prevent parallel requests from overwhelming the server when renderers load.
 *   **Process Icon Caching:** Base64 icons are cached in memory to reduce shell execution overhead when resolving application icons.
@@ -642,18 +733,20 @@ npm run release
 
 ---
 
-## 21. Testing
+## 22. Testing
 
 ### Manual Testing
 1.  **Network Offline Test:** Disconnect from the network, run the app, and verify that activity logs are saved to the JSONL file. Reconnect to the network and verify that logs are successfully synced.
 2.  **Inactivity Verification:** Leave the workstation idle for 5 minutes and verify that the inactivity nudge popup appears with an audio beep. Move the mouse and verify that the popup auto-dismisses.
 3.  **App Switcher Test:** Open multiple apps (e.g., VS Code, Chrome, Terminal) and verify that the activity breakdown popup displays the active time distribution correctly.
+4.  **Watchdog Crash & End Task Test:** Terminate `WorkLens.exe` via Task Manager or `taskkill`. Verify the watchdog waits 5s, recovers the process, and displays the "WorkLens Restarted" toast notification.
 
 ---
 
-## 22. Debugging Guide
+## 23. Debugging Guide
 
 *   **Main Process Logs:** Located in `%APPDATA%/WorkLens/logs/worklens-YYYY-MM-DD.log`.
+*   **Watchdog Logs:** Located in `%APPDATA%/WorkLens/logs/worklens-watchdog-YYYY-MM-DD.log`.
 *   **Renderer DevTools:** To debug the UI, temporarily enable DevTools in `main.js`:
     ```javascript
     mainWindow.webContents.openDevTools();
@@ -661,7 +754,7 @@ npm run release
 
 ---
 
-## 23. Dependency Map
+## 24. Dependency Map
 
 ```
   ┌────────────────────────────────────────────────────────┐
@@ -682,7 +775,7 @@ npm run release
 
 ---
 
-## 24. AI Development Rules
+## 25. AI Development Rules
 
 When adding features or modifying code in WorkLens, AI assistants must adhere to the following rules:
 
@@ -702,7 +795,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 
 ---
 
-## 25. Change Log Summary
+## 26. Change Log Summary
 
 *   **v1.0.1 - Initial Version:** Frameless widget layout with active window tracking.
 *   **v1.0.7 - System Tray:** Runs in the system tray with single-instance locking.
@@ -714,34 +807,37 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.0 - Username Change Auto-Recovery & Persistent Offline Tracking:** Implemented background username validation, persistent username display during reachability/network failures, and automatic recovery. Added start/stop service controllers to immediately halt tracking when explicit validation fails. Introduced pulsing Blue indicator beside Active Time for active offline tracking, pulsing Green for active online, and pulsing Orange for inactive. Paused sync interval during unreachable states and triggered auto-sync on recovery.
 *   **v1.3.1 - Widget Close Button to Tray:** Added a Fluent-style Close button to the main widget header next to the date. Clicking it gracefully hides both the widget and the active details popup to run in the background, allowing full control through the system tray.
 *   **v1.3.2 - Persistent Tray Tracking (Exit Removal):** Removed the Exit option from the system tray context menu, ensuring persistent tracking execution in the background by disabling user-facing exit controls.
+*   **v1.3.3 - Watchdog & Auto-Recovery Mechanism:** Added independent PowerShell and Node.js watchdog supervisor (`worklens-watchdog.ps1`, `worklens-watchdog.vbs`, `watchdog.js`) to automatically detect crashes and Task Manager "End Task" events. Features 5-second grace period, restart-loop protection (maximum 3 attempts in 5 minutes), Windows startup registry integration (`WorkLensWatchdog`), controlled shutdown state coordination (`watchdog-state.json`), and native recovery notifications.
 
 ---
 
-## 26. Glossary
+## 27. Glossary
 
 *   **Active Time:** Duration in seconds where the user is active on the workstation.
 *   **Inactivity Nudge:** Visual and audio alert triggered when the system is idle for 5 minutes.
 *   **JSONL (JSON Lines):** A text-based format where each line is a valid JSON object.
 *   **Redmine Client:** Native client wrapper that handles authentication and API calls to the Redmine server.
+*   **Watchdog:** Independent supervisor process that monitors WorkLens health and automatically recovers the app if terminated unexpectedly.
 *   **Widget:** Minimalist frameless window pinned to the bottom-right corner of the screen.
 
 ---
 
-## 27. Quick Start For AI
+## 28. Quick Start For AI
 
 ```
 1. Set up connection parameters in the .env file.
 2. Run "npm install" to install dependencies.
 3. Run "npm start" to launch the widget in development.
 4. Main Process Entry Point: main.js
-5. Database operations & queue: activityStore.js
-6. API Request Client: redmineClient.js
-7. UI Views: renderer/index.html & renderer/activity-popup.html
+5. Watchdog Supervisor: watchdog/worklens-watchdog.ps1
+6. Database operations & queue: activityStore.js
+7. API Request Client: redmineClient.js
+8. UI Views: renderer/index.html & renderer/activity-popup.html
 ```
 
 ---
 
-## 28. Update Instructions
+## 29. Update Instructions
 
 > [!IMPORTANT]
 > Whenever code changes, this `BRAIN.md` must also be updated.
