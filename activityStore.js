@@ -7,12 +7,64 @@ const crypto = require('crypto');
 const MAX_SESSION_DURATION = 12 * 60 * 60; // 12 hours (43,200s) max session limit
 
 let queueFilePath = null;
+let userProfileFilePath = null;
 
 function getQueueFilePath() {
   if (!queueFilePath) {
     queueFilePath = path.join(app.getPath('userData'), 'activity_queue.jsonl');
   }
   return queueFilePath;
+}
+
+function getUserProfileFilePath() {
+  if (!userProfileFilePath) {
+    userProfileFilePath = path.join(app.getPath('userData'), 'user_profile.json');
+  }
+  return userProfileFilePath;
+}
+
+function getStoredUserProfile() {
+  const filePath = getUserProfileFilePath();
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    if (!raw.trim()) return null;
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('[Storage] Failed to read user_profile.json:', err);
+    return null;
+  }
+}
+
+function saveStoredUserProfile(osUsername, redmineUserId) {
+  if (!osUsername || !redmineUserId) return;
+  const filePath = getUserProfileFilePath();
+  const profile = {
+    os_username: osUsername,
+    redmine_user_id: parseInt(redmineUserId, 10),
+    last_resolved_at: new Date().toISOString()
+  };
+  try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(profile, null, 2), 'utf8');
+    console.log(`[Storage] Saved user profile cache: ${osUsername} -> Redmine ID ${redmineUserId}`);
+  } catch (err) {
+    console.error('[Storage] Failed to write user_profile.json:', err);
+  }
+}
+
+function getCachedUserIdForOsUser(currentOsUsername) {
+  if (!currentOsUsername) return null;
+  const profile = getStoredUserProfile();
+  if (profile && profile.os_username && profile.os_username.toLowerCase() === currentOsUsername.toLowerCase()) {
+    return profile.redmine_user_id || null;
+  }
+  return null;
 }
 
 function formatDateTime(date) {
@@ -94,13 +146,14 @@ function writeChunks(chunks) {
   }
 }
 
-function saveOrUpdateActiveSessionLocal(session, userId) {
+function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
   const chunks = readChunks();
   const index = chunks.findIndex(c => c.local_id === session.local_id);
 
   const start = session.startTime || session.start_time;
   const end = session.endTime || session.end_time;
   const actOn = session.activityOn || session.activity_on;
+  const currentOsUser = session.os_username || session.osUsername || osUsername || null;
 
   const startFormatted = ensureFormattedDateTime(start);
   const endFormatted = ensureFormattedDateTime(end);
@@ -118,6 +171,8 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
     // Update existing session
     chunks[index] = {
       ...chunks[index],
+      user_id: chunks[index].user_id || userId || null,
+      os_username: chunks[index].os_username || currentOsUser,
       end_time: endFormatted,
       duration: duration,
       closed: session.closed !== undefined ? session.closed : chunks[index].closed,
@@ -127,14 +182,11 @@ function saveOrUpdateActiveSessionLocal(session, userId) {
     writeChunks(chunks);
     return chunks[index];
   } else {
-    // Insert new active session
-    if (!userId) {
-      console.warn('[Storage] Skipping insert of new active session: User is unresolved.');
-      return null;
-    }
+    // Insert new active session - allowed even if userId is unresolved during offline mode
     const newSession = {
       local_id: session.local_id || crypto.randomUUID(),
       user_id: userId || null,
+      os_username: currentOsUser,
       app_name: session.appName || session.app_name || 'Unknown',
       window_title: session.windowTitle || session.window_title || 'Untitled',
       start_time: startFormatted,
@@ -260,7 +312,7 @@ function markSessionFailed(localId, errorMessage) {
   }
 }
 
-function getUnsyncedTodayDuration(userId) {
+function getUnsyncedTodayDuration(userId, osUsername = null) {
   const chunks = readChunks();
   const todayStr = getLocalDateString();
   const userIdInt = userId ? parseInt(userId, 10) : null;
@@ -269,6 +321,7 @@ function getUnsyncedTodayDuration(userId) {
     .filter(c => {
       if (c.synced) return false;
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
+      if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
       if (c.status && c.status.toLowerCase() !== 'active') return false;
       return c.start_time && c.start_time.startsWith(todayStr);
     })
@@ -276,11 +329,11 @@ function getUnsyncedTodayDuration(userId) {
 }
 
 // Map back for compatibility in testing or simple usage if needed
-function saveChunkLocal(chunk, userId) {
-  return saveOrUpdateActiveSessionLocal({ ...chunk, closed: true }, userId);
+function saveChunkLocal(chunk, userId, osUsername = null) {
+  return saveOrUpdateActiveSessionLocal({ ...chunk, closed: true }, userId, osUsername);
 }
 
-function getUnsyncedTodayLogs(userId) {
+function getUnsyncedTodayLogs(userId, osUsername = null) {
   const chunks = readChunks();
   const todayStr = getLocalDateString();
   const userIdInt = userId ? parseInt(userId, 10) : null;
@@ -288,23 +341,49 @@ function getUnsyncedTodayLogs(userId) {
   return chunks.filter(c => {
     if (c.synced) return false;
     if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
+    if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
     return c.start_time && c.start_time.startsWith(todayStr);
   });
 }
 
-function getUserIdFromLocalQueue() {
+function getUserIdFromLocalQueue(currentOsUsername = null) {
   try {
     const chunks = readChunks();
-    // Scan backward to find the most recent non-null user_id
+    // Scan backward to find the most recent non-null user_id matching current OS user (if provided)
     for (let i = chunks.length - 1; i >= 0; i--) {
       if (chunks[i].user_id) {
-        return chunks[i].user_id;
+        if (!currentOsUsername || !chunks[i].os_username || chunks[i].os_username.toLowerCase() === currentOsUsername.toLowerCase()) {
+          return chunks[i].user_id;
+        }
       }
     }
   } catch (err) {
     console.error('[Storage] Error reading user_id from local queue:', err);
   }
   return null;
+}
+
+function backfillUserIdForOsUsername(osUsername, userId) {
+  if (!osUsername || !userId) return 0;
+  const chunks = readChunks();
+  let updatedCount = 0;
+  const updated = chunks.map(c => {
+    if (!c.synced && (!c.user_id || c.user_id === null) && (!c.os_username || c.os_username.toLowerCase() === osUsername.toLowerCase())) {
+      updatedCount++;
+      return {
+        ...c,
+        user_id: parseInt(userId, 10),
+        os_username: osUsername,
+        updated_at: new Date().toISOString()
+      };
+    }
+    return c;
+  });
+  if (updatedCount > 0) {
+    writeChunks(updated);
+    console.log(`[Storage] Backfilled user_id=${userId} for ${updatedCount} pending session(s) of OS user "${osUsername}".`);
+  }
+  return updatedCount;
 }
 
 module.exports = {
@@ -318,6 +397,12 @@ module.exports = {
   getUnsyncedTodayLogs,
   getQueueFilePath,
   getUserIdFromLocalQueue,
+  // Persistent user profile cache helpers
+  getUserProfileFilePath,
+  getStoredUserProfile,
+  saveStoredUserProfile,
+  getCachedUserIdForOsUser,
+  backfillUserIdForOsUsername,
   // Keep back compat mapping
   saveChunkLocal,
   markChunkSynced: markSessionSynced,

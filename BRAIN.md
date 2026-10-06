@@ -142,7 +142,7 @@ The lifecycle flow of the application from startup to shutdown is structured as 
 sequenceDiagram
     participant OS as Operating System
     participant Main as Main Process (main.js)
-    participant Store as JSONL Store (activityStore.js)
+    participant Store as Local Store (activityStore.js)
     participant API as Redmine REST API
     participant UI as Renderers (Widget/Popup)
 
@@ -152,10 +152,19 @@ sequenceDiagram
         Main->>OS: Focus existing window & Exit
     end
     Main->>Store: closeOrphanedSessions()
-    Main->>Main: Resolve Redmine user_id via OS Username
-    Main->>Store: getEligibleClosedSessions()
-    Store->>API: Flush outstanding closed items
+    Main->>Store: getCachedUserIdForOsUser() / load user_profile.json
+    Main->>Main: startTrackingServices() immediately (decoupled tracking)
     Main->>UI: Show Widget window (or start hidden)
+    Main-)API: checkUserResolution() (background async)
+    alt Network available & User valid
+        API-->>Main: Return Redmine user_id
+        Main->>Store: saveStoredUserProfile()
+        Main->>Store: backfillUserIdForOsUsername()
+        Main->>Store: getEligibleClosedSessions()
+        Store->>API: Flush outstanding closed items
+    else Network offline
+        Note over Main: Tracking continues locally in offline mode
+    end
     
     loop Every 2 Seconds (Tracking Interval)
         Main->>Main: Get front window info (active-win)
@@ -174,7 +183,7 @@ sequenceDiagram
 
     loop Every 2 Minutes (Sync Loop)
         Main->>Store: getEligibleClosedSessions()
-        Store->>API: Batch POST logs
+        Store->>API: Batch POST logs (when online & resolved)
     end
 
     OS->>Main: Suspend / System Quit Event
@@ -364,19 +373,26 @@ All API communications are handled in [redmineClient.js](file:///c:/Users/karthi
 
 ---
 
-## 8. Database Documentation
+## 8. Database & Persistent Storage Documentation
 
-WorkLens uses a lightweight offline store implemented as a JSON Lines (JSONL) file rather than a heavy SQLite database engine.
+WorkLens uses lightweight file-based stores in `%APPDATA%/WorkLens` (resolved dynamically via `app.getPath('userData')`):
 
-*   **File Path:** `%APPDATA%/WorkLens/activity_queue.jsonl` (Resolved dynamically via `app.getPath('userData')`).
-*   **Format:** Each line is a valid JSON string representing an activity log entry.
+1. **Activity Queue Store (`activity_queue.jsonl`):**
+   * **Format:** JSON Lines (JSONL). Each line represents an active/inactive session block.
+   * **Purpose:** Buffers local tracked activity offline and queues sessions for sync with Redmine.
 
-### Schema Properties
+2. **Persistent User Profile Cache (`user_profile.json`):**
+   * **Format:** JSON object `{ "os_username": string, "redmine_user_id": number, "last_resolved_at": string }`.
+   * **Purpose:** Decouples offline startup from Redmine API reachability by caching the resolved numeric user ID associated with the current Windows OS username. It is **never pruned** by activity retention.
+   * **Shared-PC Protection:** Only matches if the active Windows OS username matches `os_username`.
+
+### Activity Queue Schema Properties (`activity_queue.jsonl`)
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
 | `local_id` | String | Unique UUID generated on the client. |
-| `user_id` | Integer / Null | The resolved Redmine User ID. |
+| `user_id` | Integer / Null | The resolved Redmine User ID (null during initial offline tracking). |
+| `os_username` | String / Null | Windows OS username of the employee who generated the session. |
 | `app_name` | String | Tracked executable application name (e.g., `chrome.exe`). |
 | `window_title` | String | Window header title at the time of tracking. |
 | `start_time` | String (ISO) | ISO start timestamp formatted in local system time. |
@@ -391,8 +407,11 @@ WorkLens uses a lightweight offline store implemented as a JSON Lines (JSONL) fi
 | `created_at` | String (ISO) | Local record creation timestamp. |
 | `updated_at` | String (ISO) | Local record modification timestamp. |
 
+### Identity Reconciliation & Backfilling
+When the application starts offline without a prior cached user ID, records are saved locally with `user_id: null` and `os_username`. Once internet connectivity is restored and Redmine resolves the user ID, `backfillUserIdForOsUsername(osUsername, userId)` updates all pending un-synced chunks with the resolved numeric `user_id` before invoking `flushPendingClosedSessions()`.
+
 ### Data Pruning & Optimization
-To keep the storage size optimized, the write routine in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js#L71-L93) automatically prunes synced records that are older than 1 day from the `activity_queue.jsonl` file.
+To keep the storage size optimized, the write routine in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js) automatically prunes synced records that are older than 1 day from the `activity_queue.jsonl` file. `user_profile.json` is stored independently and is exempt from pruning.
 
 ---
 
@@ -406,6 +425,8 @@ WorkLens manages application state across memory and local storage:
 │                                                        │
 │  currentRecord: Current active tracking session block   │
 │  cachedUserId: Resolved numeric Redmine user ID        │
+│  isUserResolved: Flag indicating user identity valid   │
+│  isBackendReachable: Redmine server reachability state │
 │  appIconCache: Base64 icons mapped by app name         │
 │  cachedActiveTimeToday/Yesterday: Tracker cache        │
 │  activitySummaryCache: 5s API responses cache          │
@@ -415,6 +436,7 @@ WorkLens manages application state across memory and local storage:
 ┌─────────────────────────────────────────────┴──────────┐
 │                   PERSISTENT STORAGE                   │
 │                                                        │
+│  user_profile.json: Persistent mapping (os -> user_id) │
 │  activity_queue.jsonl: Unsynced & recently synced logs │
 │  logger.js (Logs folder): Local troubleshooting logs   │
 └────────────────────────────────────────────────────────┘
@@ -431,18 +453,18 @@ Preload bridges access paths by mapping handlers across processes:
 
 | IPC Channel | Direction | Payload | Purpose |
 | :--- | :--- | :--- | :--- |
-| `get-username` | Invoked by UI | None | Returns `{ username: string, error: string|null }` containing OS username and Redmine connection error details. |
+| `get-username` | Invoked by UI | None | Returns `{ username: string, isOffline: boolean, isTrackingActive: boolean, error: string|null }` containing OS username, offline state, and explicit Redmine validation errors. |
 | `get-employee-id` | Invoked by UI | None | Returns numeric Redmine ID. |
 | `get-app-version` | Invoked by UI | None | Returns active semantic version string. |
-| `get-redmine-efforts` | Invoked by UI | None | Returns today's and yesterday's logged times. |
-| `get-active-time-today` | Invoked by UI | None | Returns total local tracked seconds today (including unsynced). |
+| `get-redmine-efforts` | Invoked by UI | None | Returns today's and yesterday's logged times from Redmine. |
+| `get-active-time-today` | Invoked by UI | None | Returns total local tracked seconds today (including offline & unsynced). |
 | `get-active-time-yesterday` | Invoked by UI | None | Returns total local tracked seconds yesterday. |
-| `get-current-status` | Invoked by UI | None | Returns active state (`Active`/`Inactive`). |
+| `get-current-status` | Invoked by UI | None | Returns active state (`Active`, `Offline`, or `Inactive`). |
 | `toggle-activity-popup` | Invoked by UI | None | Shows/hides the activity log details window. |
 | `open-activity-popup` | Invoked by UI | None | Positions and displays the activity popup. |
 | `close-activity-popup` | Invoked by UI | None | Closes/hides the activity popup. |
 | `close-inactivity-popup`| Invoked by UI | None | Closes/destroys the inactivity nudge window. |
-| `fetch-activity-logs` | Invoked by UI | None | Returns sorted today logs + icon base64 mappings. |
+| `fetch-activity-logs` | Invoked by UI | None | Returns merged server + local unsynced logs + icon base64 mappings. |
 | `popup-ready` | Invoked by UI | None | Signals main process that the details window is ready. |
 | `trigger-sync` | Invoked by UI | None | Explicitly triggers an offline-queue sync. |
 | `hide-main-window` | Invoked by UI | None | Gracefully hides the main widget and detail popup, running tracking in the background. |

@@ -17,7 +17,10 @@ const {
   markSessionFailed,
   getUnsyncedTodayDuration,
   getUnsyncedTodayLogs,
-  getUserIdFromLocalQueue
+  getUserIdFromLocalQueue,
+  saveStoredUserProfile,
+  getCachedUserIdForOsUser,
+  backfillUserIdForOsUsername
 } = require('./activityStore');
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { getActivityType, mapDecisionToActivityType } = antiAfkDetector;
@@ -369,15 +372,27 @@ function calculateDuration(startTime, endTime) {
 }
 
 // Get or Cache Redmine User ID using OS username via REST API
+// Get or Cache Redmine User ID using OS username via REST API
 // Still needed for the numeric user_id in the activity-log POST body.
 async function getUserId() {
   if (cachedUserId !== null) return cachedUserId;
-  
-  // Try local queue recovery if we don't have it in memory
-  const localUserId = getUserIdFromLocalQueue();
+
+  const currentOsUser = os.userInfo().username;
+
+  // 1. Try dedicated persistent user profile cache
+  const persistentUserId = getCachedUserIdForOsUser(currentOsUser);
+  if (persistentUserId) {
+    cachedUserId = persistentUserId;
+    isUserResolved = true;
+    return cachedUserId;
+  }
+
+  // 2. Try local queue recovery if not yet stored in profile cache
+  const localUserId = getUserIdFromLocalQueue(currentOsUser);
   if (localUserId) {
     cachedUserId = localUserId;
     isUserResolved = true;
+    saveStoredUserProfile(currentOsUser, localUserId);
   }
   return cachedUserId;
 }
@@ -399,14 +414,20 @@ async function checkUserResolution() {
       const wasResolved = isUserResolved;
       isUserResolved = true;
       cachedUserId = newUserId;
+
+      // Save to dedicated persistent user profile cache
+      saveStoredUserProfile(username, newUserId);
+
+      // Backfill any pending offline records belonging to the current OS username
+      backfillUserIdForOsUsername(username, newUserId);
       
       if (!wasResolved) {
-        console.log('[User Resolution] SUCCESS: User became valid. Automatically starting/restarting tracking services.');
-        startTrackingServices();
+        console.log('[User Resolution] SUCCESS: User became valid. Ensuring tracking services.');
       } else {
-        console.log('[User Resolution] SUCCESS: User resolved successfully. Triggering automatic sync.');
-        flushPendingClosedSessions();
+        console.log('[User Resolution] SUCCESS: User verified successfully. Triggering automatic sync.');
       }
+      startTrackingServices();
+      flushPendingClosedSessions();
     } else {
       console.warn(`[User Resolution] FAILURE: User "${username}" explicitly not found in Redmine database.`);
       usernameError = `User "${username}" not found in Redmine database`;
@@ -424,26 +445,19 @@ async function checkUserResolution() {
     
     isBackendReachable = false;
     
-    if (!isUserResolved) {
-      // Offline startup/boot
-      const localUserId = getUserIdFromLocalQueue();
+    // Check if we can recover cached user ID for this OS user
+    if (!cachedUserId) {
+      const localUserId = getCachedUserIdForOsUser(username) || getUserIdFromLocalQueue(username);
       if (localUserId) {
-        console.log(`[User Resolution] Offline startup: recovered user ID ${localUserId} from local queue.`);
+        console.log(`[User Resolution] Offline startup: recovered cached user ID ${localUserId} for "${username}".`);
         cachedUserId = localUserId;
         isUserResolved = true;
-        usernameError = null;
-        startTrackingServices();
-      } else {
-        usernameError = error.message || String(error);
-        console.warn('[User Resolution] Offline startup failed: no user ID found in local queue. Tracking remains stopped.');
-      }
-    } else {
-      // Already resolved, continue tracking locally (offline mode)
-      console.log('[User Resolution] Reachability failure mid-session. Continuing tracking locally (offline mode).');
-      if (!usernameError || (!usernameError.includes('not found') && !usernameError.includes('database'))) {
-        usernameError = error.message || String(error);
+        saveStoredUserProfile(username, localUserId);
       }
     }
+
+    // Do NOT stop tracking services on network error! Local tracking remains active.
+    console.log('[User Resolution] Offline mode active. Local tracking services continue running.');
   }
 }
 
@@ -552,6 +566,7 @@ async function flushPendingClosedSessions() {
 
 function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null, activityType = 'Unknown') {
   const cleanStatus = status.toLowerCase();
+  const currentOsUser = os.userInfo().username;
 
   if (currentRecord) {
     const isSameApp = currentRecord.appName === appName;
@@ -567,7 +582,7 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
       currentRecord.endTime = now;
       currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
       currentRecord.activityType = activityType;
-      saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
+      saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
       return;
     } else {
       closeCurrentSession(now);
@@ -584,9 +599,10 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     duration: 0,
     reason: reason,
     activityType: activityType,
+    os_username: currentOsUser,
     closed: false
   };
-  const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
+  const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
   if (saved) {
     currentRecord.local_id = saved.local_id;
   }
@@ -608,7 +624,7 @@ function closeCurrentSession(endTime = new Date()) {
   currentRecord.duration = duration;
   currentRecord.closed = true;
 
-  saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId);
+  saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, os.userInfo().username);
   console.log(`[Session] Closed session locally: local_id=${currentRecord.local_id} app="${currentRecord.appName}" duration=${currentRecord.duration}s`);
   currentRecord = null;
 }
@@ -632,8 +648,8 @@ async function trackTick() {
     }
     lastTickTimestamp = nowMs;
 
+    // Resolve user ID if possible, but continue local tracking even if null
     const userId = await getUserId();
-    if (!userId) return;
 
     const idleTime = powerMonitor.getSystemIdleTime();
     let newStatus = idleTime >= INACTIVITY_THRESHOLD_SECONDS ? 'Inactive' : 'Active';
@@ -1056,11 +1072,11 @@ ipcMain.handle('get-username', () => {
     usernameError.toLowerCase().includes('waiting for account update')
   );
 
-  const shouldShowError = isUserExplicitlyInvalid || (cachedUserId === null && usernameError);
-
   return {
     username: os.userInfo().username,
-    error: shouldShowError ? usernameError : null
+    isOffline: !isBackendReachable,
+    isTrackingActive: trackingInterval !== null,
+    error: isUserExplicitlyInvalid ? usernameError : null
   };
 });
 
@@ -1071,8 +1087,8 @@ ipcMain.handle('get-app-version', () => {
 // Response shape confirmed from logs:
 // { user: {id, name}, yesterday: {date, hours}, today: {date, hours} }
 ipcMain.handle('get-redmine-efforts', async () => {
-  if (!isUserResolved) {
-    return { yesterday: 0, today: 0 };
+  if (!isUserResolved || !isBackendReachable) {
+    return cachedRedmineEfforts;
   }
   try {
     const username = os.userInfo().username;
@@ -1089,6 +1105,7 @@ ipcMain.handle('get-redmine-efforts', async () => {
       usernameError = null;
       if (response.user.id) {
         cachedUserId = response.user.id;
+        saveStoredUserProfile(username, response.user.id);
       }
     } else {
       cachedUserId = null;
@@ -1096,8 +1113,8 @@ ipcMain.handle('get-redmine-efforts', async () => {
     }
   } catch (error) {
     console.error('get-redmine-efforts error:', error);
-    cachedUserId = null;
-    usernameError = error.message || String(error);
+    // Temporary network failure must NOT clear cachedUserId!
+    isBackendReachable = false;
   }
   return cachedRedmineEfforts;
 });
@@ -1107,8 +1124,8 @@ ipcMain.handle('get-redmine-efforts', async () => {
 // Note: values are HOURS, not seconds — converted below since the renderer's
 // formatSeconds() expects seconds.
 async function fetchActivitySummary() {
-  if (!isUserResolved) {
-    return { today: 0, yesterday: 0 };
+  if (!isUserResolved || !isBackendReachable) {
+    return activitySummaryCache.data || { today: 0, yesterday: 0 };
   }
   const now = Date.now();
 
@@ -1145,8 +1162,8 @@ async function fetchActivitySummary() {
       return result;
     } catch (error) {
       console.error('[Sync] fetchActivitySummary error:', error);
-      cachedUserId = null;
-      usernameError = error.message || String(error);
+      // Temporary network failure must NOT clear cachedUserId!
+      isBackendReachable = false;
       throw error;
     } finally {
       activitySummaryInFlight = null; // release the lock whether success or failure
@@ -1157,22 +1174,22 @@ async function fetchActivitySummary() {
 }
 
 ipcMain.handle('get-active-time-today', async () => {
-  if (!isUserResolved) {
-    return 0;
-  }
-  try {
-    const summary = await fetchActivitySummary();
-    cachedActiveTimeToday = summary.today;
-  } catch (error) {
-    console.error('get-active-time-today error:', error);
-    // Graceful degradation: fall through using cachedActiveTimeToday from last success
+  if (isUserResolved && isBackendReachable) {
+    try {
+      const summary = await fetchActivitySummary();
+      cachedActiveTimeToday = summary.today;
+    } catch (error) {
+      console.error('get-active-time-today error:', error);
+      // Graceful degradation: fall through using cachedActiveTimeToday from last success
+    }
   }
 
   let totalSeconds = cachedActiveTimeToday;
 
   try {
+    const currentOsUser = os.userInfo().username;
     const userId = await getUserId();
-    const unsyncedDuration = getUnsyncedTodayDuration(userId);
+    const unsyncedDuration = getUnsyncedTodayDuration(userId, currentOsUser);
     totalSeconds += unsyncedDuration;
   } catch (err) {
     console.error('[Sync] Error getting unsynced duration for active-time-today:', err);
@@ -1188,14 +1205,13 @@ ipcMain.handle('get-active-time-today', async () => {
 });
 
 ipcMain.handle('get-active-time-yesterday', async () => {
-  if (!isUserResolved) {
-    return 0;
-  }
-  try {
-    const summary = await fetchActivitySummary();
-    cachedActiveTimeYesterday = summary.yesterday;
-  } catch (error) {
-    console.error('get-active-time-yesterday error:', error);
+  if (isUserResolved && isBackendReachable) {
+    try {
+      const summary = await fetchActivitySummary();
+      cachedActiveTimeYesterday = summary.yesterday;
+    } catch (error) {
+      console.error('get-active-time-yesterday error:', error);
+    }
   }
   return cachedActiveTimeYesterday;
 });
@@ -1235,65 +1251,61 @@ ipcMain.handle('close-inactivity-popup', () => {
 });
 
 ipcMain.handle('fetch-activity-logs', async () => {
-  if (!isUserResolved) {
-    return { logs: [], icons: {} };
+  const currentOsUser = os.userInfo().username;
+  const userId = await getUserId();
+  let serverLogs = [];
+
+  if (isUserResolved && isBackendReachable && userId) {
+    try {
+      const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+      if (Array.isArray(response)) {
+        serverLogs = [...response];
+      } else if (response && Array.isArray(response.entries)) {
+        serverLogs = [...response.entries];
+      }
+    } catch (error) {
+      console.error('[ActivityPopup API] Server fetch failed, continuing with local logs:', error.message || error);
+    }
   }
+
+  let logs = [...serverLogs];
+
   try {
-    const userId = await getUserId();
-    if (!userId) {
-      throw new Error('User ID could not be resolved.');
-    }
-    const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+    const unsyncedToday = getUnsyncedTodayLogs(userId, currentOsUser);
+    const unsyncedMapped = unsyncedToday.map(c => ({
+      id: c.local_id,
+      user_id: c.user_id,
+      app_name: c.app_name,
+      window_title: c.window_title,
+      start_time: c.start_time,
+      end_time: c.end_time,
+      duration: c.duration,
+      activity_on: c.activity_on,
+      status: c.status,
+      activity_type: c.activity_type || 'Unknown'
+    }));
 
-    let logs = [];
-    const isResponseArray = Array.isArray(response);
-    if (isResponseArray) {
-      logs = [...response];
-    } else if (response && Array.isArray(response.entries)) {
-      logs = [...response.entries];
-    }
-
-    try {
-      const unsyncedToday = getUnsyncedTodayLogs(userId);
-      const unsyncedMapped = unsyncedToday.map(c => ({
-        id: c.local_id,
-        user_id: c.user_id,
-        app_name: c.app_name,
-        window_title: c.window_title,
-        start_time: c.start_time,
-        end_time: c.end_time,
-        duration: c.duration,
-        activity_on: c.activity_on,
-        status: c.status,
-        activity_type: c.activity_type || 'Unknown'
-      }));
-
-      logs = [...unsyncedMapped, ...logs];
-    } catch (localErr) {
-      console.error('[ActivityPopup API] Error fetching local unsynced logs:', localErr);
-    }
-
-    try {
-      const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
-      await scanAndCacheIcons(appNames);
-    } catch (scanError) {
-      console.error('[ActivityPopup API] Error scanning icons:', scanError);
-    }
-
-    const finalLogsResult = isResponseArray ? logs : { ...response, entries: logs };
-
-    return {
-      logs: finalLogsResult,
-      icons: appIconCache
-    };
-  } catch (error) {
-    console.error('[ActivityPopup API] Error fetching logs:', error.message || error);
-    throw error;
+    logs = [...unsyncedMapped, ...logs];
+  } catch (localErr) {
+    console.error('[ActivityPopup API] Error fetching local unsynced logs:', localErr);
   }
+
+  try {
+    const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
+    await scanAndCacheIcons(appNames);
+  } catch (scanError) {
+    console.error('[ActivityPopup API] Error scanning icons:', scanError);
+  }
+
+  return {
+    logs: logs,
+    icons: appIconCache
+  };
 });
 
 ipcMain.handle('trigger-sync', async () => {
-  console.log('[IPC] trigger-sync called. Flushing pending closed sessions...');
+  console.log('[IPC] trigger-sync called. Resolving user and flushing pending closed sessions...');
+  await checkUserResolution();
   flushPendingClosedSessions();
 });
 
@@ -1380,10 +1392,25 @@ if (gotTheLock) {
       console.error(error);
     }
 
-    // Perform first user resolution attempt
-    await checkUserResolution();
+    // 1. Recover identity from persistent user profile cache (or legacy queue fallback)
+    const currentOsUser = os.userInfo().username;
+    const persistentUserId = getCachedUserIdForOsUser(currentOsUser) || getUserIdFromLocalQueue(currentOsUser);
+    if (persistentUserId) {
+      cachedUserId = persistentUserId;
+      isUserResolved = true;
+      saveStoredUserProfile(currentOsUser, persistentUserId);
+      console.log(`[Startup] Recovered user identity for "${currentOsUser}" from persistent cache: ID ${persistentUserId}`);
+    } else {
+      console.log(`[Startup] No cached Redmine user ID for "${currentOsUser}". Starting in local offline mode.`);
+    }
 
-    // Start background user resolution retry loop running every 30 seconds
+    // 2. Start tracking services immediately and unconditionally on startup!
+    startTrackingServices();
+
+    // 3. Initiate background user resolution (does not block tracking)
+    checkUserResolution();
+
+    // 4. Start background user resolution retry loop running every 30 seconds
     setInterval(checkUserResolution, 30000);
 
     // Pre-cache common system icons

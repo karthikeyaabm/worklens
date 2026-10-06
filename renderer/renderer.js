@@ -13,17 +13,24 @@ async function loadUsername() {
         } else if (result.error.toLowerCase().includes('waiting for account update') || result.error.toLowerCase().includes('unresolved')) {
           titleElement.textContent = 'Waiting for account update';
         } else {
-          titleElement.textContent = 'Not Connected';
+          titleElement.textContent = 'User error';
         }
-        titleElement.style.color = '#ef4444'; // Red color to indicate connection/validation error
+        titleElement.style.color = '#ef4444'; // Red color to indicate actual validation error
         titleElement.style.fontWeight = 'bold';
         titleElement.title = `${result.error}`; // Tooltip containing the full error details
       } else {
         const displayName = result && result.username ? result.username : 'Unknown User';
-        titleElement.textContent = displayName;
-        titleElement.style.color = '#ffffff'; // White color for successful connection
-        titleElement.style.fontWeight = '500';
-        titleElement.title = `Logged in as ${displayName}`;
+        if (result && result.isOffline) {
+          titleElement.textContent = displayName;
+          titleElement.style.color = '#60a5fa'; // Fluent Blue indicating Active Offline
+          titleElement.style.fontWeight = '500';
+          titleElement.title = `Active Offline (${displayName}) - Local tracking active, server unreachable`;
+        } else {
+          titleElement.textContent = displayName;
+          titleElement.style.color = '#ffffff'; // White color for successful online connection
+          titleElement.style.fontWeight = '500';
+          titleElement.title = `Logged in as ${displayName}`;
+        }
       }
     }
   } catch (error) {
