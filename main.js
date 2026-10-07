@@ -108,7 +108,12 @@ const {
   getUserIdFromLocalQueue,
   saveStoredUserProfile,
   getCachedUserIdForOsUser,
-  backfillUserIdForOsUsername
+  backfillUserIdForOsUsername,
+  getLocalDateString,
+  normalizeToLocalDateStr,
+  getActivityLogsForDate,
+  getAllTodayLogs,
+  getDateWiseActiveDurations
 } = require('./activityStore');
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { getActivityType, mapDecisionToActivityType } = antiAfkDetector;
@@ -635,6 +640,7 @@ async function flushPendingClosedSessions() {
         if (success) {
           markSessionSynced(session.local_id);
           successCount++;
+          invalidateActivity30DaysCache();
           await new Promise(resolve => setTimeout(resolve, 200));
         }
       } catch (error) {
@@ -1338,27 +1344,309 @@ ipcMain.handle('close-inactivity-popup', () => {
   }
 });
 
-ipcMain.handle('fetch-activity-logs', async () => {
-  const currentOsUser = os.userInfo().username;
-  const userId = await getUserId();
-  let serverLogs = [];
+// Precomputed Historical Views Cache
+let precomputedHistoricalCache = {
+  isReady: false,
+  isLoading: false,
+  timestamp: 0,
+  yesterday: null,
+  last7days: null,
+  last30days: null,
+  serverTodayLogs: []
+};
+let historicalFetchPromise = null;
+const HISTORICAL_CACHE_TTL_MS = 60 * 1000; // 60s cache TTL
 
-  if (isUserResolved && isBackendReachable && userId) {
-    try {
-      const response = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
-      if (Array.isArray(response)) {
-        serverLogs = [...response];
-      } else if (response && Array.isArray(response.entries)) {
-        serverLogs = [...response.entries];
+function invalidateActivity30DaysCache() {
+  precomputedHistoricalCache.isReady = false;
+  precomputedHistoricalCache.timestamp = 0;
+  precomputedHistoricalCache.yesterday = null;
+  precomputedHistoricalCache.last7days = null;
+  precomputedHistoricalCache.last30days = null;
+  precomputedHistoricalCache.serverTodayLogs = [];
+}
+
+// Single-pass processor for the 30-day API entries (executes in ~25-30ms for 14.5k records)
+function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
+  const today = new Date();
+  const todayStr = getLocalDateString(today);
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yesterday);
+
+  // Pre-generate Last 7 Days date objects
+  const last7DateObjects = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    last7DateObjects.push(d);
+  }
+
+  // Pre-generate Last 30 Days date objects
+  const last30DateObjects = [];
+  for (let i = 0; i < 30; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    last30DateObjects.push(d);
+  }
+
+  // Daily active durations map for the last 30 calendar days
+  const dailyDurations = {};
+  last30DateObjects.forEach(d => {
+    dailyDurations[getLocalDateString(d)] = 0;
+  });
+
+  const serverYesterdayLogs = [];
+  const serverTodayLogs = [];
+
+  // SINGLE PASS through the 30-day entries
+  for (let i = 0; i < apiEntries.length; i++) {
+    const entry = apiEntries[i];
+    const dStr = normalizeToLocalDateStr(entry.activity_on || entry.start_time);
+    if (!dStr) continue;
+
+    if (dStr === todayStr) {
+      serverTodayLogs.push(entry);
+    } else if (dStr === yesterdayStr) {
+      serverYesterdayLogs.push(entry);
+    }
+
+    if (entry.status && entry.status.toLowerCase() === 'active' && entry.duration > 0) {
+      if (dailyDurations[dStr] !== undefined) {
+        dailyDurations[dStr] += entry.duration;
       }
-    } catch (error) {
-      console.error('[ActivityPopup API] Server fetch failed, continuing with local logs:', error.message || error);
     }
   }
 
-  let logs = [...serverLogs];
-
+  // Add local unsynced active duration for today to today's date bucket
   try {
+    const unsyncedTodaySec = getUnsyncedTodayDuration(userId, currentOsUser);
+    dailyDurations[todayStr] = (dailyDurations[todayStr] || 0) + (unsyncedTodaySec || 0);
+  } catch (err) {
+    console.error('[Historical Processor] Error adding unsynced today duration:', err);
+  }
+
+  // Precompute Yesterday
+  const yesterdayAppNames = [...new Set(serverYesterdayLogs.map(e => e.app_name).filter(Boolean))];
+
+  // Precompute Last 7 Days
+  const last7DaysList = last7DateObjects.map(d => {
+    const ds = getLocalDateString(d);
+    const isToday = (ds === todayStr);
+    const duration = dailyDurations[ds] || 0;
+    return {
+      dateStr: ds,
+      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      isToday: isToday,
+      duration: duration
+    };
+  });
+  const last7TotalSeconds = last7DaysList.reduce((sum, d) => sum + d.duration, 0);
+  const last7View = {
+    period: 'last7days',
+    days: last7DaysList,
+    totalSeconds: last7TotalSeconds,
+    dateRange: `${last7DaysList[last7DaysList.length - 1].shortDate} — ${last7DaysList[0].shortDate}`
+  };
+
+  // Precompute Last 30 Days
+  const last30DaysList = last30DateObjects.map(d => {
+    const ds = getLocalDateString(d);
+    const isToday = (ds === todayStr);
+    const duration = dailyDurations[ds] || 0;
+    return {
+      dateStr: ds,
+      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      isToday: isToday,
+      duration: duration
+    };
+  });
+  const last30TotalSeconds = last30DaysList.reduce((sum, d) => sum + d.duration, 0);
+  const last30View = {
+    period: 'last30days',
+    days: last30DaysList,
+    totalSeconds: last30TotalSeconds,
+    dateRange: `${last30DaysList[last30DaysList.length - 1].shortDate} — ${last30DaysList[0].shortDate}`
+  };
+
+  return {
+    yesterdayStr,
+    serverTodayLogs,
+    yesterdayLogs: serverYesterdayLogs,
+    yesterdayAppNames,
+    last7View,
+    last30View
+  };
+}
+
+// Offline fallback precomputation using local queue
+function processHistoricalOfflineData(userId, currentOsUser) {
+  const today = new Date();
+  const todayStr = getLocalDateString(today);
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yesterday);
+
+  const yesterdayLogs = getActivityLogsForDate(yesterdayStr, userId, currentOsUser);
+
+  const last7DateObjects = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    last7DateObjects.push(d);
+  }
+  const last7DateStrings = last7DateObjects.map(d => getLocalDateString(d));
+  const last7Durations = getDateWiseActiveDurations(last7DateStrings, userId, currentOsUser);
+  const last7DaysList = last7DateObjects.map(d => {
+    const ds = getLocalDateString(d);
+    const isToday = (ds === todayStr);
+    const duration = last7Durations[ds] || 0;
+    return {
+      dateStr: ds,
+      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      isToday: isToday,
+      duration: duration
+    };
+  });
+  const last7TotalSeconds = last7DaysList.reduce((sum, d) => sum + d.duration, 0);
+
+  const last30DateObjects = [];
+  for (let i = 0; i < 30; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    last30DateObjects.push(d);
+  }
+  const last30DateStrings = last30DateObjects.map(d => getLocalDateString(d));
+  const last30Durations = getDateWiseActiveDurations(last30DateStrings, userId, currentOsUser);
+  const last30DaysList = last30DateObjects.map(d => {
+    const ds = getLocalDateString(d);
+    const isToday = (ds === todayStr);
+    const duration = last30Durations[ds] || 0;
+    return {
+      dateStr: ds,
+      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      isToday: isToday,
+      duration: duration
+    };
+  });
+  const last30TotalSeconds = last30DaysList.reduce((sum, d) => sum + d.duration, 0);
+
+  return {
+    yesterday: {
+      period: 'yesterday',
+      date: yesterdayStr,
+      logs: yesterdayLogs,
+      icons: appIconCache
+    },
+    last7days: {
+      period: 'last7days',
+      days: last7DaysList,
+      totalSeconds: last7TotalSeconds,
+      dateRange: `${last7DaysList[last7DaysList.length - 1].shortDate} — ${last7DaysList[0].shortDate}`
+    },
+    last30days: {
+      period: 'last30days',
+      days: last30DaysList,
+      totalSeconds: last30TotalSeconds,
+      dateRange: `${last30DaysList[last30DaysList.length - 1].shortDate} — ${last30DaysList[0].shortDate}`
+    }
+  };
+}
+
+// Background asynchronous historical loader - does NOT block Today rendering
+function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
+  const now = Date.now();
+  if (!force && precomputedHistoricalCache.isReady && (now - precomputedHistoricalCache.timestamp < HISTORICAL_CACHE_TTL_MS)) {
+    return Promise.resolve(precomputedHistoricalCache);
+  }
+
+  if (historicalFetchPromise) {
+    return historicalFetchPromise;
+  }
+
+  precomputedHistoricalCache.isLoading = true;
+
+  historicalFetchPromise = (async () => {
+    try {
+      console.log(`[Historical Loader] Starting background 30-day API fetch for user ${userId}...`);
+      let apiData = null;
+      if (isUserResolved && isBackendReachable && userId) {
+        apiData = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+      }
+
+      let apiEntries = [];
+      if (Array.isArray(apiData)) {
+        apiEntries = apiData;
+      } else if (apiData && Array.isArray(apiData.entries)) {
+        apiEntries = apiData.entries;
+      }
+
+      const processed = processHistorical30DaysData(apiEntries, userId, currentOsUser);
+
+      // Pre-cache icons for yesterday's apps
+      if (processed.yesterdayAppNames && processed.yesterdayAppNames.length > 0) {
+        try {
+          await scanAndCacheIcons(processed.yesterdayAppNames);
+        } catch (scanErr) {
+          console.error('[Historical Loader] Error scanning yesterday icons:', scanErr);
+        }
+      }
+
+      precomputedHistoricalCache = {
+        isReady: true,
+        isLoading: false,
+        timestamp: Date.now(),
+        yesterday: {
+          period: 'yesterday',
+          date: processed.yesterdayStr,
+          logs: processed.yesterdayLogs,
+          icons: appIconCache
+        },
+        last7days: processed.last7View,
+        last30days: processed.last30View,
+        serverTodayLogs: processed.serverTodayLogs
+      };
+
+      console.log('[Historical Loader] Background historical data ready.');
+
+      if (activityWindow && !activityWindow.isDestroyed()) {
+        activityWindow.webContents.send('historical-data-ready', { isReady: true });
+      }
+
+      return precomputedHistoricalCache;
+    } catch (err) {
+      console.error('[Historical Loader] Error during background fetch, using local queue fallback:', err);
+      const offline = processHistoricalOfflineData(userId, currentOsUser);
+      precomputedHistoricalCache = {
+        isReady: true,
+        isLoading: false,
+        timestamp: Date.now(),
+        yesterday: offline.yesterday,
+        last7days: offline.last7days,
+        last30days: offline.last30days,
+        serverTodayLogs: []
+      };
+
+      if (activityWindow && !activityWindow.isDestroyed()) {
+        activityWindow.webContents.send('historical-data-ready', { isReady: true });
+      }
+
+      return precomputedHistoricalCache;
+    } finally {
+      historicalFetchPromise = null;
+    }
+  })();
+
+  return historicalFetchPromise;
+}
+
+async function getResolvedTodayLogs(userId, currentOsUser) {
+  let logs = [];
+  if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.serverTodayLogs.length > 0) {
     const unsyncedToday = getUnsyncedTodayLogs(userId, currentOsUser);
     const unsyncedMapped = unsyncedToday.map(c => ({
       id: c.local_id,
@@ -1372,23 +1660,108 @@ ipcMain.handle('fetch-activity-logs', async () => {
       status: c.status,
       activity_type: c.activity_type || 'Unknown'
     }));
+    logs = [...unsyncedMapped, ...precomputedHistoricalCache.serverTodayLogs];
+  } else {
+    logs = getAllTodayLogs(userId, currentOsUser);
+  }
+  return logs;
+}
 
-    logs = [...unsyncedMapped, ...logs];
-  } catch (localErr) {
-    console.error('[ActivityPopup API] Error fetching local unsynced logs:', localErr);
+async function handleFetchActivity(period = 'today') {
+  const currentOsUser = os.userInfo().username;
+  const userId = await getUserId();
+  const normalizedPeriod = (period || 'today').toLowerCase().replace('-', '_');
+  const today = new Date();
+  const todayStr = getLocalDateString(today);
+
+  // 1. TODAY: ALWAYS IMMEDIATE (Zero network blocking!)
+  if (normalizedPeriod === 'today') {
+    let logs = [];
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.serverTodayLogs.length > 0) {
+      const unsyncedToday = getUnsyncedTodayLogs(userId, currentOsUser);
+      const unsyncedMapped = unsyncedToday.map(c => ({
+        id: c.local_id,
+        user_id: c.user_id,
+        app_name: c.app_name,
+        window_title: c.window_title,
+        start_time: c.start_time,
+        end_time: c.end_time,
+        duration: c.duration,
+        activity_on: c.activity_on,
+        status: c.status,
+        activity_type: c.activity_type || 'Unknown'
+      }));
+      logs = [...unsyncedMapped, ...precomputedHistoricalCache.serverTodayLogs];
+    } else {
+      logs = getAllTodayLogs(userId, currentOsUser);
+    }
+
+    // Trigger background loading of historical data asynchronously without awaiting
+    loadHistoricalDataInBackground(userId, currentOsUser);
+
+    try {
+      const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
+      await scanAndCacheIcons(appNames);
+    } catch (scanError) {
+      console.error('[ActivityPopup API] Error scanning icons for today:', scanError);
+    }
+
+    return {
+      period: 'today',
+      date: todayStr,
+      logs: logs,
+      icons: appIconCache
+    };
   }
 
-  try {
-    const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
-    await scanAndCacheIcons(appNames);
-  } catch (scanError) {
-    console.error('[ActivityPopup API] Error scanning icons:', scanError);
+  // 2. YESTERDAY
+  if (normalizedPeriod === 'yesterday') {
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.yesterday) {
+      return precomputedHistoricalCache.yesterday;
+    }
+    await loadHistoricalDataInBackground(userId, currentOsUser);
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.yesterday) {
+      return precomputedHistoricalCache.yesterday;
+    }
+    const offline = processHistoricalOfflineData(userId, currentOsUser);
+    return offline.yesterday;
   }
 
-  return {
-    logs: logs,
-    icons: appIconCache
-  };
+  // 3. LAST 7 DAYS
+  if (normalizedPeriod === 'last7days' || normalizedPeriod === 'last_7_days') {
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last7days) {
+      return precomputedHistoricalCache.last7days;
+    }
+    await loadHistoricalDataInBackground(userId, currentOsUser);
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last7days) {
+      return precomputedHistoricalCache.last7days;
+    }
+    const offline = processHistoricalOfflineData(userId, currentOsUser);
+    return offline.last7days;
+  }
+
+  // 4. LAST 30 DAYS
+  if (normalizedPeriod === 'last30days' || normalizedPeriod === 'last_30_days' || normalizedPeriod === 'current_month' || normalizedPeriod === 'month') {
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last30days) {
+      return precomputedHistoricalCache.last30days;
+    }
+    await loadHistoricalDataInBackground(userId, currentOsUser);
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last30days) {
+      return precomputedHistoricalCache.last30days;
+    }
+    const offline = processHistoricalOfflineData(userId, currentOsUser);
+    return offline.last30days;
+  }
+
+  return await handleFetchActivity('today');
+}
+
+ipcMain.handle('fetch-activity-logs', async (event, period = 'today') => {
+  return await handleFetchActivity(period);
+});
+
+ipcMain.handle('fetch-activity-history', async (event, period) => {
+  return await handleFetchActivity(period);
 });
 
 ipcMain.handle('trigger-sync', async () => {

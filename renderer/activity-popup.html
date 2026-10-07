@@ -20,13 +20,23 @@
       <button id="close-btn" class="close-button" title="Close popup">&times;</button>
     </header>
     
+    <!-- Period Selector Navigation -->
+    <div class="period-selector-container">
+      <nav class="period-selector" id="period-selector" role="tablist" aria-label="Active time period">
+        <button type="button" class="period-tab active" data-period="today" role="tab" aria-selected="true" id="tab-today">Today</button>
+        <button type="button" class="period-tab" data-period="yesterday" role="tab" aria-selected="false" id="tab-yesterday">Yesterday</button>
+        <button type="button" class="period-tab" data-period="last7days" role="tab" aria-selected="false" id="tab-last7days">Last 7 Days</button>
+        <button type="button" class="period-tab" data-period="last30days" role="tab" aria-selected="false" id="tab-last30days">Last 30 Days</button>
+      </nav>
+    </div>
+
     <!-- Subtitle Date -->
     <div class="date-subtitle" id="current-date">Today's Date</div>
 
     <!-- Column Headers -->
-    <div class="list-header">
-      <span class="col-app">APPLICATION / WEBSITE</span>
-      <span class="col-time">ACTIVE TIME</span>
+    <div class="list-header" id="list-header">
+      <span class="col-app" id="col-header-name">APPLICATION / WEBSITE</span>
+      <span class="col-time" id="col-header-time">ACTIVE TIME</span>
     </div>
 
     <!-- Main Content Area -->
@@ -34,7 +44,7 @@
       <!-- Loading State -->
       <div id="loading-state" class="state-container">
         <div class="spinner"></div>
-        <p>Loading activity...</p>
+        <p id="loading-text">Loading activity...</p>
       </div>
 
       <!-- Error State -->
@@ -45,12 +55,17 @@
 
       <!-- Empty State -->
       <div id="empty-state" class="state-container hidden">
-        <p class="empty-msg">No activity recorded today.</p>
+        <p class="empty-msg" id="empty-msg">No activity recorded today.</p>
       </div>
 
-      <!-- Dynamic Activity List -->
+      <!-- Dynamic Activity List (App-wise breakdown for Today / Yesterday) -->
       <div id="activity-list" class="activity-list hidden">
         <!-- Application rows will be injected dynamically -->
+      </div>
+
+      <!-- Dynamic History List (Date-wise breakdown for Last 7 Days / Current Month) -->
+      <div id="history-list" class="history-list hidden">
+        <!-- Date rows will be injected dynamically -->
       </div>
     </main>
 

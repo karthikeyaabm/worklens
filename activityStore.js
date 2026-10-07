@@ -125,13 +125,13 @@ function readChunks() {
 function writeChunks(chunks) {
   const filePath = getQueueFilePath();
   try {
-    // Automatically prune synced chunks older than 1 day to keep file size optimized
+    // Automatically prune synced chunks older than 35 days to support Last 7 Days & Current Month historical summaries while keeping file size bounded
     const limitDate = new Date();
-    limitDate.setDate(limitDate.getDate() - 1);
+    limitDate.setDate(limitDate.getDate() - 35);
 
     const filtered = chunks.filter(c => {
       if (!c.synced) return true;
-      const createdAt = new Date(c.created_at);
+      const createdAt = new Date(c.created_at || c.start_time);
       return createdAt >= limitDate;
     });
 
@@ -386,6 +386,83 @@ function backfillUserIdForOsUsername(osUsername, userId) {
   return updatedCount;
 }
 
+function normalizeToLocalDateStr(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return getLocalDateString(val);
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymdMatch) {
+      return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+    }
+    const dmyMatch = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (dmyMatch) {
+      return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    }
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return getLocalDateString(parsed);
+    }
+  }
+  return null;
+}
+
+function getActivityLogsForDate(dateStr, userId = null, osUsername = null) {
+  const chunks = readChunks();
+  const userIdInt = userId ? parseInt(userId, 10) : null;
+
+  return chunks.filter(c => {
+    if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
+    if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
+    const chunkDate = normalizeToLocalDateStr(c.start_time || c.activity_on);
+    return chunkDate === dateStr;
+  }).map(c => ({
+    id: c.local_id,
+    local_id: c.local_id,
+    user_id: c.user_id,
+    app_name: c.app_name,
+    window_title: c.window_title,
+    start_time: c.start_time,
+    end_time: c.end_time,
+    duration: c.duration,
+    activity_on: c.activity_on,
+    status: c.status,
+    synced: !!c.synced,
+    is_synced: !!c.synced,
+    activity_type: c.activity_type || 'Unknown'
+  }));
+}
+
+function getAllTodayLogs(userId = null, osUsername = null) {
+  const todayStr = getLocalDateString();
+  return getActivityLogsForDate(todayStr, userId, osUsername);
+}
+
+function getDateWiseActiveDurations(dateStrings, userId = null, osUsername = null) {
+  const chunks = readChunks();
+  const userIdInt = userId ? parseInt(userId, 10) : null;
+  const result = {};
+
+  dateStrings.forEach(ds => {
+    result[ds] = 0;
+  });
+
+  chunks.forEach(c => {
+    if (c.status && c.status.toLowerCase() !== 'active') return;
+    if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return;
+    if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return;
+
+    const chunkDate = normalizeToLocalDateStr(c.start_time || c.activity_on);
+    if (chunkDate && result[chunkDate] !== undefined) {
+      result[chunkDate] += (c.duration || 0);
+    }
+  });
+
+  return result;
+}
+
 module.exports = {
   saveOrUpdateActiveSessionLocal,
   closeOrphanedSessions,
@@ -403,6 +480,12 @@ module.exports = {
   saveStoredUserProfile,
   getCachedUserIdForOsUser,
   backfillUserIdForOsUsername,
+  // History & Date-wise queries
+  getLocalDateString,
+  normalizeToLocalDateStr,
+  getActivityLogsForDate,
+  getAllTodayLogs,
+  getDateWiseActiveDurations,
   // Keep back compat mapping
   saveChunkLocal,
   markChunkSynced: markSessionSynced,

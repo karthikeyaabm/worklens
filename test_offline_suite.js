@@ -26,7 +26,12 @@ const {
   getStoredUserProfile,
   saveStoredUserProfile,
   getCachedUserIdForOsUser,
-  backfillUserIdForOsUsername
+  backfillUserIdForOsUsername,
+  getLocalDateString,
+  normalizeToLocalDateStr,
+  getActivityLogsForDate,
+  getAllTodayLogs,
+  getDateWiseActiveDurations
 } = require('./activityStore');
 
 let passedTests = 0;
@@ -247,38 +252,116 @@ app.whenReady().then(async () => {
 
   // Test 10: Complete offline-start -> restore -> backfill -> sync reconciliation (Zero Lost Time)
   runTest('10. Full flow: 30m offline work -> internet returns -> backfill -> zero lost time', () => {
-    // 09:30 AM: PC starts offline, queue is empty, redmine user is unknown
-    const session930 = {
-      local_id: 'session-0930-1000',
+    // Session recorded today
+    const testNow = new Date();
+    const testStartTime = new Date(testNow.getTime() - 1800000); // 30 minutes ago
+    const session30m = {
+      local_id: 'session-today-30m',
       appName: 'WorkLens',
       windowTitle: 'Working on Project Alpha',
-      startTime: new Date('2026-10-06T09:30:00'),
-      endTime: new Date('2026-10-06T10:00:00'),
+      startTime: testStartTime,
+      endTime: testNow,
       status: 'Active',
       duration: 1800, // 30 minutes
       closed: true
     };
 
     // Recorded offline under local Windows user
-    saveOrUpdateActiveSessionLocal(session930, null, testUser);
+    saveOrUpdateActiveSessionLocal(session30m, null, testUser);
 
     // Verify tracked offline duration is 1800s (30m)
     const offlineDur = getUnsyncedTodayDuration(null, testUser);
     assert.ok(offlineDur >= 1800, '30m offline work must be tracked');
 
-    // 10:00 AM: Internet restored, server resolves user 890
+    // Internet restored, server resolves user 890
     backfillUserIdForOsUsername(testUser, mockRedmineId);
 
     // Verify session now has user_id: 890
     const syncedLogs = getUnsyncedTodayLogs(mockRedmineId, testUser);
-    const sessionRestored = syncedLogs.find(c => c.local_id === 'session-0930-1000');
+    const sessionRestored = syncedLogs.find(c => c.local_id === 'session-today-30m');
     assert.ok(sessionRestored, 'Session must exist');
     assert.strictEqual(sessionRestored.user_id, mockRedmineId, 'user_id must be backfilled');
     assert.strictEqual(sessionRestored.duration, 1800, 'Zero working time lost');
 
     // Mark synced
-    markSessionSynced('session-0930-1000');
+    markSessionSynced('session-today-30m');
     assert.ok(true, 'Full lifecycle verified successfully');
+  });
+
+  // Test 11: Date normalization and yesterday vs today isolation
+  runTest('11. Yesterday sessions are isolated from today records', () => {
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = getLocalDateString(yesterdayDate);
+    const todayStr = getLocalDateString(new Date());
+
+    // Save a yesterday session
+    saveOrUpdateActiveSessionLocal({
+      local_id: 'yesterday-session-1',
+      appName: 'Antigravity IDE',
+      windowTitle: 'Working yesterday',
+      startTime: yesterdayDate,
+      endTime: yesterdayDate,
+      status: 'Active',
+      duration: 3600,
+      closed: true
+    }, mockRedmineId, testUser);
+
+    const yesterdayLogs = getActivityLogsForDate(yesterdayStr, mockRedmineId, testUser);
+    assert.ok(yesterdayLogs.length >= 1, 'Must find yesterday session');
+    assert.ok(yesterdayLogs.some(l => l.local_id === 'yesterday-session-1'), 'Yesterday session present in yesterday logs');
+
+    // Verify today logs DO NOT contain yesterday session
+    const todayLogs = getActivityLogsForDate(todayStr, mockRedmineId, testUser);
+    assert.ok(!todayLogs.some(l => l.local_id === 'yesterday-session-1'), 'Yesterday session must NOT be in today logs');
+  });
+
+  // Test 12: Last 7 Days date aggregation generates exactly 7 dates with 0m for missing days
+  runTest('12. Last 7 Days aggregation produces exactly 7 dates and defaults missing to 0s', () => {
+    const today = new Date();
+    const dateObjects = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      dateObjects.push(d);
+    }
+    assert.strictEqual(dateObjects.length, 7, 'Must generate exactly 7 dates');
+
+    const dateStrings = dateObjects.map(d => getLocalDateString(d));
+    const durations = getDateWiseActiveDurations(dateStrings, mockRedmineId, testUser);
+
+    assert.strictEqual(Object.keys(durations).length, 7, 'Durations map must have 7 entries');
+    // 5 days ago should have 0 duration if no activity recorded
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(today.getDate() - 5);
+    const fiveDaysAgoStr = getLocalDateString(fiveDaysAgo);
+    assert.strictEqual(durations[fiveDaysAgoStr], 0, 'Missing date must evaluate to 0s');
+  });
+
+  // Test 13: Last 30 Days date generation produces exactly 30 calendar dates ending today
+  runTest('13. Last 30 Days includes exactly 30 calendar dates ending today without future dates', () => {
+    const today = new Date();
+    const dates = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      dates.push(d);
+    }
+
+    assert.strictEqual(dates.length, 30, 'Must contain exactly 30 dates');
+    assert.strictEqual(dates[0].toDateString(), today.toDateString(), 'First element must be today');
+    
+    // Verify date strings and durations
+    const dateStrings = dates.map(d => getLocalDateString(d));
+    const durations = getDateWiseActiveDurations(dateStrings, mockRedmineId, testUser);
+    assert.strictEqual(Object.keys(durations).length, 30, 'Must have 30 entries in durations map');
+  });
+
+  // Test 14: 35-day queue retention keeps historical sessions intact
+  runTest('14. 35-day retention preserves historical records across writes', () => {
+    const queueFile = getQueueFilePath();
+    const content = fs.readFileSync(queueFile, 'utf8');
+    assert.ok(content.includes('yesterday-session-1'), 'Yesterday session must still exist in activity_queue.jsonl');
   });
 
   console.log('\n================ TEST SUMMARY ================');

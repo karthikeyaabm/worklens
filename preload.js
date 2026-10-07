@@ -60,8 +60,12 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('close-activity-popup');
   },
 
-  fetchActivityLogs: async () => {
-    return await ipcRenderer.invoke('fetch-activity-logs');
+  fetchActivityLogs: async (period = 'today') => {
+    return await ipcRenderer.invoke('fetch-activity-logs', period);
+  },
+
+  fetchActivityHistory: async (period) => {
+    return await ipcRenderer.invoke('fetch-activity-history', period);
   },
 
   // Activity Popup Listeners/Signals
@@ -81,6 +85,12 @@ contextBridge.exposeInMainWorld('api', {
     const listener = () => callback();
     ipcRenderer.on('request-close', listener);
     return () => ipcRenderer.removeListener('request-close', listener);
+  },
+
+  onHistoricalDataReady: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('historical-data-ready', listener);
+    return () => ipcRenderer.removeListener('historical-data-ready', listener);
   },
 
   sendPopupReady: () => {

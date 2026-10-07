@@ -107,6 +107,56 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* ================= PERIOD SELECTOR ================= */
+.period-selector-container {
+  margin: 6px 0 10px 0;
+}
+
+.period-selector {
+  display: flex;
+  background: rgba(20, 20, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 4px;
+}
+
+.period-tab {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #9CA3AF;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.period-tab:hover:not(.active) {
+  color: #E5E7EB;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.period-tab.active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93C5FD;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.period-tab:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.5);
+  outline-offset: -1px;
+}
+
 /* ================= SUBTITLE ================= */
 .date-subtitle {
   font-size: 11px;
@@ -221,6 +271,142 @@ body {
 
 .activity-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+/* ================= HISTORY LIST ================= */
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.history-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background-color 150ms ease;
+  user-select: none;
+  opacity: 0;
+}
+
+.history-row:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.history-date-col {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 12px;
+}
+
+.history-calendar-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.history-calendar-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.history-date-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+  padding-right: 16px;
+}
+
+.history-date-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-date-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #E5E7EB;
+  letter-spacing: 0.2px;
+}
+
+.history-date-text.is-today {
+  color: #93C5FD;
+  font-weight: 600;
+}
+
+.history-today-badge {
+  font-size: 9px;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  padding: 0 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.history-progress-container {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.history-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.history-duration {
+  font-size: 12px;
+  font-weight: 600;
+  color: #E5E7EB;
+  text-align: right;
+  flex: 0 0 80px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-duration.zero {
+  color: #6B7280;
+  font-weight: 400;
 }
 
 /* ================= ROW STYLING ================= */

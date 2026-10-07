@@ -6,17 +6,35 @@ const dateEl = document.getElementById('current-date');
 const loadingState = document.getElementById('loading-state');
 const errorState = document.getElementById('error-state');
 const emptyState = document.getElementById('empty-state');
+const emptyMsg = document.getElementById('empty-msg');
 const retryBtn = document.getElementById('retry-btn');
 const activityList = document.getElementById('activity-list');
+const historyList = document.getElementById('history-list');
 const totalTimeEl = document.getElementById('total-time');
+const periodTabs = document.querySelectorAll('.period-tab');
+const colHeaderName = document.getElementById('col-header-name');
+const colHeaderTime = document.getElementById('col-header-time');
+const loadingText = document.getElementById('loading-text');
 
 // ================= STATE VARIABLES =================
 let pollInterval = null;
 let renderedRows = {}; // Holds map of appName -> DOM element
 let expandedAppName = null; // Currently expanded application name
+let currentPeriod = 'today'; // 'today' | 'yesterday' | 'last7days' | 'current_month'
+
+// Client-side view cache for instant tab switching (0ms)
+let clientViewCache = {
+  today: null,
+  yesterday: null,
+  last7days: null,
+  last30days: null
+};
+let lastCacheTimestamp = Date.now();
+const CLIENT_CACHE_TTL_MS = 60 * 1000; // 60s cache TTL
 
 // ================= INITIALIZATION =================
 document.addEventListener('DOMContentLoaded', () => {
+  setupPeriodTabs();
   updateDateDisplay();
   
   // Register close button click
@@ -30,6 +48,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof window.api.onPopupStatusChanged === 'function') {
       window.api.onPopupStatusChanged((status) => {
         if (status === 'opened') {
+          // If cache expired, reset client cache so fresh background fetch occurs
+          if (Date.now() - lastCacheTimestamp > CLIENT_CACHE_TTL_MS) {
+            clientViewCache = { today: null, yesterday: null, last7days: null, last30days: null };
+            lastCacheTimestamp = Date.now();
+          }
+          // Always default to today when popup is reopened
+          selectPeriod('today', false);
           updateDateDisplay();
           startPolling();
         } else if (status === 'closed') {
@@ -50,18 +75,119 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    if (typeof window.api.onHistoricalDataReady === 'function') {
+      window.api.onHistoricalDataReady((data) => {
+        // If user is currently viewing a historical period waiting for data, refresh immediately
+        if (currentPeriod !== 'today' && !clientViewCache[currentPeriod]) {
+          fetchAndRender();
+        }
+      });
+    }
+
     // Tell the main process that the renderer is fully loaded and ready
     window.api.sendPopupReady();
   }
 });
+
+// ================= PERIOD TABS CONTROLLER =================
+function setupPeriodTabs() {
+  periodTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetPeriod = tab.dataset.period;
+      if (targetPeriod === currentPeriod) return;
+      selectPeriod(targetPeriod, true);
+    });
+
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        tab.click();
+      }
+    });
+  });
+}
+
+function selectPeriod(period, triggerFetch = true) {
+  const isPeriodChange = (period !== currentPeriod);
+
+  currentPeriod = period;
+  periodTabs.forEach(tab => {
+    const isSelected = tab.dataset.period === period;
+    tab.classList.toggle('active', isSelected);
+    tab.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  });
+
+  updateDateDisplay();
+  updateColumnHeaders();
+
+  // If already cached, switch view INSTANTLY with zero network/IPC delay
+  if (clientViewCache[period]) {
+    if (isPeriodChange) {
+      for (const name in renderedRows) {
+        if (renderedRows[name]) renderedRows[name].remove();
+      }
+      renderedRows = {};
+      expandedAppName = null;
+      if (activityList) activityList.innerHTML = '';
+      if (historyList) historyList.innerHTML = '';
+    }
+
+    if (period === 'last7days' || period === 'last30days' || period === 'current_month') {
+      renderHistoryView(clientViewCache[period]);
+    } else {
+      renderAppView(clientViewCache[period]);
+    }
+    return;
+  }
+
+  // Not in client cache yet: clear current items to avoid stale flashing
+  if (isPeriodChange) {
+    for (const name in renderedRows) {
+      if (renderedRows[name]) renderedRows[name].remove();
+    }
+    renderedRows = {};
+    expandedAppName = null;
+    if (activityList) activityList.innerHTML = '';
+    if (historyList) historyList.innerHTML = '';
+  }
+
+  if (triggerFetch) {
+    fetchAndRender();
+  }
+}
+
+function updateColumnHeaders() {
+  if (!colHeaderName || !colHeaderTime) return;
+  if (currentPeriod === 'today' || currentPeriod === 'yesterday') {
+    colHeaderName.textContent = 'APPLICATION / WEBSITE';
+    colHeaderTime.textContent = 'ACTIVE TIME';
+  } else {
+    colHeaderName.textContent = 'DATE';
+    colHeaderTime.textContent = 'ACTIVE TIME';
+  }
+}
 
 // ================= UTILITIES & HELPERS =================
 function updateDateDisplay() {
   if (!dateEl) return;
   const now = new Date();
   const options = { day: 'numeric', month: 'short', year: 'numeric' };
-  // Outputs "18 Jul 2026"
-  dateEl.textContent = now.toLocaleDateString('en-GB', options);
+
+  if (currentPeriod === 'today') {
+    dateEl.textContent = now.toLocaleDateString('en-GB', options);
+  } else if (currentPeriod === 'yesterday') {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    dateEl.textContent = y.toLocaleDateString('en-GB', options);
+  } else if (currentPeriod === 'last7days') {
+    const start = new Date();
+    start.setDate(now.getDate() - 6);
+    dateEl.textContent = `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — ${now.toLocaleDateString('en-GB', options)}`;
+  } else if (currentPeriod === 'last30days' || currentPeriod === 'current_month') {
+    const start = new Date();
+    start.setDate(now.getDate() - 29);
+    dateEl.textContent = `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — ${now.toLocaleDateString('en-GB', options)}`;
+  }
 }
 
 function formatDuration(totalSeconds) {
@@ -186,7 +312,12 @@ function initiateCloseAnimation() {
 function startPolling() {
   stopPolling();
   fetchAndRender();
-  pollInterval = setInterval(fetchAndRender, 30000);
+  pollInterval = setInterval(() => {
+    // Only automatically poll live updates when on 'today' tab
+    if (currentPeriod === 'today') {
+      fetchAndRender();
+    }
+  }, 30000);
 }
 
 function stopPolling() {
@@ -200,98 +331,232 @@ function stopPolling() {
 async function fetchAndRender() {
   if (!window.api || typeof window.api.fetchActivityLogs !== 'function') return;
 
-  // Show loading state if no rows have been rendered yet
-  const hasRows = Object.keys(renderedRows).length > 0;
+  const targetPeriod = currentPeriod;
+  // Show loading state if no rows have been rendered for this view yet
+  const hasRows = (targetPeriod === 'today' || targetPeriod === 'yesterday')
+    ? Object.keys(renderedRows).length > 0
+    : (historyList && historyList.children.length > 0);
+
   if (!hasRows) {
+    if (loadingText) {
+      loadingText.textContent = (targetPeriod === 'today' ? 'Loading activity...' : 'Loading historical data...');
+    }
     showState(loadingState);
   }
 
   try {
-    const rawData = await window.api.fetchActivityLogs();
-    
-    // Support either { logs, icons } or raw data direct
-    let logsData = rawData;
-    let iconsMap = {};
-    if (rawData && rawData.logs) {
-      logsData = rawData.logs;
-      iconsMap = rawData.icons || {};
-    }
-    
-    // Format is { user_id, date, entries, ... } or raw array
-    const logs = Array.isArray(logsData) ? logsData : (logsData?.entries || []);
-    
-    // Group logs by application name and individual activities
-    const grouped = {};
-    logs.forEach(entry => {
-      if (entry.status === 'active' && entry.duration > 0) {
-        const appName = entry.app_name || 'Unknown';
-        const windowTitle = entry.window_title || 'Unknown Activity';
-        const duration = entry.duration;
+    const rawData = await window.api.fetchActivityLogs(targetPeriod);
 
-        if (!grouped[appName]) {
-          grouped[appName] = {
-            application: appName,
-            totalDuration: 0,
-            activitiesMap: {}
-          };
-        }
-        grouped[appName].totalDuration += duration;
-        grouped[appName].activitiesMap[windowTitle] = (grouped[appName].activitiesMap[windowTitle] || 0) + duration;
-      }
-    });
+    // Cache the resolved data for instant subsequent tab switches
+    clientViewCache[targetPeriod] = rawData;
 
-    const sortedApps = Object.keys(grouped)
-      .map(name => {
-        const appGroup = grouped[name];
-        const activities = Object.keys(appGroup.activitiesMap).map(title => ({
-          title,
-          duration: appGroup.activitiesMap[title]
-        })).sort((a, b) => b.duration - a.duration);
+    // Guard against race conditions if user clicked another tab while awaiting
+    if (currentPeriod !== targetPeriod) return;
 
-        return {
-          name,
-          duration: appGroup.totalDuration,
-          activities
-        };
-      })
-      .sort((a, b) => b.duration - a.duration);
-
-    if (sortedApps.length === 0) {
-      showState(emptyState);
-      totalTimeEl.textContent = '0m';
-      
-      // Clear any rendered rows
-      for (const name in renderedRows) {
-        renderedRows[name].remove();
-      }
-      renderedRows = {};
-      expandedAppName = null;
+    if (targetPeriod === 'last7days' || targetPeriod === 'last30days' || targetPeriod === 'current_month') {
+      renderHistoryView(rawData);
       return;
     }
 
-    // Hide all states and show activity list
-    showState(activityList);
-    
-    const maxDuration = sortedApps[0].duration;
-    
-    // Render and reconcile rows
-    reconcileRows(sortedApps, maxDuration, iconsMap);
-
-    // Calculate and show total active duration
-    const totalSeconds = sortedApps.reduce((acc, app) => acc + app.duration, 0);
-    totalTimeEl.textContent = formatDuration(totalSeconds);
+    renderAppView(rawData);
 
   } catch (error) {
+    if (currentPeriod !== targetPeriod) return;
     console.error('Failed to load activity details:', error);
     // Only show full screen error state if we have no loaded data
-    if (Object.keys(renderedRows).length === 0) {
+    const hasData = Object.keys(renderedRows).length > 0 || (historyList && historyList.children.length > 0);
+    if (!hasData) {
       showState(errorState);
     }
   }
 }
 
+function renderAppView(rawData) {
+  // Hide history list and show activity list
+  if (historyList) {
+    historyList.classList.add('hidden');
+    historyList.innerHTML = '';
+  }
+
+  let logsData = rawData;
+  let iconsMap = {};
+  if (rawData && rawData.logs) {
+    logsData = rawData.logs;
+    iconsMap = rawData.icons || {};
+  }
+
+  // Format is { user_id, date, entries, ... } or raw array
+  const logs = Array.isArray(logsData) ? logsData : (logsData?.entries || []);
+
+  // Group logs by application name and individual activities
+  const grouped = {};
+  logs.forEach(entry => {
+    if (entry.status === 'active' && entry.duration > 0) {
+      const appName = entry.app_name || 'Unknown';
+      const windowTitle = entry.window_title || 'Unknown Activity';
+      const duration = entry.duration;
+
+      if (!grouped[appName]) {
+        grouped[appName] = {
+          application: appName,
+          totalDuration: 0,
+          activitiesMap: {}
+        };
+      }
+      grouped[appName].totalDuration += duration;
+      grouped[appName].activitiesMap[windowTitle] = (grouped[appName].activitiesMap[windowTitle] || 0) + duration;
+    }
+  });
+
+  const sortedApps = Object.keys(grouped)
+    .map(name => {
+      const appGroup = grouped[name];
+      const activities = Object.keys(appGroup.activitiesMap).map(title => ({
+        title,
+        duration: appGroup.activitiesMap[title]
+      })).sort((a, b) => b.duration - a.duration);
+
+      return {
+        name,
+        duration: appGroup.totalDuration,
+        activities
+      };
+    })
+    .sort((a, b) => b.duration - a.duration);
+
+  if (sortedApps.length === 0) {
+    if (emptyMsg) {
+      emptyMsg.textContent = currentPeriod === 'today' ? 'No activity recorded today.' : 'No activity recorded yesterday.';
+    }
+    showState(emptyState);
+    totalTimeEl.textContent = '0m';
+
+    // Clear any rendered rows
+    for (const name in renderedRows) {
+      renderedRows[name].remove();
+    }
+    renderedRows = {};
+    expandedAppName = null;
+    return;
+  }
+
+  // Hide all states and show activity list
+  showState(activityList);
+
+  const maxDuration = sortedApps[0].duration;
+
+  // Render and reconcile rows
+  reconcileRows(sortedApps, maxDuration, iconsMap);
+
+  // Calculate and show total active duration
+  const totalSeconds = sortedApps.reduce((acc, app) => acc + app.duration, 0);
+  totalTimeEl.textContent = formatDuration(totalSeconds);
+}
+
+function renderHistoryView(rawData) {
+  // Clear any rendered app rows
+  for (const name in renderedRows) {
+    renderedRows[name].remove();
+  }
+  renderedRows = {};
+  expandedAppName = null;
+
+  const days = rawData?.days || [];
+  if (!days || days.length === 0) {
+    if (emptyMsg) {
+      emptyMsg.textContent = 'No activity recorded.';
+    }
+    showState(emptyState);
+    totalTimeEl.textContent = '0m';
+    return;
+  }
+
+  showState(historyList);
+  historyList.innerHTML = '';
+
+  const maxDuration = Math.max(...days.map(d => d.duration), 1);
+
+  days.forEach((day, index) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'history-row';
+    rowEl.style.animation = 'rowFadeIn 250ms ease forwards';
+    rowEl.style.animationDelay = `${Math.min(index * 30, 300)}ms`;
+
+    const percentage = maxDuration > 0 ? (day.duration / maxDuration) * 100 : 0;
+    const formattedDuration = day.duration > 0 ? formatDuration(day.duration) : '0m';
+
+    // Left column: Calendar icon + Date info + Progress bar
+    const dateCol = document.createElement('div');
+    dateCol.className = 'history-date-col';
+
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'history-calendar-icon';
+    iconContainer.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+    `;
+
+    const dateInfo = document.createElement('div');
+    dateInfo.className = 'history-date-info';
+
+    const dateHeader = document.createElement('div');
+    dateHeader.className = 'history-date-header';
+
+    const dateText = document.createElement('span');
+    dateText.className = 'history-date-text' + (day.isToday ? ' is-today' : '');
+    dateText.textContent = day.displayDate || day.dateStr;
+
+    dateHeader.appendChild(dateText);
+
+    if (day.isToday) {
+      const todayBadge = document.createElement('span');
+      todayBadge.className = 'history-today-badge';
+      todayBadge.textContent = 'Today';
+      dateHeader.appendChild(todayBadge);
+    }
+
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'history-progress-container';
+
+    const progressBar = document.createElement('div');
+    progressBar.className = 'history-progress-bar';
+    progressBar.style.width = '0%';
+
+    progressContainer.appendChild(progressBar);
+    dateInfo.appendChild(dateHeader);
+    dateInfo.appendChild(progressContainer);
+
+    dateCol.appendChild(iconContainer);
+    dateCol.appendChild(dateInfo);
+
+    // Right column: Duration
+    const durationEl = document.createElement('div');
+    durationEl.className = 'history-duration' + (day.duration === 0 ? ' zero' : '');
+    durationEl.textContent = formattedDuration;
+
+    rowEl.appendChild(dateCol);
+    rowEl.appendChild(durationEl);
+
+    historyList.appendChild(rowEl);
+
+    setTimeout(() => {
+      progressBar.style.width = `${percentage}%`;
+    }, 50);
+  });
+
+  const totalSeconds = rawData.totalSeconds !== undefined
+    ? rawData.totalSeconds
+    : days.reduce((sum, d) => sum + d.duration, 0);
+
+  totalTimeEl.textContent = formatDuration(totalSeconds);
+}
+
 function showState(visibleElement) {
-  [loadingState, errorState, emptyState, activityList].forEach(el => {
+  [loadingState, errorState, emptyState, activityList, historyList].forEach(el => {
     if (el) el.classList.add('hidden');
   });
   if (visibleElement) {
