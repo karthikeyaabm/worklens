@@ -33,6 +33,13 @@
       "icon": "assets/icon.png",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
     "publish": {
       "provider": "github",
       "owner": "karthikeyaabm",
