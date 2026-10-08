@@ -119,6 +119,7 @@ const {
   formatTime12
 } = require('./activityStore');
 const storageHealth = require('./storageHealth');
+const locationService = require('./locationService');
 
 // Connect storage health supervisor to native Windows notifications
 storageHealth.setNotificationHandler((alert) => {
@@ -572,6 +573,20 @@ async function syncChunkToApi(chunk) {
   const localCreatedOn = chunk.local_created_on || formatDateTime(new Date(chunk.created_at));
   const activityType = chunk.activity_type || 'Unknown';
 
+  let latVal = chunk.latitude !== undefined && chunk.latitude !== null ? String(chunk.latitude) : null;
+  let lonVal = chunk.longitude !== undefined && chunk.longitude !== null ? String(chunk.longitude) : null;
+  let addrVal = chunk.current_address !== undefined && chunk.current_address !== null ? String(chunk.current_address) : (chunk.location || null);
+
+  // If session had no location at creation (e.g. cold start), fallback to current PC location
+  if (!latVal || !lonVal) {
+    const curLoc = locationService.getCurrentLocation();
+    if (curLoc && curLoc.latitude && curLoc.longitude) {
+      latVal = String(curLoc.latitude);
+      lonVal = String(curLoc.longitude);
+      addrVal = curLoc.current_address || curLoc.location || null;
+    }
+  }
+
   const body = {
     user_id: chunk.user_id,
     app_name: chunk.app_name,
@@ -584,7 +599,11 @@ async function syncChunkToApi(chunk) {
     version: app.getVersion(),
     activity_type: activityType,
     redmine_created_on: redmineCreatedOn,
-    local_created_on: localCreatedOn
+    local_created_on: localCreatedOn,
+    latitude: latVal,
+    longitude: lonVal,
+    current_address: addrVal,
+    location: addrVal
   };
 
   console.log(`[Sync] POST chunk user=${body.user_id} app="${body.app_name}" duration=${body.duration}s activity_type=${body.activity_type}`);
@@ -689,12 +708,23 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
       currentRecord.endTime = now;
       currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
       currentRecord.activityType = activityType;
+      // Dynamic backfill: If session started before location resolved, backfill it now
+      if (!currentRecord.latitude) {
+        const loc = locationService.getCurrentLocation();
+        if (loc && loc.latitude) {
+          currentRecord.latitude = loc.latitude;
+          currentRecord.longitude = loc.longitude;
+          currentRecord.current_address = loc.current_address;
+        }
+      }
       saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
       return;
     } else {
       closeCurrentSession(now);
     }
   }
+
+  const loc = locationService.getCurrentLocation();
 
   currentRecord = {
     local_id: crypto.randomUUID(),
@@ -708,6 +738,9 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     reason: reason,
     activityType: activityType,
     os_username: currentOsUser,
+    latitude: loc && loc.latitude !== undefined && loc.latitude !== null ? loc.latitude : null,
+    longitude: loc && loc.longitude !== undefined && loc.longitude !== null ? loc.longitude : null,
+    current_address: loc && loc.current_address !== undefined && loc.current_address !== null ? loc.current_address : null,
     closed: false
   };
   const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
@@ -731,6 +764,15 @@ function closeCurrentSession(endTime = new Date()) {
   currentRecord.endTime = endTime;
   currentRecord.duration = duration;
   currentRecord.closed = true;
+
+  if (!currentRecord.latitude) {
+    const loc = locationService.getCurrentLocation();
+    if (loc && loc.latitude) {
+      currentRecord.latitude = loc.latitude;
+      currentRecord.longitude = loc.longitude;
+      currentRecord.current_address = loc.current_address;
+    }
+  }
 
   saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, os.userInfo().username);
   console.log(`[Session] Closed session locally: local_id=${currentRecord.local_id} app="${currentRecord.appName}" duration=${currentRecord.duration}s`);
@@ -1869,7 +1911,10 @@ async function getResolvedTodayLogs(userId, currentOsUser) {
       duration: c.duration,
       activity_on: c.activity_on,
       status: c.status,
-      activity_type: c.activity_type || 'Unknown'
+      activity_type: c.activity_type || 'Unknown',
+      latitude: c.latitude || null,
+      longitude: c.longitude || null,
+      current_address: c.current_address || null
     }));
     logs = [...unsyncedMapped, ...precomputedHistoricalCache.serverTodayLogs];
   } else {
@@ -1900,7 +1945,10 @@ async function handleFetchActivity(period = 'today') {
         duration: c.duration,
         activity_on: c.activity_on,
         status: c.status,
-        activity_type: c.activity_type || 'Unknown'
+        activity_type: c.activity_type || 'Unknown',
+        latitude: c.latitude || null,
+        longitude: c.longitude || null,
+        current_address: c.current_address || null
       }));
       logs = [...unsyncedMapped, ...precomputedHistoricalCache.serverTodayLogs];
     } else {
@@ -2117,7 +2165,13 @@ if (gotTheLock) {
       console.log(`[Startup] No cached Redmine user ID for "${currentOsUser}". Starting in local offline mode.`);
     }
 
-    // 2. Start tracking services immediately and unconditionally on startup!
+    // 2. Start PC location service and allow brief warm-up
+    locationService.initLocationService();
+    try {
+      await locationService.waitForInitialLocation(2000);
+    } catch (_) {}
+
+    // 2b. Start tracking services immediately and unconditionally on startup!
     startTrackingServices();
 
     // 3. Initiate background user resolution (does not block tracking)
@@ -2243,6 +2297,9 @@ if (gotTheLock) {
     } catch (err) {
       console.error('[AntiAFK] Failed to stop global input hook:', err);
     }
+
+    // Stop location service timers
+    locationService.stopLocationService();
 
     if (!finalSyncDone) {
       event.preventDefault();

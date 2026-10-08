@@ -240,6 +240,9 @@ function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
       duration: duration,
       closed: session.closed !== undefined ? session.closed : chunks[index].closed,
       reason: session.reason !== undefined ? session.reason : chunks[index].reason,
+      latitude: session.latitude !== undefined ? session.latitude : (chunks[index].latitude || null),
+      longitude: session.longitude !== undefined ? session.longitude : (chunks[index].longitude || null),
+      current_address: session.current_address !== undefined ? session.current_address : (chunks[index].current_address || null),
       updated_at: new Date().toISOString()
     };
     writeChunks(chunks);
@@ -259,6 +262,9 @@ function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
       status: (session.status || 'Active').toLowerCase(),
       activity_type: session.activityType || 'Unknown',
       reason: session.reason || null,
+      latitude: session.latitude !== undefined ? session.latitude : null,
+      longitude: session.longitude !== undefined ? session.longitude : null,
+      current_address: session.current_address !== undefined ? session.current_address : null,
       closed: session.closed !== undefined ? session.closed : false,
       synced: false,
       retry_count: 0,
@@ -494,7 +500,10 @@ function getActivityLogsForDate(dateStr, userId = null, osUsername = null) {
     status: c.status,
     synced: !!c.synced,
     is_synced: !!c.synced,
-    activity_type: c.activity_type || 'Unknown'
+    activity_type: c.activity_type || 'Unknown',
+    latitude: c.latitude || null,
+    longitude: c.longitude || null,
+    current_address: c.current_address || null
   }));
 }
 

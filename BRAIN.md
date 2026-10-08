@@ -35,6 +35,7 @@ graph TD
     A -->|IPC / preload.js| D[Inactivity Nudge Renderer]
     A -->|redmineClient.js| E[Redmine Server REST API]
     A -->|activityStore.js| F[(Local Store: activity_queue.jsonl)]
+    A -->|locationService.js| H[PC Location Provider & Cache]
     A -->|logger.js| G[(Daily Rotated Logs)]
 ```
 
@@ -148,6 +149,13 @@ The bridge scripts run before renderer files load. It exposes a restricted `wind
 ### 4. Renderer Scripts
 *   **[renderer/renderer.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/renderer.js):** Coordinates values displayed by `renderer/index.html`. Handles clicks on the "Active Time" card to trigger details popups.
 *   **[renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js):** Runs inside the glassmorphism details window. Polls logging details from the main process and binds CSS layouts.
+
+### 5. PC Location Provider & Cache: [locationService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/locationService.js)
+Dedicated Windows-compatible PC location acquisition and reverse geocoding service:
+*   Runtime PC location resolution via Windows Native Location (`System.Device.Location.GeoCoordinateWatcher`) with automatic network IP geolocation fallback (`ip-api.com` / `freeipapi.com`).
+*   Reverse geocoding via OpenStreetMap Nominatim and BigDataCloud to produce human-readable addresses (`current_address`).
+*   Periodic caching strategy (configurable, default 20 minutes) preventing per-event location lookups.
+*   Zero renderer exposure and privacy-compliant logging (only high-level status messages).
 
 ---
 
@@ -440,13 +448,20 @@ All API communications are handled in [redmineClient.js](file:///c:/Users/karthi
       "duration": 300,
       "activity_on": "2026-07-27",
       "status": "active",
-      "version": "1.1.4",
-      "activity_type": "Human",
+      "version": "1.1.7",
+      "activity_type": "browsing",
       "redmine_created_on": "2026-07-27T11:05:00",
-      "local_created_on": "2026-07-27T11:00:00"
+      "local_created_on": "2026-07-27T11:00:00",
+      "latitude": "18.5204",
+      "longitude": "73.8567",
+      "current_address": "Koregaon Park, Pune, Maharashtra 411001"
     }
     ```
-*   **Sync Behavior:** Batched every 2 minutes. Failed logs are retried with an exponential backoff delay.
+*   **Location Contract:**
+    *   `latitude`: Approximate decimal latitude string (e.g. `"18.5204"`) or `null` if location unavailable.
+    *   `longitude`: Approximate decimal longitude string (e.g. `"73.8567"`) or `null` if location unavailable.
+    *   `current_address`: Human-readable reverse-geocoded address or `null` if reverse geocoding fails.
+*   **Sync Behavior:** Batched every 2 minutes. Failed logs are retried with an exponential backoff delay. Offline historical records preserve their originally captured location when synced later.
 
 ---
 
@@ -483,6 +498,9 @@ WorkLens uses lightweight file-based stores in `%APPDATA%/WorkLens` (resolved dy
 | `last_error` | String / Null | Error message from the last failed sync attempt. |
 | `created_at` | String (ISO) | Local record creation timestamp. |
 | `updated_at` | String (ISO) | Local record modification timestamp. |
+| `latitude` | String / Null | Client PC latitude captured at session creation. |
+| `longitude` | String / Null | Client PC longitude captured at session creation. |
+| `current_address` | String / Null | Human-readable reverse-geocoded physical address. |
 
 ### Identity Reconciliation & Backfilling
 When the application starts offline without a prior cached user ID, records are saved locally with `user_id: null` and `os_username`. Once internet connectivity is restored and Redmine resolves the user ID, `backfillUserIdForOsUsername(osUsername, userId)` updates all pending un-synced chunks with the resolved numeric `user_id` before invoking `flushPendingClosedSessions()`.
@@ -542,6 +560,68 @@ WorkLens manages application state across memory and local storage:
 
 *   **Temporary Memory Buffers:** Keeps current trackers and user sessions in memory for fast performance.
 *   **Summary Caching:** Caches activity summaries for 5 seconds to prevent concurrent requests to the Redmine API when updating the widget.
+
+---
+
+## 10. PC Location Tracking & Caching Provider (`locationService.js`)
+
+WorkLens captures runtime physical workstation location to verify work locations without blocking activity tracking or violating privacy:
+
+### 1. Location Acquisition Flow
+```
+Windows PC Workstation
+      │
+      ├── 1. High-Accuracy Wi-Fi Triangulation (Chromium Background Geo Provider)
+      │      (Scans nearby Wi-Fi BSSIDs for exact street-level accuracy, e.g. Linking Road, Bandra West)
+      │
+      ├── 2. Windows Native Location (System.Device.Location via PowerShell)
+      │      (OS / hardware positioning)
+      │
+      └── 3. Network Geolocation Fallback (ip-api.com / freeipapi.com)
+             (ISP gateway IP fallback)
+      │
+      ▼
+Accurate Coordinates (latitude, longitude)
+      │
+      ├── 4. Reverse Geocoder (OpenStreetMap Nominatim / BigDataCloud)
+      │
+      ▼
+Human-Readable Address (current_address & location)
+      │
+      ▼
+Cached PC Location (15-30 min TTL, default 20 min)
+      │
+      ├── Attached to new active session records upon boundary creation
+      ├── Preserved in offline queue (activity_queue.jsonl)
+      └── Included in POST /user_system_activity_logs.json
+```
+
+### 2. Caching & Startup Warm-Up Strategy
+*   **Persistent Disk Cache (`location_cache.json`):** Saves resolved location to `%APPDATA%/WorkLens/location_cache.json`. On cold launch, location is restored synchronously into memory at T=0ms.
+*   **Startup Warm-Up:** `locationService.initLocationService()` is invoked before tracking starts, with up to a 2-second warm-up window (`waitForInitialLocation()`) ensuring initial sessions capture coordinates immediately.
+*   **Dynamic Session Backfill:** If a session began before the initial location resolved, every subsequent tracking tick checks and backfills coordinates into `currentRecord` as soon as the provider resolves. Additionally, `closeCurrentSession()` and `syncChunkToApi()` apply the latest cached location if the chunk lacks coordinates.
+*   **Dual Payload Compatibility:** Transmits both `current_address` and `location` alias fields in `POST /user_system_activity_logs.json` to ensure compatibility with backend schema contracts.
+*   **Configurable Periodic Refresh:** Refreshes location on a timer (default: 20 minutes, configurable via `WORKLENS_LOCATION_REFRESH_MINUTES`).
+*   **No Per-Tick Overhead:** Session tracking ticks (every 2 seconds) read synchronously from in-memory `cachedLocation`.
+*   **In-Flight Request Deduplication:** Concurrent calls to `refreshLocation()` share a single in-flight resolution promise.
+
+### 3. Offline-First Preservation (Historical Location Guarantee)
+*   When the PC is offline or disconnected, activities are tagged with the location captured at the time the session began and persisted to `activity_queue.jsonl`.
+*   If an employee travels from City A (e.g., Pune) to City B (e.g., Mumbai) before reconnecting, previously recorded offline sessions retain City A's coordinates and address. They are never overwritten by the current location during later synchronization.
+
+### 4. Failure Resilience & Graceful Fallbacks
+*   If network is unavailable, Windows location permissions are denied, or external geocoders time out, WorkLens sets `latitude: null`, `longitude: null`, and `current_address: null`.
+*   If reverse geocoding fails while coordinates are valid, valid coordinates are preserved with `current_address: null`.
+*   Activity tracking, active time calculation, idle detection, and offline queuing continue with zero interruption.
+
+### 5. Security, Privacy & Logging Guidelines
+*   **Strict Console Sanitization:** In accordance with privacy standards, raw coordinates are never printed to terminal or production log files.
+*   **Standardized Status Logs:** Logs only high-level status messages:
+    *   `[Location] Location update successful`
+    *   `[Location] Location unavailable`
+    *   `[Location] Reverse geocoding failed`
+    *   `[Location] Location service initialized`
+*   **No Front-End Exposure:** Location data remains exclusively in the Electron main process and persistence layer, never exposed over `preload.js` or renderer processes.
 
 ---
 
@@ -925,6 +1005,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.6 - Administrator-Only Uninstallation Security Guard & Silent Update Preservation:** Configured NSIS packaging (`build/installer.nsh`) with UAC elevation enforcement on uninstallation. Standard employees cannot uninstall WorkLens via Windows Settings, Control Panel, or `Uninstall WorkLens.exe` without entering valid Windows Administrator credentials. Cancelling or entering invalid credentials safely aborts without removing files or registry keys. Maintains per-user installation (`%LOCALAPPDATA%\Programs\worklens`) ensuring `electron-updater` background updates remain 100% silent and functional without administrator password prompts. Completely preserves `%APPDATA%\WorkLens` user data.
 *   **v1.3.7 - Active Time Session Start & End Time Integration:** Enhanced the Active Time details popup with comprehensive session start and end time boundaries across all 4 navigation periods. Today tab dynamically displays earliest tracking start time and `Present` while active (`07 Oct 2026     09:32 AM → Present`). Yesterday tab displays the isolated historical tracking boundaries (`06 Oct 2026     09:41 AM → 06:52 PM`). Last 7 Days and Last 30 Days date rows integrate the timeline boundaries directly flanking the horizontal progress bar (`[Calendar] Date   StartTime ---------------- EndTime   ActiveTime`). Multiple sessions per date resolve to earliest start and latest end. Zero-data dates display `-- → --`. Preserves local timezone handling, progressive background loading, and offline queue aggregation with zero redundant API calls.
 *   **v1.3.8 - Last 30 Days Historical Timeout & Session Aggregation Fix:** Resolved issue where Last 30 Days view fell back to local offline queue displaying only 3 days of sessions and defaulting the remaining 27 days to 0m. Increased Redmine HTTP request timeout from 10 seconds to 90 seconds in [redmineClient.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/redmineClient.js) to reliably download large 30-day activity datasets (14,000+ entries) without aborting. Truncated verbose response logs to prevent Event Loop stalls. Enhanced renderer client cache invalidation in [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js) upon receiving `historical-data-ready` so active views update immediately with server-verified sessions, and ensured scroll positions reset to top (`scrollTop = 0`) on period switching to display newest dates first.
+*   **v1.3.11 - PC Location Tracking & POST API Integration:** Integrated dedicated PC location provider and cache manager in [locationService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/locationService.js). Captures runtime Windows workstation coordinates (`latitude`, `longitude`) via native Windows Location and network IP geolocation fallback, and performs reverse geocoding for human-readable `current_address`. Includes 20-minute cached refresh strategy, offline queue preservation across travel/reconnect, graceful null fallbacks on failure, and privacy-sanitized logging. Enhanced `POST /user_system_activity_logs.json` payload in [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) and `activity_queue.jsonl` schema in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js). Tested via `test_location_suite.js`.
 
 ---
 

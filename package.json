@@ -10,6 +10,7 @@
     "test": "electron test_offline_suite.js",
     "test:storage": "electron test_storage_health_suite.js",
     "test:teams": "node test_teams_tracking_suite.js",
+    "test:location": "electron test_location_suite.js",
     "build": "electron-builder",
     "release": "electron-builder --publish always"
   },
