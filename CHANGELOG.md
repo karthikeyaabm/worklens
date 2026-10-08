@@ -4,6 +4,17 @@ All notable changes to the WorkLens Desktop Timelog application are documented b
 
 ---
 
+## [1.3.4] - 2026-10-08
+### Added
+- **Storage Health & Local Persistence Supervisor**: Created `storageHealth.js` to monitor local activity persistence health and distinguish local storage breakdown (such as C: drive 100% full) from expected offline/network operations.
+- **Atomic Write & ENOSPC Truncation Protection**: Enhanced `activityStore.js` with atomic `.tmp` write pattern and rename, preventing queue file truncation on `ENOSPC`.
+- **In-Memory Unpersisted Buffer**: Temporarily buffers sessions in memory during full-disk events and flushes them to disk upon storage recovery, guaranteeing zero lost time.
+- **Consecutive Failure Protection & Cooldown**: Requires 3 consecutive persistence failures before triggering `WORKLENS_NOT_WORKING`, with a 30-minute cooldown to prevent notification spam.
+- **Native Windows Storage Alerts**: Emits non-technical, employee-friendly alerts for storage full or permission errors, plus automatic recovery notification (`"WorkLens is working normally again."`).
+- **Storage Health IPC Channel**: Exposed `get-storage-health` across IPC and preload bridge.
+
+---
+
 ## [1.3.3] - 2026-10-06
 ### Added
 - **WorkLens Watchdog & Auto-Recovery**: Implemented decoupled background supervisor mechanism (`watchdog/worklens-watchdog.ps1`, `watchdog/worklens-watchdog.vbs`, `watchdog/watchdog.js`) to continuously monitor and recover the WorkLens process.

@@ -3,11 +3,24 @@ const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const storageHealth = require('./storageHealth');
 
 const MAX_SESSION_DURATION = 12 * 60 * 60; // 12 hours (43,200s) max session limit
 
 let queueFilePath = null;
 let userProfileFilePath = null;
+
+// In-memory buffer to hold unpersisted chunks during temporary disk failures / ENOSPC
+const unpersistedChunks = new Map();
+let storageFaultInjection = null;
+
+function setStorageFaultInjection(err) {
+  storageFaultInjection = err;
+}
+
+function getStorageFaultInjection() {
+  return storageFaultInjection;
+}
 
 function getQueueFilePath() {
   if (!queueFilePath) {
@@ -55,6 +68,7 @@ function saveStoredUserProfile(osUsername, redmineUserId) {
     console.log(`[Storage] Saved user profile cache: ${osUsername} -> Redmine ID ${redmineUserId}`);
   } catch (err) {
     console.error('[Storage] Failed to write user_profile.json:', err);
+    storageHealth.recordStorageFailure(err);
   }
 }
 
@@ -98,32 +112,58 @@ function ensureFormattedDateTime(val) {
 
 function readChunks() {
   const filePath = getQueueFilePath();
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
-  try {
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = content.split('\n');
-    const chunks = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed) {
-        try {
-          chunks.push(JSON.parse(trimmed));
-        } catch (err) {
-          console.error('[Storage] Failed to parse JSONL line:', err);
+  const chunks = [];
+
+  if (fs.existsSync(filePath)) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const lines = content.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          try {
+            chunks.push(JSON.parse(trimmed));
+          } catch (err) {
+            console.error('[Storage] Failed to parse JSONL line:', err);
+          }
         }
       }
+    } catch (err) {
+      console.error('[Storage] Failed to read chunks file:', err);
+      storageHealth.recordStorageFailure(err);
     }
-    return chunks;
-  } catch (err) {
-    console.error('[Storage] Failed to read chunks file:', err);
-    return [];
   }
+
+  // Merge any unpersisted in-memory chunks (buffered during ENOSPC / disk-full events)
+  if (unpersistedChunks.size > 0) {
+    for (const [localId, unpersisted] of unpersistedChunks) {
+      const existingIdx = chunks.findIndex(c => c.local_id === localId);
+      if (existingIdx >= 0) {
+        chunks[existingIdx] = unpersisted;
+      } else {
+        chunks.push(unpersisted);
+      }
+    }
+  }
+
+  return chunks;
 }
 
 function writeChunks(chunks) {
+  // Fault injection hook for automated testing and simulation of ENOSPC / disk full
+  if (storageFaultInjection) {
+    for (const c of chunks) {
+      if (c && c.local_id) {
+        unpersistedChunks.set(c.local_id, c);
+      }
+    }
+    storageHealth.recordStorageFailure(storageFaultInjection);
+    return false;
+  }
+
   const filePath = getQueueFilePath();
+  const tempPath = `${filePath}.tmp`;
+
   try {
     // Automatically prune synced chunks older than 35 days to support Last 7 Days & Current Month historical summaries while keeping file size bounded
     const limitDate = new Date();
@@ -140,9 +180,32 @@ function writeChunks(chunks) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, content, 'utf8');
+
+    // Atomic write pattern: Write to .tmp first to protect existing activity records from ENOSPC truncation
+    fs.writeFileSync(tempPath, content, 'utf8');
+    fs.renameSync(tempPath, filePath);
+
+    // Persistence succeeded: clear in-memory unpersisted buffer and record storage success
+    unpersistedChunks.clear();
+    storageHealth.recordStorageSuccess();
+    return true;
   } catch (err) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (_) {}
+
+    // Buffer unwritten chunks in-memory so tracking data is never lost during temporary disk full
+    for (const c of chunks) {
+      if (c && c.local_id) {
+        unpersistedChunks.set(c.local_id, c);
+      }
+    }
+
     console.error('[Storage] Failed to write chunks file:', err);
+    storageHealth.recordStorageFailure(err);
+    return false;
   }
 }
 
@@ -562,6 +625,13 @@ module.exports = {
   getDateWiseTimeRanges,
   parseTimestampToDate,
   formatTime12,
+  // Storage Health & Fault Injection
+  storageHealth,
+  getStorageHealth: storageHealth.getStorageHealth,
+  configureStorageHealth: storageHealth.configureStorageHealth,
+  resetStorageHealth: storageHealth.resetStorageHealth,
+  setStorageFaultInjection,
+  getStorageFaultInjection,
   // Keep back compat mapping
   saveChunkLocal,
   markChunkSynced: markSessionSynced,

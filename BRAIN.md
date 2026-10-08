@@ -93,7 +93,7 @@ WorkLens/
 │   ├── worklens-watchdog.ps1   # Primary Windows PowerShell background watchdog monitor
 │   ├── worklens-watchdog.vbs   # Zero-console stealth launcher for Windows startup
 │   └── watchdog.js             # Node.js supervisor engine for dev/cross-platform supervision
-├── activityStore.js            # Offline database manager (handles JSONL operations and pruning)
+├── activityStore.js            # Offline database manager (handles JSONL operations, pruning, and atomic writes)
 ├── antiAfkDetector.js          # Backward compatibility wrapper for the anti-AFK engine
 ├── CHANGELOG.md                # Evolution log of the desktop app
 ├── inactivityPopup.html        # Nudge UI & Web Audio beep synthesized tone code
@@ -103,6 +103,7 @@ WorkLens/
 ├── preload.js                  # IPC context bridge exposing APIs securely to renderer windows
 ├── quotes.js                   # Local quotes storage array for inactivity nudges
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
+├── storageHealth.js            # Local persistence supervisor (ENOSPC detection, failure threshold, cooldown, notifications)
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -465,6 +466,27 @@ When the application starts offline without a prior cached user ID, records are 
 ### Data Pruning & Optimization
 To support Last 7 Days and Last 30 Days historical views while keeping storage size bounded, the write routine in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js) retains synced records for 35 days before pruning from the `activity_queue.jsonl` file. Unsynced records are never pruned. `user_profile.json` is stored independently and is exempt from pruning.
 
+### Storage Health Supervision & ENOSPC (Disk Full) Resilience
+WorkLens employs a dedicated storage health supervisor in [storageHealth.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/storageHealth.js) to monitor local filesystem persistence without treating network unavailability as an app failure.
+
+1. **Network vs. Local Storage Failure Isolation:**
+   * Expected offline operation (no internet, backend down, API timeouts) is **NOT** an application failure. Local tracking and queuing continue without triggering alerts.
+   * Actual local failure occurs when WorkLens is actively running and collecting activities, but local persistence fails repeatedly due to full storage (e.g., C: drive at 100%), permission restrictions (`EACCES`/`EPERM`), or locked files (`EBUSY`).
+
+2. **Atomic Write Protection Against ENOSPC Truncation:**
+   * Traditional direct file writes truncate existing files to 0 bytes upon open before failing on write during ENOSPC, risking loss of offline un-synced records.
+   * `writeChunks()` utilizes an atomic write pattern: writes to `activity_queue.jsonl.tmp` and renames to `activity_queue.jsonl`. If storage is full, the write fails safely without altering the existing queue file.
+
+3. **In-Memory Buffer Preservation:**
+   * Sessions generated during disk-full events are buffered in an in-memory map (`unpersistedChunks`).
+   * When disk space is freed up, the next write flushes all in-memory buffered records to disk alongside existing records—guaranteeing zero data loss.
+
+4. **Consecutive Failure Protection & Cooldown:**
+   * **Failure Threshold:** Requires 3 consecutive persistence failures before transitioning state to `WORKLENS_NOT_WORKING`. Transient single-write glitches are logged but do not trigger notifications.
+   * **Notification Cooldown:** Implements a 30-minute cooldown window to avoid notification spam while storage remains full.
+   * **Employee-Friendly Notifications:** Technical errors (`ENOSPC`, `errno -4055`) are converted to clear guidance: *"WorkLens is not working properly because your system storage may be full. Please free up disk space."*
+   * **Recovery Detection:** Upon the first successful local write following an alert, WorkLens transitions to `WORKLENS_RECOVERED` and issues a one-time resolution notification: *"WorkLens is working normally again."*
+
 ---
 
 ## 9. State Management
@@ -512,6 +534,7 @@ Preload bridges access paths by mapping handlers across processes:
 | `get-active-time-today` | Invoked by UI | None | Returns total local tracked seconds today (including offline & unsynced). |
 | `get-active-time-yesterday` | Invoked by UI | None | Returns total local tracked seconds yesterday. |
 | `get-current-status` | Invoked by UI | None | Returns active state (`Active`, `Offline`, or `Inactive`). |
+| `get-storage-health` | Invoked by UI | None | Returns local storage health snapshot `{ activityCollectionWorking, localStorageWorking, offlineQueueWorking, lastSuccessfulLocalWrite, lastStorageError, storageFailure, consecutiveFailures, isUnhealthy, status }`. |
 | `toggle-activity-popup` | Invoked by UI | None | Shows/hides the activity log details window. |
 | `open-activity-popup` | Invoked by UI | None | Positions and displays the activity popup. |
 | `close-activity-popup` | Invoked by UI | None | Closes/hides the activity popup. |

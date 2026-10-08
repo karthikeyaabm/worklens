@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('get-current-status');
   },
 
+  getStorageHealth: async () => {
+    return await ipcRenderer.invoke('get-storage-health');
+  },
+
   getAppVersion: async () => {
     return await ipcRenderer.invoke('get-app-version');
   },

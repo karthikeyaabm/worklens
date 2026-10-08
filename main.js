@@ -118,6 +118,27 @@ const {
   parseTimestampToDate,
   formatTime12
 } = require('./activityStore');
+const storageHealth = require('./storageHealth');
+
+// Connect storage health supervisor to native Windows notifications
+storageHealth.setNotificationHandler((alert) => {
+  try {
+    if (Notification && Notification.isSupported && Notification.isSupported()) {
+      const notif = new Notification({
+        title: alert.title,
+        body: alert.message,
+        icon: path.join(__dirname, 'assets', 'icon.png')
+      });
+      notif.show();
+      console.log(`[StorageHealth] Windows notification displayed: [${alert.title}] ${alert.message}`);
+    } else {
+      console.warn(`[StorageHealth] Native notifications not supported in environment: [${alert.title}] ${alert.message}`);
+    }
+  } catch (notifErr) {
+    console.error('[StorageHealth] Notification display error:', notifErr);
+  }
+});
+
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { getActivityType, mapDecisionToActivityType } = antiAfkDetector;
 const { uIOhook } = require('uiohook-napi');
@@ -687,6 +708,7 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
   }
 
   currentRecord = {
+    local_id: crypto.randomUUID(),
     appName: appName,
     windowTitle: windowTitle,
     status: cleanStatus,
@@ -700,7 +722,7 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     closed: false
   };
   const saved = saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
-  if (saved) {
+  if (saved && saved.local_id) {
     currentRecord.local_id = saved.local_id;
   }
 }
@@ -729,6 +751,7 @@ function closeCurrentSession(endTime = new Date()) {
 // Main tracking tick
 async function trackTick() {
   try {
+    storageHealth.recordActivityCollection(true);
     const now = new Date();
     const nowMs = now.getTime();
     const elapsedSinceLastTick = nowMs - lastTickTimestamp;
@@ -841,6 +864,7 @@ async function trackTick() {
     // Reuse now from tick start
     startOrContinueCurrentSession(currentApp, currentTitle, newStatus, now, antiAfkReason, activityType);
   } catch (err) {
+    storageHealth.recordActivityCollection(false);
     console.error('Error in activity tracking tick:', err);
   }
 }
@@ -1315,6 +1339,10 @@ ipcMain.handle('get-active-time-yesterday', async () => {
 
 ipcMain.handle('get-current-status', () => {
   return currentStatus;
+});
+
+ipcMain.handle('get-storage-health', () => {
+  return storageHealth.getStorageHealth();
 });
 
 // Activity Popup IPC Handlers
