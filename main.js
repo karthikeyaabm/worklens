@@ -113,7 +113,10 @@ const {
   normalizeToLocalDateStr,
   getActivityLogsForDate,
   getAllTodayLogs,
-  getDateWiseActiveDurations
+  getDateWiseActiveDurations,
+  getDateWiseTimeRanges,
+  parseTimestampToDate,
+  formatTime12
 } = require('./activityStore');
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { getActivityType, mapDecisionToActivityType } = antiAfkDetector;
@@ -1373,6 +1376,7 @@ function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterday);
+  const isCurrentlyTracking = (trackingInterval !== null);
 
   // Pre-generate Last 7 Days date objects
   const last7DateObjects = [];
@@ -1390,10 +1394,13 @@ function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
     last30DateObjects.push(d);
   }
 
-  // Daily active durations map for the last 30 calendar days
+  // Daily active durations & session time ranges map for the last 30 calendar days
   const dailyDurations = {};
+  const dailyTimeRanges = {};
   last30DateObjects.forEach(d => {
-    dailyDurations[getLocalDateString(d)] = 0;
+    const ds = getLocalDateString(d);
+    dailyDurations[ds] = 0;
+    dailyTimeRanges[ds] = { earliestStart: null, latestEnd: null };
   });
 
   const serverYesterdayLogs = [];
@@ -1416,30 +1423,76 @@ function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
         dailyDurations[dStr] += entry.duration;
       }
     }
+
+    // Capture valid session start and end timestamps per date
+    if (dailyTimeRanges[dStr] !== undefined) {
+      const s = parseTimestampToDate(entry.start_time);
+      const e = parseTimestampToDate(entry.end_time);
+      if (s) {
+        if (!dailyTimeRanges[dStr].earliestStart || s < dailyTimeRanges[dStr].earliestStart) {
+          dailyTimeRanges[dStr].earliestStart = s;
+        }
+      }
+      if (e) {
+        if (!dailyTimeRanges[dStr].latestEnd || e > dailyTimeRanges[dStr].latestEnd) {
+          dailyTimeRanges[dStr].latestEnd = e;
+        }
+      }
+    }
   }
 
-  // Add local unsynced active duration for today to today's date bucket
+  // Add local unsynced active duration & merge local queue time ranges
   try {
     const unsyncedTodaySec = getUnsyncedTodayDuration(userId, currentOsUser);
     dailyDurations[todayStr] = (dailyDurations[todayStr] || 0) + (unsyncedTodaySec || 0);
+
+    const localRanges = getDateWiseTimeRanges(last30DateObjects.map(d => getLocalDateString(d)), userId, currentOsUser);
+    Object.keys(localRanges).forEach(ds => {
+      const lr = localRanges[ds];
+      if (lr && dailyTimeRanges[ds]) {
+        if (lr.earliestStart && (!dailyTimeRanges[ds].earliestStart || lr.earliestStart < dailyTimeRanges[ds].earliestStart)) {
+          dailyTimeRanges[ds].earliestStart = lr.earliestStart;
+        }
+        if (lr.latestEnd && (!dailyTimeRanges[ds].latestEnd || lr.latestEnd > dailyTimeRanges[ds].latestEnd)) {
+          dailyTimeRanges[ds].latestEnd = lr.latestEnd;
+        }
+      }
+    });
   } catch (err) {
-    console.error('[Historical Processor] Error adding unsynced today duration:', err);
+    console.error('[Historical Processor] Error adding local queue data:', err);
   }
 
   // Precompute Yesterday
   const yesterdayAppNames = [...new Set(serverYesterdayLogs.map(e => e.app_name).filter(Boolean))];
+  const yesterdayRange = dailyTimeRanges[yesterdayStr] || { earliestStart: null, latestEnd: null };
+  const yesterdayStartTime = yesterdayRange.earliestStart ? formatTime12(yesterdayRange.earliestStart) : '--';
+  const yesterdayEndTime = yesterdayRange.latestEnd ? formatTime12(yesterdayRange.latestEnd) : '--';
 
   // Precompute Last 7 Days
   const last7DaysList = last7DateObjects.map(d => {
     const ds = getLocalDateString(d);
     const isToday = (ds === todayStr);
     const duration = dailyDurations[ds] || 0;
+    const range = dailyTimeRanges[ds] || { earliestStart: null, latestEnd: null };
+    const hasData = Boolean(range.earliestStart || duration > 0);
+    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
+    let endTime = '--';
+    if (isToday) {
+      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
+    } else {
+      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
+    }
+
     return {
       dateStr: ds,
       displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
       isToday: isToday,
-      duration: duration
+      duration: duration,
+      startTime: startTime,
+      endTime: endTime,
+      isPresent: isToday && isCurrentlyTracking,
+      hasData: hasData
     };
   });
   const last7TotalSeconds = last7DaysList.reduce((sum, d) => sum + d.duration, 0);
@@ -1455,12 +1508,26 @@ function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
     const ds = getLocalDateString(d);
     const isToday = (ds === todayStr);
     const duration = dailyDurations[ds] || 0;
+    const range = dailyTimeRanges[ds] || { earliestStart: null, latestEnd: null };
+    const hasData = Boolean(range.earliestStart || duration > 0);
+    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
+    let endTime = '--';
+    if (isToday) {
+      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
+    } else {
+      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
+    }
+
     return {
       dateStr: ds,
       displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
       isToday: isToday,
-      duration: duration
+      duration: duration,
+      startTime: startTime,
+      endTime: endTime,
+      isPresent: isToday && isCurrentlyTracking,
+      hasData: hasData
     };
   });
   const last30TotalSeconds = last30DaysList.reduce((sum, d) => sum + d.duration, 0);
@@ -1476,6 +1543,8 @@ function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
     serverTodayLogs,
     yesterdayLogs: serverYesterdayLogs,
     yesterdayAppNames,
+    yesterdayStartTime,
+    yesterdayEndTime,
     last7View,
     last30View
   };
@@ -1488,8 +1557,24 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterday);
+  const isCurrentlyTracking = (trackingInterval !== null);
 
   const yesterdayLogs = getActivityLogsForDate(yesterdayStr, userId, currentOsUser);
+
+  let yesterdayStartTime = '--';
+  let yesterdayEndTime = '--';
+  if (yesterdayLogs.length > 0) {
+    let yMin = null;
+    let yMax = null;
+    yesterdayLogs.forEach(c => {
+      const s = parseTimestampToDate(c.start_time);
+      const e = parseTimestampToDate(c.end_time);
+      if (s && (!yMin || s < yMin)) yMin = s;
+      if (e && (!yMax || e > yMax)) yMax = e;
+    });
+    yesterdayStartTime = formatTime12(yMin);
+    yesterdayEndTime = formatTime12(yMax);
+  }
 
   const last7DateObjects = [];
   for (let i = 0; i < 7; i++) {
@@ -1499,16 +1584,32 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   }
   const last7DateStrings = last7DateObjects.map(d => getLocalDateString(d));
   const last7Durations = getDateWiseActiveDurations(last7DateStrings, userId, currentOsUser);
+  const last7TimeRanges = getDateWiseTimeRanges(last7DateStrings, userId, currentOsUser);
+
   const last7DaysList = last7DateObjects.map(d => {
     const ds = getLocalDateString(d);
     const isToday = (ds === todayStr);
     const duration = last7Durations[ds] || 0;
+    const range = last7TimeRanges[ds] || { earliestStart: null, latestEnd: null };
+    const hasData = Boolean(range.earliestStart || duration > 0);
+    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
+    let endTime = '--';
+    if (isToday) {
+      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
+    } else {
+      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
+    }
+
     return {
       dateStr: ds,
       displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
       isToday: isToday,
-      duration: duration
+      duration: duration,
+      startTime: startTime,
+      endTime: endTime,
+      isPresent: isToday && isCurrentlyTracking,
+      hasData: hasData
     };
   });
   const last7TotalSeconds = last7DaysList.reduce((sum, d) => sum + d.duration, 0);
@@ -1521,16 +1622,32 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   }
   const last30DateStrings = last30DateObjects.map(d => getLocalDateString(d));
   const last30Durations = getDateWiseActiveDurations(last30DateStrings, userId, currentOsUser);
+  const last30TimeRanges = getDateWiseTimeRanges(last30DateStrings, userId, currentOsUser);
+
   const last30DaysList = last30DateObjects.map(d => {
     const ds = getLocalDateString(d);
     const isToday = (ds === todayStr);
     const duration = last30Durations[ds] || 0;
+    const range = last30TimeRanges[ds] || { earliestStart: null, latestEnd: null };
+    const hasData = Boolean(range.earliestStart || duration > 0);
+    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
+    let endTime = '--';
+    if (isToday) {
+      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
+    } else {
+      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
+    }
+
     return {
       dateStr: ds,
       displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
       isToday: isToday,
-      duration: duration
+      duration: duration,
+      startTime: startTime,
+      endTime: endTime,
+      isPresent: isToday && isCurrentlyTracking,
+      hasData: hasData
     };
   });
   const last30TotalSeconds = last30DaysList.reduce((sum, d) => sum + d.duration, 0);
@@ -1540,7 +1657,10 @@ function processHistoricalOfflineData(userId, currentOsUser) {
       period: 'yesterday',
       date: yesterdayStr,
       logs: yesterdayLogs,
-      icons: appIconCache
+      icons: appIconCache,
+      startTime: yesterdayStartTime,
+      endTime: yesterdayEndTime,
+      hasData: yesterdayLogs.length > 0
     },
     last7days: {
       period: 'last7days',
@@ -1604,7 +1724,10 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
           period: 'yesterday',
           date: processed.yesterdayStr,
           logs: processed.yesterdayLogs,
-          icons: appIconCache
+          icons: appIconCache,
+          startTime: processed.yesterdayStartTime,
+          endTime: processed.yesterdayEndTime,
+          hasData: processed.yesterdayLogs.length > 0
         },
         last7days: processed.last7View,
         last30days: processed.last30View,
@@ -1706,11 +1829,32 @@ async function handleFetchActivity(period = 'today') {
       console.error('[ActivityPopup API] Error scanning icons for today:', scanError);
     }
 
+    const isCurrentlyTracking = (trackingInterval !== null);
+    let todayStart = null;
+    let todayEnd = null;
+
+    if (logs && logs.length > 0) {
+      logs.forEach(e => {
+        const s = parseTimestampToDate(e.start_time);
+        const end = parseTimestampToDate(e.end_time);
+        if (s && (!todayStart || s < todayStart)) todayStart = s;
+        if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
+      });
+    }
+
+    const todayStartTime = todayStart ? formatTime12(todayStart) : '--';
+    const todayEndTime = isCurrentlyTracking ? 'Present' : (todayEnd ? formatTime12(todayEnd) : '--');
+
     return {
       period: 'today',
       date: todayStr,
       logs: logs,
-      icons: appIconCache
+      icons: appIconCache,
+      startTime: todayStartTime,
+      endTime: todayEndTime,
+      isPresent: isCurrentlyTracking,
+      isTrackingActive: isCurrentlyTracking,
+      hasData: logs.length > 0
     };
   }
 

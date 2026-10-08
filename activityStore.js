@@ -463,6 +463,79 @@ function getDateWiseActiveDurations(dateStrings, userId = null, osUsername = nul
   return result;
 }
 
+function parseTimestampToDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  const str = String(val).trim();
+  // Match YYYY-MM-DDTHH:mm:ss or YYYY-MM-DD HH:mm:ss
+  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}):?(\d{2})?)?/);
+  if (ymdMatch) {
+    const y = parseInt(ymdMatch[1], 10);
+    const m = parseInt(ymdMatch[2], 10) - 1;
+    const d = parseInt(ymdMatch[3], 10);
+    const hh = parseInt(ymdMatch[4] || 0, 10);
+    const mm = parseInt(ymdMatch[5] || 0, 10);
+    const ss = parseInt(ymdMatch[6] || 0, 10);
+    return new Date(y, m, d, hh, mm, ss);
+  }
+  // Match DD-MM-YYYY HH:mm:ss or DD-MM-YYYYTHH:mm:ss
+  const dmyMatch = str.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T\s](\d{2}):(\d{2}):?(\d{2})?)?/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10) - 1;
+    const y = parseInt(dmyMatch[3], 10);
+    const hh = parseInt(dmyMatch[4] || 0, 10);
+    const mm = parseInt(dmyMatch[5] || 0, 10);
+    const ss = parseInt(dmyMatch[6] || 0, 10);
+    return new Date(y, m, d, hh, mm, ss);
+  }
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatTime12(date) {
+  if (!date) return '--';
+  const d = (date instanceof Date) ? date : parseTimestampToDate(date);
+  if (!d || isNaN(d.getTime())) return '--';
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function getDateWiseTimeRanges(dateStrings, userId = null, osUsername = null) {
+  const chunks = readChunks();
+  const userIdInt = userId ? parseInt(userId, 10) : null;
+  const result = {};
+
+  dateStrings.forEach(ds => {
+    result[ds] = {
+      earliestStart: null,
+      latestEnd: null
+    };
+  });
+
+  chunks.forEach(c => {
+    if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return;
+    if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return;
+
+    const chunkDate = normalizeToLocalDateStr(c.start_time || c.activity_on);
+    if (chunkDate && result[chunkDate] !== undefined) {
+      const s = parseTimestampToDate(c.start_time);
+      const e = parseTimestampToDate(c.end_time);
+      if (s) {
+        if (!result[chunkDate].earliestStart || s < result[chunkDate].earliestStart) {
+          result[chunkDate].earliestStart = s;
+        }
+      }
+      if (e) {
+        if (!result[chunkDate].latestEnd || e > result[chunkDate].latestEnd) {
+          result[chunkDate].latestEnd = e;
+        }
+      }
+    }
+  });
+
+  return result;
+}
+
 module.exports = {
   saveOrUpdateActiveSessionLocal,
   closeOrphanedSessions,
@@ -486,6 +559,9 @@ module.exports = {
   getActivityLogsForDate,
   getAllTodayLogs,
   getDateWiseActiveDurations,
+  getDateWiseTimeRanges,
+  parseTimestampToDate,
+  formatTime12,
   // Keep back compat mapping
   saveChunkLocal,
   markChunkSynced: markSessionSynced,

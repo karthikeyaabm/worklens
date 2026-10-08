@@ -159,10 +159,36 @@ body {
 
 /* ================= SUBTITLE ================= */
 .date-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   font-size: 11px;
   color: #9CA3AF;
   font-weight: 500;
   margin-bottom: 12px;
+}
+
+.date-subtitle .date-label {
+  color: #E5E7EB;
+  font-weight: 500;
+}
+
+.date-subtitle .date-session-range {
+  color: #9CA3AF;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-subtitle .date-session-range .time-range-arrow {
+  color: #6B7280;
+  font-size: 11px;
+}
+
+.date-subtitle .date-session-range .present-text {
+  color: #60a5fa;
+  font-weight: 600;
 }
 
 /* ================= TABLE HEADERS ================= */
@@ -380,8 +406,41 @@ body {
   letter-spacing: 0.5px;
 }
 
-.history-progress-container {
+.history-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
+}
+
+.history-time-boundary {
+  font-size: 10px;
+  color: #9CA3AF;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 52px;
+}
+
+.history-time-boundary.start {
+  text-align: left;
+}
+
+.history-time-boundary.end {
+  text-align: right;
+}
+
+.history-time-boundary.is-present {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.history-time-boundary.empty {
+  color: #6B7280;
+}
+
+.history-progress-container {
+  flex: 1;
   height: 3px;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 2px;

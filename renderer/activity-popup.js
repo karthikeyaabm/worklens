@@ -171,22 +171,58 @@ function updateColumnHeaders() {
 function updateDateDisplay() {
   if (!dateEl) return;
   const now = new Date();
-  const options = { day: 'numeric', month: 'short', year: 'numeric' };
+  const options = { day: '2-digit', month: 'short', year: 'numeric' };
 
   if (currentPeriod === 'today') {
-    dateEl.textContent = now.toLocaleDateString('en-GB', options);
+    if (clientViewCache.today) {
+      updateDateSubtitleForAppView(clientViewCache.today);
+    } else {
+      dateEl.innerHTML = `<span class="date-label">${now.toLocaleDateString('en-GB', options)}</span>`;
+    }
   } else if (currentPeriod === 'yesterday') {
     const y = new Date();
     y.setDate(y.getDate() - 1);
-    dateEl.textContent = y.toLocaleDateString('en-GB', options);
+    if (clientViewCache.yesterday) {
+      updateDateSubtitleForAppView(clientViewCache.yesterday);
+    } else {
+      dateEl.innerHTML = `<span class="date-label">${y.toLocaleDateString('en-GB', options)}</span>`;
+    }
   } else if (currentPeriod === 'last7days') {
     const start = new Date();
     start.setDate(now.getDate() - 6);
-    dateEl.textContent = `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — ${now.toLocaleDateString('en-GB', options)}`;
+    dateEl.innerHTML = `<span class="date-label">${start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} — ${now.toLocaleDateString('en-GB', options)}</span>`;
   } else if (currentPeriod === 'last30days' || currentPeriod === 'current_month') {
     const start = new Date();
     start.setDate(now.getDate() - 29);
-    dateEl.textContent = `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — ${now.toLocaleDateString('en-GB', options)}`;
+    dateEl.innerHTML = `<span class="date-label">${start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} — ${now.toLocaleDateString('en-GB', options)}</span>`;
+  }
+}
+
+function updateDateSubtitleForAppView(data) {
+  if (!dateEl) return;
+  const now = new Date();
+  const options = { day: '2-digit', month: 'short', year: 'numeric' };
+  let dateText = '';
+  if (currentPeriod === 'today') {
+    dateText = now.toLocaleDateString('en-GB', options);
+  } else if (currentPeriod === 'yesterday') {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    dateText = y.toLocaleDateString('en-GB', options);
+  } else {
+    return;
+  }
+
+  const startTime = data?.startTime || '--';
+  const endTime = data?.endTime || '--';
+  const isPresent = Boolean(data?.isPresent);
+  const hasData = Boolean(data?.hasData || (startTime !== '--' && endTime !== '--'));
+
+  if (hasData) {
+    const endHtml = isPresent ? `<span class="present-text">Present</span>` : endTime;
+    dateEl.innerHTML = `<span class="date-label">${dateText}</span><span class="date-session-range"><span class="time-boundary-start">${startTime}</span><span class="time-range-arrow">&rarr;</span><span class="time-boundary-end ${isPresent ? 'is-present' : ''}">${endHtml}</span></span>`;
+  } else {
+    dateEl.innerHTML = `<span class="date-label">${dateText}</span><span class="date-session-range"><span class="time-boundary-start">--</span><span class="time-range-arrow">&rarr;</span><span class="time-boundary-end">--</span></span>`;
   }
 }
 
@@ -372,6 +408,9 @@ async function fetchAndRender() {
 }
 
 function renderAppView(rawData) {
+  // Update subtitle date and start/end time for Today / Yesterday view
+  updateDateSubtitleForAppView(rawData);
+
   // Hide history list and show activity list
   if (historyList) {
     historyList.classList.add('hidden');
@@ -519,6 +558,13 @@ function renderHistoryView(rawData) {
       dateHeader.appendChild(todayBadge);
     }
 
+    const barRow = document.createElement('div');
+    barRow.className = 'history-bar-row';
+
+    const startTimeEl = document.createElement('span');
+    startTimeEl.className = 'history-time-boundary start' + (!day.hasData ? ' empty' : '');
+    startTimeEl.textContent = day.startTime || '--';
+
     const progressContainer = document.createElement('div');
     progressContainer.className = 'history-progress-container';
 
@@ -527,8 +573,17 @@ function renderHistoryView(rawData) {
     progressBar.style.width = '0%';
 
     progressContainer.appendChild(progressBar);
+
+    const endTimeEl = document.createElement('span');
+    endTimeEl.className = 'history-time-boundary end' + (day.isPresent ? ' is-present' : '') + (!day.hasData ? ' empty' : '');
+    endTimeEl.textContent = day.endTime || '--';
+
+    barRow.appendChild(startTimeEl);
+    barRow.appendChild(progressContainer);
+    barRow.appendChild(endTimeEl);
+
     dateInfo.appendChild(dateHeader);
-    dateInfo.appendChild(progressContainer);
+    dateInfo.appendChild(barRow);
 
     dateCol.appendChild(iconContainer);
     dateCol.appendChild(dateInfo);
