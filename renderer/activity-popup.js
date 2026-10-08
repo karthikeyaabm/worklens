@@ -77,8 +77,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (typeof window.api.onHistoricalDataReady === 'function') {
       window.api.onHistoricalDataReady((data) => {
-        // If user is currently viewing a historical period waiting for data, refresh immediately
-        if (currentPeriod !== 'today' && !clientViewCache[currentPeriod]) {
+        // Clear cached historical views so fresh server data will be loaded
+        clientViewCache.yesterday = null;
+        clientViewCache.last7days = null;
+        clientViewCache.last30days = null;
+        // If user is currently viewing a historical period, refresh immediately
+        if (currentPeriod !== 'today') {
           fetchAndRender();
         }
       });
@@ -128,8 +132,14 @@ function selectPeriod(period, triggerFetch = true) {
       }
       renderedRows = {};
       expandedAppName = null;
-      if (activityList) activityList.innerHTML = '';
-      if (historyList) historyList.innerHTML = '';
+      if (activityList) {
+        activityList.innerHTML = '';
+        activityList.scrollTop = 0;
+      }
+      if (historyList) {
+        historyList.innerHTML = '';
+        historyList.scrollTop = 0;
+      }
     }
 
     if (period === 'last7days' || period === 'last30days' || period === 'current_month') {
@@ -147,8 +157,14 @@ function selectPeriod(period, triggerFetch = true) {
     }
     renderedRows = {};
     expandedAppName = null;
-    if (activityList) activityList.innerHTML = '';
-    if (historyList) historyList.innerHTML = '';
+    if (activityList) {
+      activityList.innerHTML = '';
+      activityList.scrollTop = 0;
+    }
+    if (historyList) {
+      historyList.innerHTML = '';
+      historyList.scrollTop = 0;
+    }
   }
 
   if (triggerFetch) {
@@ -512,6 +528,7 @@ function renderHistoryView(rawData) {
 
   showState(historyList);
   historyList.innerHTML = '';
+  historyList.scrollTop = 0;
 
   const maxDuration = Math.max(...days.map(d => d.duration), 1);
 

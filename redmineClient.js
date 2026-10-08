@@ -48,8 +48,9 @@ async function request(endpoint, params = {}, options = {}) {
     throw new Error('Redmine configuration missing: REDMINE_API_KEY is not defined in environment variables.');
   }
 
+  const timeoutMs = options.timeout || (endpoint.includes('user_system_activity_logs') ? 90000 : 15000);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const fetchOptions = {
     ...options,
@@ -62,7 +63,7 @@ async function request(endpoint, params = {}, options = {}) {
   };
 
   try {
-    console.log(`[RedmineClient] Request: ${options.method || 'GET'} ${url}`);
+    console.log(`[RedmineClient] Request: ${options.method || 'GET'} ${url} (timeout: ${timeoutMs}ms)`);
     const response = await fetch(url, fetchOptions);
     clearTimeout(timeoutId);
 
@@ -76,11 +77,15 @@ async function request(endpoint, params = {}, options = {}) {
     const responseBody = await response.text();
 
     console.log("\n========== RESPONSE BODY ==========");
-    console.log(responseBody);
+    if (responseBody.length > 500) {
+      console.log(responseBody.slice(0, 500) + `... [truncated ${responseBody.length} bytes]`);
+    } else {
+      console.log(responseBody);
+    }
 
     if (!response.ok) {
       throw new Error(
-        `HTTP Error ${response.status}: ${response.statusText} - ${responseBody}`
+        `HTTP Error ${response.status}: ${response.statusText} - ${responseBody.slice(0, 500)}`
       );
     }
 
@@ -94,8 +99,8 @@ async function request(endpoint, params = {}, options = {}) {
   } catch (error) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      console.error(`[RedmineClient] Timeout requesting ${url}`);
-      throw new Error(`Request timed out (10s): ${url}`);
+      console.error(`[RedmineClient] Timeout (${timeoutMs}ms) requesting ${url}`);
+      throw new Error(`Request timed out (${Math.round(timeoutMs / 1000)}s): ${url}`);
     }
     console.error(`[RedmineClient] Error requesting ${url}:`, error.message || error);
     throw error;
@@ -103,18 +108,13 @@ async function request(endpoint, params = {}, options = {}) {
 }
 
 module.exports = {
-  // CHANGED: get() now just forwards params to buildUrl (key auto-added there).
-  get: (endpoint, params = {}) => request(endpoint, params, { method: 'GET' }),
+  // get() forwards params and optional options to request()
+  get: (endpoint, params = {}, options = {}) => request(endpoint, params, { method: 'GET', ...options }),
 
-  // CHANGED: post()/put() also accept optional query params, in case the API
-  // wants ?key=... on write calls too (not just GET).
-  post: (endpoint, body, params = {}) => request(endpoint, params, {
+  // post() accepts body, query params, and options
+  post: (endpoint, body, params = {}, options = {}) => request(endpoint, params, {
     method: 'POST',
-    body: JSON.stringify(body)
-  }),
-
-  /*put: (endpoint, body, params = {}) => request(endpoint, params, {
-    method: 'PUT',
-    body: JSON.stringify(body)
-  })*/
+    body: JSON.stringify(body),
+    ...options
+  })
 };

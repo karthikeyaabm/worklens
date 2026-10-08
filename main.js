@@ -1694,8 +1694,9 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
     try {
       console.log(`[Historical Loader] Starting background 30-day API fetch for user ${userId}...`);
       let apiData = null;
-      if (isUserResolved && isBackendReachable && userId) {
-        apiData = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId });
+      if (userId) {
+        apiData = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId }, { timeout: 90000 });
+        isBackendReachable = true;
       }
 
       let apiEntries = [];
@@ -1734,7 +1735,7 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
         serverTodayLogs: processed.serverTodayLogs
       };
 
-      console.log('[Historical Loader] Background historical data ready.');
+      console.log(`[Historical Loader] Background historical data ready (${apiEntries.length} entries processed).`);
 
       if (activityWindow && !activityWindow.isDestroyed()) {
         activityWindow.webContents.send('historical-data-ready', { isReady: true });
@@ -1745,7 +1746,7 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
       console.error('[Historical Loader] Error during background fetch, using local queue fallback:', err);
       const offline = processHistoricalOfflineData(userId, currentOsUser);
       precomputedHistoricalCache = {
-        isReady: true,
+        isReady: false,
         isLoading: false,
         timestamp: Date.now(),
         yesterday: offline.yesterday,
@@ -1755,7 +1756,7 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
       };
 
       if (activityWindow && !activityWindow.isDestroyed()) {
-        activityWindow.webContents.send('historical-data-ready', { isReady: true });
+        activityWindow.webContents.send('historical-data-ready', { isReady: false });
       }
 
       return precomputedHistoricalCache;
