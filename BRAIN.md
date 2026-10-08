@@ -104,6 +104,8 @@ WorkLens/
 ├── quotes.js                   # Local quotes storage array for inactivity nudges
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
 ├── storageHealth.js            # Local persistence supervisor (ENOSPC detection, failure threshold, cooldown, notifications)
+├── teamsActivityTracker.js     # Microsoft Teams intelligent call/meeting state machine and device sensor engine
+├── test_teams_tracking_suite.js # Comprehensive test suite for Teams call/meeting state transitions and edge cases
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -229,7 +231,7 @@ sequenceDiagram
     *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (tracking tick, active-win binding)
 *   **Key Logic Rules:**
     *   **Lock Screen Exclusion:** Active tracking is suspended, and the status is set to `Inactive` if `lockapp.exe` (Windows Lock Screen) is detected.
-    *   **Teams Call/Meeting Detection:** Forces status to `Active` even if keyboard/mouse activity is idle, provided the active window title matches meeting/call identifiers (e.g., `\bmeeting\b`, `\bcall\b`, `\bpresenting\b`).
+    *   **Teams Intelligent Tracking:** Evaluates Teams state via `teamsActivityTracker.js`. Differentiates Teams chat (subject to standard 5-minute inactivity rules) from active voice calls and video meetings (forced `Active` and suppresses inactivity popups). Uses hardware sensor registry (`CapabilityAccessManager` microphone and webcam signals) combined with window title patterns, avoiding brittle string matching.
     *   **Passive Transfer Detection:** Flags active transfers (WinSCP or downloads matching percentage progress keywords like `\b\d{1,3}%\s+(downloading|uploading|transferring)\b`) as `Inactive` since they are running in the background.
     *   **Title Normalization:** Normalizes volatile percentage titles (e.g., "82% transferring") to static titles (e.g., "Transferring in progress") to prevent polluting the database.
 
@@ -313,6 +315,28 @@ sequenceDiagram
 *   **Loophole Prevention & Graceful Recovery:**
     *   **Window Switch Loophole Fixed**: Switching active windows no longer resets the suspicion status. Only genuine user interaction (different key pressed, natural curved mouse movement, scroll, or click) can reduce suspicion.
     *   **Recovery Mechanics**: If flagged as suspicious/automation, only genuine content keypresses (excludes control/modifier keys like Alt/Tab), mouse clicks, scrolls, or natural curved mouse movements (segment lengths > 3px, angle change between 0.05 and 3.0 rad, excluding sharp reversals) will clear the flag, flush the event queue, and reset suspicion.
+
+### 8. Microsoft Teams Call & Meeting Tracking Engine
+*   **Purpose:** Intelligently track Microsoft Teams activity by distinguishing voice calls, video meetings, and screen shares from routine chat and idle windows, ensuring employees are not falsely flagged as inactive during hands-free calls while still enforcing inactivity rules during normal chat.
+*   **Files Involved:**
+    *   [teamsActivityTracker.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/teamsActivityTracker.js) (State machine, device sensor engine, title patterns)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (Active tracking tick integration and inactivity popup check)
+    *   [test_teams_tracking_suite.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/test_teams_tracking_suite.js) (Dedicated 35-assertion test suite covering all 9 edge cases)
+*   **State Machine States:**
+    *   `TEAMS_CHAT_ACTIVE`: User is actively interacting with Teams chat/channels/navigation (keyboard/mouse active).
+    *   `TEAMS_IDLE`: User has Teams chat/UI in the foreground but has produced no keyboard or mouse activity for 5 minutes (`>= 300s`). Flips session to `Inactive` and triggers the Inactivity Popup.
+    *   `TEAMS_CALL_ACTIVE`: Active Teams voice call detected. Forces session status to `Active`, suppresses the 5-minute inactivity popup, and preserves full active session duration even with zero mouse/keyboard input.
+    *   `TEAMS_MEETING_ACTIVE`: Active Teams video meeting or screen share detected. Forces session status to `Active`, suppresses the inactivity popup, and preserves full meeting duration.
+    *   `TEAMS_CALL_OR_MEETING_ENDED`: Transitional state triggered when a call or meeting concludes. Immediately transitions to `TEAMS_CHAT_ACTIVE` and initiates a fresh 5-minute inactivity countdown from the exact conclusion time.
+*   **Reliable Local Detection Signals (Beyond Window Title):**
+    *   **Windows CapabilityAccessManager Registry Sensors:** Queries `HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone` and `...\webcam` to detect real-time audio capture and video streaming. If `LastUsedTimeStop == 0` or `LastUsedTimeStart > LastUsedTimeStop`, Teams is actively holding the audio or video device.
+    *   **Meeting Window Title Hierarchy:** Identifies companion and overlay titles (e.g., `Meeting compact view | ...`, `Sharing control bar | ...`, `\bmeeting\b`, `\bconference\b`, `\bpresenting\b`, `\bscreen sharing\b`).
+    *   **Process Architecture Context:** Accommodates modern Teams MSIX/WebView2 architecture (`ms-teams.exe` with `SlimCore` native media engine) and classic Teams (`teams.exe`).
+*   **Transition & Grace Period Handling:**
+    *   *Call Starts while Idle:* Immediately flips status from `Inactive` to `Active`, closes any active inactivity popup, and suppresses further popups.
+    *   *Call Ends:* Does NOT immediately mark the user idle even if OS idle time exceeded 300s during the call. Restarts the 5-minute inactivity countdown from call conclusion (`callEndedAt`). Fresh keyboard/mouse input clears the baseline and restores standard OS idle tracking.
+    *   *Background/Minimized Meeting:* When a meeting is active in the background and the system is otherwise idle (e.g., listening to a presentation on desktop), WorkLens maintains the session as `Active` under `Microsoft Teams` and suppresses the idle popup.
+    *   *App Switching:* Switching away from Teams during an active call to work in Chrome or IDE immediately closes the Teams session cleanly with accurate duration and tracks the active work app normally.
 
 ---
 
@@ -744,7 +768,7 @@ npm run release
 
 1.  **Browser Title Overloads:** Tracking browser windows can create multiple short log entries when switching tabs rapidly. (Mitigated by the 2-minute sync interval and session consolidation rules).
 2.  **OS Support:** Platform-specific window titles (such as the Windows lock screen `lockapp.exe`) must be configured manually for other operating systems.
-3.  **Active Teams Override:** System idle checks are bypassed during active Teams calls, which relies on the window title containing meeting-related words.
+3.  **Active Teams Override (Resolved):** Previously, Teams idle bypass relied solely on naive window title string matching. This is now fully resolved with `teamsActivityTracker.js` using Windows `CapabilityAccessManager` hardware sensors (microphone/webcam real-time access) coupled with an explicit state machine and 5-minute post-call grace period.
 
 ---
 
@@ -780,16 +804,29 @@ npm run release
                                              │
                                     Yes ┌────┴────┐ No
                           ┌─────────────┴─┐     ┌─┴────────────────────────┐
-                          │ Is Active MS  │     │ Is Volatile Transfer     │
-                          │ Teams Call?   │     │ (WinSCP / Download)?     │
-                          └──────┬────────┘     └──────────┬───────────────┘
-                                 │                         │
-                        Yes ┌────┴────┐ No        Yes ┌────┴────┐ No
-                  ┌─────────┴─┐   ┌───┴─────┐   ┌─────┴─────┐   ┌───┴─────┐
-                  │Flag ACTIVE│   │  Flag   │   │   Flag    │   │  Flag   │
-                  └───────────┘   │INACTIVE │   │ INACTIVE  │   │ ACTIVE  │
-                                  └─────────┘   └───────────┘   └─────────┘
+                          │ Active Teams  │     │ Is Volatile Transfer     │
+                          │ Call/Meeting? │     │ (WinSCP / Download)?     │
+                          │(Sensor/State) │     └──────────┬───────────────┘
+                          └──────┬────────┘                │
+                                 │                Yes ┌────┴────┐ No
+                        Yes ┌────┴────┐ No      ┌─────┴─────┐   ┌───┴─────┐
+                  ┌─────────┴─┐   ┌───┴─────┐   │   Flag    │   │  Flag   │
+                  │Flag ACTIVE│   │  Flag   │   │ INACTIVE  │   │ ACTIVE  │
+                  │ (Suppress │   │INACTIVE │   └───────────┘   └─────────┘
+                  │  Popup)   │   └─────────┘
+                  └───────────┘
 ```
+
+#### Teams Activity Decision Matrix
+| Teams Operational Mode | Foreground App | OS Input (Kbd/Mouse) | Sensor Signals (Mic / Cam) | WorkLens Status | Popup Eligible? | WorkLens State |
+|---|---|---|---|---|---|---|
+| **Teams Voice Call** | Microsoft Teams | Active or Idle | Mic Active | `Active` | **No (Suppressed)** | `TEAMS_CALL_ACTIVE` |
+| **Teams Video Meeting** | Microsoft Teams | Active or Idle | Webcam / Mic Active | `Active` | **No (Suppressed)** | `TEAMS_MEETING_ACTIVE` |
+| **Background Meeting** | Chrome / Desktop | Idle >= 5m | Webcam / Mic Active | `Active` | **No (Suppressed)** | `TEAMS_MEETING_ACTIVE` |
+| **Call Concluded (< 5m)** | Microsoft Teams | Idle (0 - 5m) | Inactive | `Active` | **No (Grace Period)** | `TEAMS_CHAT_ACTIVE` |
+| **Teams Chat (Active)** | Microsoft Teams | Active (< 5m) | Inactive | `Active` | No | `TEAMS_CHAT_ACTIVE` |
+| **Teams Chat (Idle)** | Microsoft Teams | Idle >= 5m | Inactive | `Inactive` | **Yes (Popup Triggered)** | `TEAMS_IDLE` |
+| **Other Apps (e.g. Chrome)**| Google Chrome | Idle >= 5m | Inactive | `Inactive` | **Yes (Standard Popup)** | Standard Tracking |
 
 ---
 

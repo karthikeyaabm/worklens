@@ -142,6 +142,7 @@ storageHealth.setNotificationHandler((alert) => {
 const antiAfkDetector = require('./anti-afk/antiAfkDetector');
 const { getActivityType, mapDecisionToActivityType } = antiAfkDetector;
 const { uIOhook } = require('uiohook-napi');
+const { teamsTracker, TEAMS_STATES } = require('./teamsActivityTracker');
 
 // Inactivity Nudge Configuration
 const INACTIVITY_THRESHOLD_SECONDS = 300; // 5 minutes inactivity trigger threshold
@@ -408,27 +409,15 @@ function isLockScreenWindow(winInfo) {
 }
 
 function isTeamsWindow(winInfo) {
-  if (!winInfo) return false;
-  const appName = (winInfo.owner?.name || '').toLowerCase();
-  const appPath = (winInfo.owner?.path || '').toLowerCase();
-  return appName.includes('teams') || appPath.includes('teams.exe') || appPath.includes('ms-teams.exe');
+  return teamsTracker.isTeamsWindow(winInfo);
 }
 
 function isTeamsMeetingWindow(winInfo) {
-  if (!isTeamsWindow(winInfo)) return false;
-  if (isTeamsChatWindow(winInfo)) return false;
-
-  const title = (winInfo.title || '').trim();
-  if (!title) return true;
-
-  return TEAMS_MEETING_TITLE_PATTERNS.some(pattern => pattern.test(title));
+  return teamsTracker.detectTeamsCallOrMeeting(winInfo).isAnyActive;
 }
 
 function isTeamsChatWindow(winInfo) {
-  if (!isTeamsWindow(winInfo)) return false;
-  const title = (winInfo.title || '').trim();
-  if (!title) return false;
-  return /\bchat\b/i.test(title) || /\bconversation\b/i.test(title) || title.toLowerCase().startsWith('chat');
+  return teamsTracker.isTeamsChatWindow(winInfo);
 }
 
 function isWinScpApp(appName = '', appPath = '') {
@@ -745,6 +734,9 @@ function closeCurrentSession(endTime = new Date()) {
 
   saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, os.userInfo().username);
   console.log(`[Session] Closed session locally: local_id=${currentRecord.local_id} app="${currentRecord.appName}" duration=${currentRecord.duration}s`);
+  if (isTeamsWindow({ owner: { name: currentRecord.appName, path: '' } })) {
+    console.log(`[Teams] Active session duration: ${currentRecord.duration} seconds`);
+  }
   currentRecord = null;
 }
 
@@ -783,36 +775,88 @@ async function trackTick() {
 
       if (isLockScreenWindow(winInfo)) {
         newStatus = 'Inactive';
-      } else if (newStatus === 'Active' || isTeamsMeetingWindow(winInfo)) {
-        if (newStatus === 'Inactive') {
-          console.log('[Teams Activity] System is idle, but an active Teams meeting/call window was detected. Counting as Active.');
-        }
-        newStatus = 'Active';
+      } else if (isTeamsWindow(winInfo)) {
+        const teamsEval = teamsTracker.evaluate({
+          isTeamsForeground: true,
+          winInfo,
+          osIdleTimeSeconds: idleTime,
+          inactivityThresholdSeconds: INACTIVITY_THRESHOLD_SECONDS,
+          now
+        });
+
+        newStatus = teamsEval.status;
         const activeWindow = applyActiveWindowInfo(winInfo);
         currentApp = activeWindow.appName;
         currentTitle = activeWindow.windowTitle;
-
-        // Report active window to anti-AFK detector to detect focus switches as natural interaction
         antiAfkDetector.recordWindowChange(currentApp, currentTitle);
 
-        if (isPassiveTransferWindow(winInfo)) {
-          newStatus = 'Inactive';
-          console.log('[Passive Transfer] Transfer progress detected. Counting as Inactive.');
+        if (teamsEval.suppressPopup && inactivityPopup && !inactivityPopup.isDestroyed()) {
+          inactivityPopup.close();
+          inactivityPopupShown = false;
         }
-      } else if (isTeamsChatWindow(winInfo) && idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
-        newStatus = 'Inactive';
-        console.log('[Teams Chat] User is idle for 5+ minutes in Teams chat. Setting status to Inactive.');
+      } else if (winInfo) {
         const activeWindow = applyActiveWindowInfo(winInfo);
         currentApp = activeWindow.appName;
         currentTitle = activeWindow.windowTitle;
-      } else if (isTeamsWindow(winInfo) && !isTeamsMeetingWindow(winInfo)) {
-        newStatus = idleTime >= INACTIVITY_THRESHOLD_SECONDS ? 'Inactive' : 'Active';
-        const activeWindow = applyActiveWindowInfo(winInfo);
-        currentApp = activeWindow.appName;
-        currentTitle = activeWindow.windowTitle;
-      } else if (!winInfo) {
-        currentApp = 'Unknown';
-        currentTitle = 'No Active Window';
+
+        if (idleTime < INACTIVITY_THRESHOLD_SECONDS) {
+          newStatus = 'Active';
+          antiAfkDetector.recordWindowChange(currentApp, currentTitle);
+          if (isPassiveTransferWindow(winInfo)) {
+            newStatus = 'Inactive';
+            console.log('[Passive Transfer] Transfer progress detected. Counting as Inactive.');
+          }
+        } else {
+          // Foreground app is idle. Check if background Teams call or meeting is active (Test 9)
+          const bgTeamsEval = teamsTracker.evaluate({
+            isTeamsForeground: false,
+            winInfo: null,
+            osIdleTimeSeconds: idleTime,
+            inactivityThresholdSeconds: INACTIVITY_THRESHOLD_SECONDS,
+            now
+          });
+
+          if (bgTeamsEval.isAnyActive) {
+            console.log('[Teams Activity] System is idle in foreground app, but an active Teams call/meeting was detected. Counting as Active.');
+            newStatus = 'Active';
+            currentApp = 'Microsoft Teams';
+            currentTitle = bgTeamsEval.isMeetingActive ? 'Teams Meeting' : 'Teams Call';
+            antiAfkDetector.recordWindowChange(currentApp, currentTitle);
+            if (inactivityPopup && !inactivityPopup.isDestroyed()) {
+              inactivityPopup.close();
+              inactivityPopupShown = false;
+            }
+          } else {
+            newStatus = 'Inactive';
+            if (isPassiveTransferWindow(winInfo)) {
+              console.log('[Passive Transfer] Transfer progress detected. Counting as Inactive.');
+            }
+          }
+        }
+      } else {
+        // No active window (!winInfo)
+        const bgTeamsEval = teamsTracker.evaluate({
+          isTeamsForeground: false,
+          winInfo: null,
+          osIdleTimeSeconds: idleTime,
+          inactivityThresholdSeconds: INACTIVITY_THRESHOLD_SECONDS,
+          now
+        });
+
+        if (bgTeamsEval.isAnyActive) {
+          newStatus = 'Active';
+          currentApp = 'Microsoft Teams';
+          currentTitle = bgTeamsEval.isMeetingActive ? 'Teams Meeting' : 'Teams Call';
+          antiAfkDetector.recordWindowChange(currentApp, currentTitle);
+          if (inactivityPopup && !inactivityPopup.isDestroyed()) {
+            inactivityPopup.close();
+            inactivityPopupShown = false;
+          }
+        } else {
+          currentApp = 'Unknown';
+          currentTitle = 'No Active Window';
+          newStatus = 'Inactive';
+        }
       }
     } catch (winError) {
       console.error('Error getting active window:', winError);
@@ -1082,10 +1126,25 @@ function startInactivityCheck() {
       if (idleTime >= INACTIVITY_THRESHOLD_SECONDS) {
         try {
           const winInfo = await getActiveWindowInfo();
-          if (isTeamsMeetingWindow(winInfo)) {
+          const isTeams = isTeamsWindow(winInfo);
+          const teamsEval = teamsTracker.evaluate({
+            isTeamsForeground: isTeams,
+            winInfo,
+            osIdleTimeSeconds: idleTime
+          });
+
+          if (teamsEval.suppressPopup || teamsEval.isAnyActive) {
             inactivityPopupShown = false;
             if (inactivityPopup) {
-              console.log('[Inactivity Nudge] Active Teams meeting/call detected. Closing inactivity popup.');
+              console.log('[Inactivity Nudge] Active Teams call/meeting detected. Closing inactivity popup.');
+              inactivityPopup.close();
+            }
+            return;
+          }
+
+          if (isTeams && teamsEval.effectiveIdleTime < INACTIVITY_THRESHOLD_SECONDS) {
+            inactivityPopupShown = false;
+            if (inactivityPopup) {
               inactivityPopup.close();
             }
             return;
