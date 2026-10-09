@@ -106,7 +106,14 @@ WorkLens/
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
 ├── storageHealth.js            # Local persistence supervisor (ENOSPC detection, failure threshold, cooldown, notifications)
 ├── teamsActivityTracker.js     # Microsoft Teams intelligent call/meeting state machine and device sensor engine
+├── run_all_tests.js            # Master automated test runner for all 8 verification suites
 ├── test_teams_tracking_suite.js # Comprehensive test suite for Teams call/meeting state transitions and edge cases
+├── test_storage_health_suite.js # Local storage health, ENOSPC resilience, and memory buffering suite
+├── test_location_suite.js      # PC Location data acquisition, caching, and offline payload suite
+├── test_offline_suite.js       # Offline startup, user profile caching, and identity reconciliation suite
+├── test_session_times_suite.js # Session start/end boundaries, timestamp parser, and Present state suite
+├── test_activity_periods_suite.js # Active time single-source 30-day API period aggregator suite
+├── test_progressive_loading.js # Progressive loading and latency benchmark suite
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -967,6 +974,35 @@ npm run release
 
 ---
 
+## 24.1 Automated Testing & Verification Suites
+
+WorkLens includes a comprehensive testing framework covering all system-level modules, offline behaviors, resilience mechanics, and UI calculations:
+
+| Test Suite | File | Runner | Tests | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **Microsoft Teams Tracking** | `test_teams_tracking_suite.js` | `node` | 35 | Hardware sensor detection, state machine, meeting idle suppression, grace periods |
+| **Local Storage Health** | `test_storage_health_suite.js` | `electron` | 10 | ENOSPC handling, atomic `.tmp` writes, memory buffering, failure threshold & cooldown |
+| **PC Location Data** | `test_location_suite.js` | `electron` | 8 | Windows native geolocation, reverse geocoding, 20-min cache, offline travel preservation |
+| **Offline Startup & Identity** | `test_offline_suite.js` | `electron` | 14 | Decoupled tracking, user profile caching, user_id backfilling, 35-day queue retention |
+| **Session Start/End Times** | `test_session_times_suite.js` | `electron` | 8 | Earliest start, latest end, timestamp parsing ISO / DD-MM-YYYY, Present state |
+| **Active Time 30-Day API** | `test_activity_periods_suite.js` | `node` | 6 | 30-day API periods (Today, Yesterday, Last 7, Last 30 Days), period aggregation |
+| **Progressive Loading** | `test_progressive_loading.js` | `electron` | 4 | Instant local today load (<100ms), single-pass processing (<100ms), instant tab swap |
+| **Watchdog Auto-Recovery** | `scratch/test_watchdog_suite.js` | `node` | 8 | Watchdog state coordination, intentional shutdown detection, registry auto-start |
+
+### Running Tests
+*   **Run All Suites (Recommended):** `npm test` or `npm run test:all` (executes `node run_all_tests.js` with unified output).
+*   **Run Individual Suites:**
+    *   `npm run test:teams`
+    *   `npm run test:storage`
+    *   `npm run test:location`
+    *   `npm run test:offline`
+    *   `npm run test:sessions`
+    *   `npm run test:periods`
+    *   `npm run test:progressive`
+    *   `npm run test:watchdog`
+
+---
+
 ## 25. AI Development Rules
 
 When adding features or modifying code in WorkLens, AI assistants must adhere to the following rules:
@@ -1025,12 +1061,13 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 ```
 1. Set up connection parameters in the .env file.
 2. Run "npm install" to install dependencies.
-3. Run "npm start" to launch the widget in development.
-4. Main Process Entry Point: main.js
-5. Watchdog Supervisor: watchdog/worklens-watchdog.ps1
-6. Database operations & queue: activityStore.js
-7. API Request Client: redmineClient.js
-8. UI Views: renderer/index.html & renderer/activity-popup.html
+3. Run "npm test" to run all 8 test suites and verify system health.
+4. Run "npm start" to launch the widget in development.
+5. Main Process Entry Point: main.js
+6. Watchdog Supervisor: watchdog/worklens-watchdog.ps1
+7. Database operations & queue: activityStore.js
+8. API Request Client: redmineClient.js
+9. UI Views: renderer/index.html & renderer/activity-popup.html
 ```
 
 ---
