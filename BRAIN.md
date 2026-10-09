@@ -749,6 +749,7 @@ WorkLens Watchdog (Hidden PowerShell / VBS)
    *   Maintains single watchdog instance lock at `%APPDATA%/WorkLens/watchdog.lock`.
 2. **[watchdog/worklens-watchdog.vbs](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/worklens-watchdog.vbs):**
    *   Stealth launcher using Windows Script Host (`wscript.exe`) to execute the PowerShell monitor with window style `0` (hidden), preventing command prompt flashes.
+   *   Packaged outside `app.asar` into `<installDir>\resources\watchdog\worklens-watchdog.vbs` via `extraResources` because Windows Script Host is a native Windows binary that cannot access files inside Electron ASAR archives.
 3. **[watchdog/watchdog.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/watchdog.js):**
    *   Node.js supervisor equivalent for developers and cross-platform verification (`npm run watchdog`).
 4. **State File (`%APPDATA%/WorkLens/watchdog-state.json`):**
@@ -764,7 +765,10 @@ WorkLens Watchdog (Hidden PowerShell / VBS)
 
 ### 5. Windows Auto-Start Integration
 *   WorkLens registers `WorkLensWatchdog` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
-*   Points to: `wscript.exe "<projectRoot>\watchdog\worklens-watchdog.vbs"`.
+*   Points dynamically to:
+    *   **Development:** `wscript.exe "<projectRoot>\watchdog\worklens-watchdog.vbs"`
+    *   **Production:** `wscript.exe "<installDir>\resources\watchdog\worklens-watchdog.vbs"` (resolved dynamically via `process.resourcesPath`).
+*   Never points into `app.asar`. Auto-corrects legacy or stale `app.asar` registry entries on startup or install/upgrade.
 *   Direct startup item (`electron.app.WorkLens`) is disabled to prevent duplicate race conditions on login.
 *   On Windows login, the watchdog initializes first, detects WorkLens is not yet active, launches WorkLens, and begins supervision.
 
@@ -825,7 +829,7 @@ npm run release
 
 ### Packaging Details
 *   **Application ID:** `com.worklens.desktop`
-*   **Resources Packaging:** The `.env` configuration file is included in the application bundle using the `extraResources` copy filter.
+*   **Resources Packaging:** The `.env` configuration file and watchdog supervisor scripts (`watchdog/worklens-watchdog.vbs`, `watchdog/worklens-watchdog.ps1`, `watchdog/watchdog.js`) are packaged outside `app.asar` into `resources/` via `extraResources`. This ensures Windows Script Host (`wscript.exe`) and PowerShell execute real filesystem files outside the archive, preventing ASAR resolution failures.
 *   **NSIS Installer / Uninstaller Configuration:**
     *   `oneClick`: `true` (seamless background installations and automated updates).
     *   `perMachine`: `false` (remains per-user at `%LOCALAPPDATA%\Programs\worklens`).
@@ -1042,6 +1046,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.7 - Active Time Session Start & End Time Integration:** Enhanced the Active Time details popup with comprehensive session start and end time boundaries across all 4 navigation periods. Today tab dynamically displays earliest tracking start time and `Present` while active (`07 Oct 2026     09:32 AM → Present`). Yesterday tab displays the isolated historical tracking boundaries (`06 Oct 2026     09:41 AM → 06:52 PM`). Last 7 Days and Last 30 Days date rows integrate the timeline boundaries directly flanking the horizontal progress bar (`[Calendar] Date   StartTime ---------------- EndTime   ActiveTime`). Multiple sessions per date resolve to earliest start and latest end. Zero-data dates display `-- → --`. Preserves local timezone handling, progressive background loading, and offline queue aggregation with zero redundant API calls.
 *   **v1.3.8 - Last 30 Days Historical Timeout & Session Aggregation Fix:** Resolved issue where Last 30 Days view fell back to local offline queue displaying only 3 days of sessions and defaulting the remaining 27 days to 0m. Increased Redmine HTTP request timeout from 10 seconds to 90 seconds in [redmineClient.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/redmineClient.js) to reliably download large 30-day activity datasets (14,000+ entries) without aborting. Truncated verbose response logs to prevent Event Loop stalls. Enhanced renderer client cache invalidation in [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js) upon receiving `historical-data-ready` so active views update immediately with server-verified sessions, and ensured scroll positions reset to top (`scrollTop = 0`) on period switching to display newest dates first.
 *   **v1.3.11 - PC Location Tracking & POST API Integration:** Integrated dedicated PC location provider and cache manager in [locationService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/locationService.js). Captures runtime Windows workstation coordinates (`latitude`, `longitude`) via native Windows Location and network IP geolocation fallback, and performs reverse geocoding for human-readable `current_address`. Includes 20-minute cached refresh strategy, offline queue preservation across travel/reconnect, graceful null fallbacks on failure, and privacy-sanitized logging. Enhanced `POST /user_system_activity_logs.json` payload in [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) and `activity_queue.jsonl` schema in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js). Tested via `test_location_suite.js`.
+*   **v1.3.12 - Watchdog ASAR Decoupling & Windows Script Host Fix:** Resolved Windows Script Host missing script error (`resources\app.asar\watchdog\worklens-watchdog.vbs`) caused by native Windows binaries (`wscript.exe`, `powershell.exe`) attempting to access virtual files inside the packaged ASAR archive. Configured electron-builder `extraResources` in `package.json` to extract `watchdog` supervisor scripts directly into `<installDir>\resources\watchdog\`. Updated [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) to resolve `watchdogPath` dynamically using `process.resourcesPath` when packaged (`app.isPackaged === true`), guarding against executing any ASAR-internal path. Configured NSIS installer (`build/installer.nsh`) `customInstall` and `main.js` `configureWatchdogStartup` to auto-correct any legacy registry entries in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WorkLensWatchdog` to the physical filesystem path, and corrected uninstaller value removal.
 
 ---
 

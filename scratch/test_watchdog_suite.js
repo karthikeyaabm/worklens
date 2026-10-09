@@ -59,23 +59,21 @@ assert(fs.existsSync(vbsScript), 'worklens-watchdog.vbs exists');
 const jsScript = path.resolve(__dirname, '..', 'watchdog', 'watchdog.js');
 assert(fs.existsSync(jsScript), 'watchdog.js exists');
 
-// Test 4: Registry Startup Command Verification
+// Test 4: Registry Startup Command Verification & Asar Protection
 console.log('\nTest 4: Registry Auto-Start Command Verification');
 const vbsPath = path.resolve(__dirname, '..', 'watchdog', 'worklens-watchdog.vbs');
-const regCmd = `reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog"`;
-try {
-  const regOutput = execSync(regCmd, { encoding: 'utf8' });
-  console.log('  Registry entry found:', regOutput.trim());
-  assert(regOutput.includes('WorkLensWatchdog'), 'Windows Run registry contains WorkLensWatchdog');
-} catch (e) {
-  // If not yet run via main.js, write it to test
-  console.log('  Writing test registry entry...');
-  execSync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /t REG_SZ /d "wscript.exe \\"${vbsPath}\\"" /f`);
-  const regOutput = execSync(regCmd, { encoding: 'utf8' });
-  assert(regOutput.includes('WorkLensWatchdog'), 'Windows Run registry contains WorkLensWatchdog');
-}
+assert(fs.existsSync(vbsPath), 'worklens-watchdog.vbs exists on real filesystem');
+assert(!vbsPath.includes('app.asar'), 'Dev watchdog path does not reference app.asar');
 
-// Test 5: Watchdog Logging Verification
+// Write clean test entry (overwriting any stale app.asar entries)
+execSync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /t REG_SZ /d "wscript.exe \\"${vbsPath}\\"" /f`);
+const regCmd = `reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog"`;
+const regOutput = execSync(regCmd, { encoding: 'utf8' });
+console.log('  Registry entry found:', regOutput.trim());
+assert(regOutput.includes('WorkLensWatchdog'), 'Windows Run registry contains WorkLensWatchdog');
+assert(!regOutput.includes('app.asar'), 'Windows Run registry does NOT contain app.asar');
+
+// Test 5: Watchdog Log Directory & File Formatter
 console.log('\nTest 5: Watchdog Log Directory & File Formatter');
 const today = new Date().toISOString().slice(0, 10);
 const expectedLogFile = path.join(logsDir, `worklens-watchdog-${today}.log`);

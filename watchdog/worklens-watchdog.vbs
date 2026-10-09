@@ -9,5 +9,7 @@ strPsScript = objFSO.BuildPath(strScriptDir, "worklens-watchdog.ps1")
 
 strCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & strPsScript & """"
 
-' Run completely hidden (window style 0, do not wait)
-objShell.Run strCommand, 0, False
+' Run completely hidden (window style 0, do not wait) if script exists
+If objFSO.FileExists(strPsScript) Then
+    objShell.Run strCommand, 0, False
+End If

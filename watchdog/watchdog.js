@@ -136,6 +136,11 @@ function resolveWorkLensTarget() {
     }
   } catch (_) {}
 
+  const relativeInstalledExe = path.resolve(__dirname, '..', '..', 'WorkLens.exe');
+  if (fs.existsSync(relativeInstalledExe)) {
+    return { file: relativeInstalledExe, args: ['--recovered'] };
+  }
+
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
   const installedExe = path.join(localAppData, 'Programs', 'worklens', 'WorkLens.exe');
   if (fs.existsSync(installedExe)) {

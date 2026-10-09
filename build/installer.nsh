@@ -12,6 +12,18 @@
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
 !macroend
 
+!macro customInstall
+  # Clean up legacy invalid asar-based startup registry entry, or set to valid resources/watchdog path
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
+  ${If} $0 != ""
+    ${If} ${FileExists} "$INSTDIR\resources\watchdog\worklens-watchdog.vbs"
+      WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog" 'wscript.exe "$INSTDIR\resources\watchdog\worklens-watchdog.vbs"'
+    ${Else}
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro customUnInit
   # If the uninstaller is invoked internally by the installer during an install/update,
   # electron-builder sets the "updated" flag (${isUpdated}).
@@ -45,7 +57,7 @@
           DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY}"
           DeleteRegKey HKCU "Software\${APP_GUID}"
           DeleteRegKey HKCU "Software\${APP_PACKAGE_NAME}"
-          DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Run\WorkLensWatchdog"
+          DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
           Delete "$DESKTOP\${PRODUCT_FILENAME}.lnk"
           Delete "$SMPROGRAMS\${PRODUCT_FILENAME}.lnk"
         ${EndIf}
@@ -69,4 +81,8 @@
       StrCpy $INSTDIR $EXEDIR
     ${EndIf}
   ${EndIf}
+!macroend
+
+!macro customUnInstall
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
 !macroend

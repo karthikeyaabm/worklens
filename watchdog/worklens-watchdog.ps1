@@ -120,6 +120,13 @@ function Get-WorkLensTarget {
         } catch {}
     }
 
+    # Check relative installed production path (when running from <installDir>\resources\watchdog)
+    $relativeInstalledExe = Join-Path $PSScriptRoot "..\..\WorkLens.exe"
+    if (Test-Path $relativeInstalledExe) {
+        $resolved = (Resolve-Path $relativeInstalledExe).Path
+        return @{ Path = $resolved; Arguments = "--recovered" }
+    }
+
     # Check installed production path
     $localApp = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::LocalApplicationData)
     $installedExe = Join-Path $localApp "Programs\worklens\WorkLens.exe"

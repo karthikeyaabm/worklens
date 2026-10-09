@@ -62,16 +62,54 @@ function ensureWatchdogRunning() {
   launchWatchdog();
 }
 
+function getWatchdogPath(filename = 'worklens-watchdog.vbs') {
+  if (app.isPackaged) {
+    const prodPath = path.join(process.resourcesPath, 'watchdog', filename);
+    if (fs.existsSync(prodPath)) {
+      return prodPath;
+    }
+    // Fallback if unpackaged resources path or external folder
+    const fallbackPath = path.join(__dirname, 'watchdog', filename);
+    if (!fallbackPath.includes('app.asar') && fs.existsSync(fallbackPath)) {
+      return fallbackPath;
+    }
+    return prodPath;
+  }
+  return path.join(__dirname, 'watchdog', filename);
+}
+
+function cleanLegacyWatchdogStartupIfInvalid() {
+  if (process.platform !== 'win32') return;
+  try {
+    exec('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog"', (err, stdout) => {
+      if (!err && stdout && stdout.includes('app.asar')) {
+        console.warn('[Watchdog] Detected invalid asar path in Windows Startup registry. Cleaning up...');
+        exec('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /f', () => {});
+      }
+    });
+  } catch (_) {}
+}
+
 function launchWatchdog() {
-  const vbsPath = path.join(__dirname, 'watchdog', 'worklens-watchdog.vbs');
-  if (fs.existsSync(vbsPath)) {
-    console.log('[Watchdog] Launching watchdog via silent VBS launcher...');
-    exec(`wscript.exe "${vbsPath}"`, { windowsHide: true });
+  const watchdogPath = getWatchdogPath('worklens-watchdog.vbs');
+  if (fs.existsSync(watchdogPath) && !watchdogPath.includes('app.asar')) {
+    console.log(`[Watchdog] Launching watchdog via silent VBS launcher: ${watchdogPath}`);
+    exec(`wscript.exe "${watchdogPath}"`, { windowsHide: true }, (err) => {
+      if (err) {
+        console.error('[Watchdog] Error executing VBS watchdog script:', err.message);
+      }
+    });
   } else {
-    const psScriptPath = path.join(__dirname, 'watchdog', 'worklens-watchdog.ps1');
-    if (fs.existsSync(psScriptPath)) {
-      console.log('[Watchdog] Launching watchdog via PowerShell...');
-      exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${psScriptPath}"`, { windowsHide: true });
+    const psScriptPath = getWatchdogPath('worklens-watchdog.ps1');
+    if (fs.existsSync(psScriptPath) && !psScriptPath.includes('app.asar')) {
+      console.log(`[Watchdog] Launching watchdog via PowerShell: ${psScriptPath}`);
+      exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${psScriptPath}"`, { windowsHide: true }, (err) => {
+        if (err) {
+          console.error('[Watchdog] Error executing PowerShell watchdog script:', err.message);
+        }
+      });
+    } else {
+      console.warn(`[Watchdog] Watchdog script files not found on disk outside app.asar (${watchdogPath}). Skipping launch.`);
     }
   }
 }
@@ -79,16 +117,21 @@ function launchWatchdog() {
 function configureWatchdogStartup() {
   if (process.platform !== 'win32') return;
   try {
-    const vbsPath = path.join(__dirname, 'watchdog', 'worklens-watchdog.vbs');
-    if (fs.existsSync(vbsPath)) {
-      const regCommand = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /t REG_SZ /d "wscript.exe \\"${vbsPath}\\"" /f`;
+    // Proactively clean up any stale startup registry entries pointing to app.asar
+    cleanLegacyWatchdogStartupIfInvalid();
+
+    const watchdogPath = getWatchdogPath('worklens-watchdog.vbs');
+    if (fs.existsSync(watchdogPath) && !watchdogPath.includes('app.asar')) {
+      const regCommand = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /t REG_SZ /d "wscript.exe \\"${watchdogPath}\\"" /f`;
       exec(regCommand, (err) => {
         if (err) {
-          console.error('[Watchdog] Failed to register startup registry:', err);
+          console.error('[Watchdog] Failed to register startup registry:', err.message);
         } else {
-          console.log('[Watchdog] Registered WorkLensWatchdog in Windows Startup registry.');
+          console.log(`[Watchdog] Registered WorkLensWatchdog in Windows Startup registry: ${watchdogPath}`);
         }
       });
+    } else {
+      console.warn(`[Watchdog] Skipping startup registration: valid filesystem VBS path not found (${watchdogPath}).`);
     }
   } catch (err) {
     console.error('[Watchdog] configureWatchdogStartup error:', err);
