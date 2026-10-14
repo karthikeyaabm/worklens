@@ -54,6 +54,12 @@ const TEST_SUITES = [
     file: path.join('scratch', 'test_watchdog_suite.js'),
     runner: 'node',
     description: 'Watchdog state coordination, intentional shutdown detection, registry auto-start'
+  },
+  {
+    name: '9. Python Mouse Automation Pattern Detection Suite',
+    file: 'test_mouse_pattern_suite.js',
+    runner: 'node',
+    description: 'Periodic clicks, mouse vibration, back-and-forth, random movement annotation'
   }
 ];
 

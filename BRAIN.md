@@ -87,6 +87,7 @@ WorkLens/
 │   ├── idleFeatures.js         # Idle status and wake-up patterns
 │   ├── featureExtractor.js     # Primary feature extraction interface
 │   ├── behaviorAnalyzer.js     # Indicators for suspicious behaviors
+│   ├── mousePatternDetector.js # Specific mouse automation pattern detector (Patterns A-D)
 │   ├── scoreEngine.js          # Confidence scoring and developer overrides
 │   ├── decisionEngine.js       # Classification (Human, Watch, Suspicious, Likely Automation)
 │   └── antiAfkDetector.js      # Primary orchestrator and API endpoints
@@ -106,7 +107,8 @@ WorkLens/
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
 ├── storageHealth.js            # Local persistence supervisor (ENOSPC detection, failure threshold, cooldown, notifications)
 ├── teamsActivityTracker.js     # Microsoft Teams intelligent call/meeting state machine and device sensor engine
-├── run_all_tests.js            # Master automated test runner for all 8 verification suites
+├── run_all_tests.js            # Master automated test runner for all verification suites
+├── test_mouse_pattern_suite.js # Comprehensive test suite for Python mouse automation pattern detection
 ├── test_teams_tracking_suite.js # Comprehensive test suite for Teams call/meeting state transitions and edge cases
 ├── test_storage_health_suite.js # Local storage health, ENOSPC resilience, and memory buffering suite
 ├── test_location_suite.js      # PC Location data acquisition, caching, and offline payload suite
@@ -921,6 +923,26 @@ npm run release
 
 ---
 
+### 19.1 Python Mouse Automation Pattern Detection (`mousePatternDetector.js`)
+
+WorkLens features an isolated behavioral annotation layer that analyzes global mouse events to recognize four specific automated mouse patterns (matching PyAutoGUI test scripts) without impacting productivity metrics.
+
+#### 1. Core Principles & Safety Guardrails
+*   **Isolated Annotation Layer Only:** Detection sets `activity_type` on the session record, queue storage (`activity_queue.jsonl`), and backend sync payload (`POST /user_system_activity_logs.json`).
+*   **Active/Inactive Protection:** Never marks an employee inactive, never alters OS idle-time handling, never resets session boundaries or timers, and never modifies active-time calculations.
+*   **Evidence Expiration:** Uses a bounded rolling window with a 15-second recency threshold. When the automated pattern ceases, the classification expires cleanly and reverts to `'Human Activity'`.
+*   **Behavioral Attribution:** Identifies observed kinematic and temporal cursor patterns, not process-level provenance.
+
+#### 2. Pattern Recognition Matrix
+| Pattern Identifier | Classification Key | Detection Criteria | False-Positive Protections |
+|---|---|---|---|
+| **Pattern A: Periodic Clicks** | `PYTHON_PERIODIC_CLICKS` | Contiguous clicks with ~0.4s intervals (300–550ms), stdDev <= 45ms, spatial distance <= 10px, >= 6 consecutive observations. | Ignores short click bursts (< 6 clicks), double/triple clicks, and variable human link clicking. |
+| **Pattern B: Small Vibration** | `PYTHON_MOUSE_VIBRATION` | 4-point relative orthogonal cycles `(0,0) -> (+10,0) -> (0,0) -> (0,+10)`, bounded area <= 25px x 25px, >= 10 steps, step timing 60–300ms. | Requires both horizontal and vertical reversals within tiny bounding box. |
+| **Pattern C: Back-and-Forth** | `PYTHON_BACK_AND_FORTH` | Horizontal sweeps ~150px apart (115–185px), vertical drift <= 30px, duration ~0.5s (250–850ms), >= 4 alternating directional sweeps. | Requires strict directional reversals and low duration variance (< 120ms stdDev). |
+| **Pattern D: Random Movement** | `PYTHON_RANDOM_MOVEMENT` | Multi-indicator confirmation: >= 5 legs, leg duration 150–950ms, linear straightness (curvature < 0.05 rad), pauses 80–650ms, span > 100px, 0 clicks, 0 scrolls, 0 keypresses. | Random coordinates alone never trigger detection; curvature > 0.05 rad or any click/keystroke immediately invalidates pattern. |
+
+---
+
 ## 20. Security Notes
 
 *   **API Credentials:** Keep the `REDMINE_API_KEY` token secure in the `.env` file. Do not commit `.env` files to git.
@@ -992,10 +1014,12 @@ WorkLens includes a comprehensive testing framework covering all system-level mo
 | **Active Time 30-Day API** | `test_activity_periods_suite.js` | `node` | 6 | 30-day API periods (Today, Yesterday, Last 7, Last 30 Days), period aggregation |
 | **Progressive Loading** | `test_progressive_loading.js` | `electron` | 4 | Instant local today load (<100ms), single-pass processing (<100ms), instant tab swap |
 | **Watchdog Auto-Recovery** | `scratch/test_watchdog_suite.js` | `node` | 8 | Watchdog state coordination, intentional shutdown detection, registry auto-start |
+| **Python Mouse Pattern Detection** | `test_mouse_pattern_suite.js` | `node` | 10 | Periodic clicks, mouse vibration, back-and-forth, random movement annotation |
 
 ### Running Tests
 *   **Run All Suites (Recommended):** `npm test` or `npm run test:all` (executes `node run_all_tests.js` with unified output).
 *   **Run Individual Suites:**
+    *   `npm run test:mouse-patterns` (or `node test_mouse_pattern_suite.js`)
     *   `npm run test:teams`
     *   `npm run test:storage`
     *   `npm run test:location`
@@ -1047,6 +1071,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.8 - Last 30 Days Historical Timeout & Session Aggregation Fix:** Resolved issue where Last 30 Days view fell back to local offline queue displaying only 3 days of sessions and defaulting the remaining 27 days to 0m. Increased Redmine HTTP request timeout from 10 seconds to 90 seconds in [redmineClient.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/redmineClient.js) to reliably download large 30-day activity datasets (14,000+ entries) without aborting. Truncated verbose response logs to prevent Event Loop stalls. Enhanced renderer client cache invalidation in [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js) upon receiving `historical-data-ready` so active views update immediately with server-verified sessions, and ensured scroll positions reset to top (`scrollTop = 0`) on period switching to display newest dates first.
 *   **v1.3.11 - PC Location Tracking & POST API Integration:** Integrated dedicated PC location provider and cache manager in [locationService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/locationService.js). Captures runtime Windows workstation coordinates (`latitude`, `longitude`) via native Windows Location and network IP geolocation fallback, and performs reverse geocoding for human-readable `current_address`. Includes 20-minute cached refresh strategy, offline queue preservation across travel/reconnect, graceful null fallbacks on failure, and privacy-sanitized logging. Enhanced `POST /user_system_activity_logs.json` payload in [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) and `activity_queue.jsonl` schema in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js). Tested via `test_location_suite.js`.
 *   **v1.3.12 - Watchdog ASAR Decoupling & Windows Script Host Fix:** Resolved Windows Script Host missing script error (`resources\app.asar\watchdog\worklens-watchdog.vbs`) caused by native Windows binaries (`wscript.exe`, `powershell.exe`) attempting to access virtual files inside the packaged ASAR archive. Configured electron-builder `extraResources` in `package.json` to extract `watchdog` supervisor scripts directly into `<installDir>\resources\watchdog\`. Updated [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) to resolve `watchdogPath` dynamically using `process.resourcesPath` when packaged (`app.isPackaged === true`), guarding against executing any ASAR-internal path. Configured NSIS installer (`build/installer.nsh`) `customInstall` and `main.js` `configureWatchdogStartup` to auto-correct any legacy registry entries in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WorkLensWatchdog` to the physical filesystem path, and corrected uninstaller value removal.
+*   **v1.3.13 - Python Mouse Automation Pattern Detection & Activity Type Annotation:** Integrated an isolated behavioral annotation module in [anti-afk/mousePatternDetector.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/mousePatternDetector.js) to detect four specific PyAutoGUI automated mouse patterns: Pattern A (`PYTHON_PERIODIC_CLICKS`), Pattern B (`PYTHON_MOUSE_VIBRATION`), Pattern C (`PYTHON_BACK_AND_FORTH`), and Pattern D (`PYTHON_RANDOM_MOVEMENT`). Annotates the active session record, queue, and API submission payload (`activity_type`) with full backward compatibility without altering active/inactive status, session tracking, idle detection, active-time calculations, or existing activity scoring. Features a bounded rolling window with clean 15-second expiration when automation stops. Verified via `test_mouse_pattern_suite.js` (10 passing deterministic unit tests).
 
 ---
 

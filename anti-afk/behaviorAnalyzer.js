@@ -59,8 +59,9 @@ function analyzeBehavior(metrics, rawEvents) {
     reasons.push(`Constant typing interval (std dev ${Math.round(kb.intervalStdDeviation)}ms): keystroke timing is too regular.`);
   }
 
-  // 4. Periodic Mouse Clicks (very low interval standard deviation between clicks)
-  indicators.periodicClicks = clickEvents.length >= 3 && clickIntervalStdDev < config.behavior.periodicClicksIntervalStdDevThreshold;
+  // 4. Periodic Mouse Clicks (very low interval standard deviation between clicks, must be currently active)
+  const isRecentClicks = clickEvents.length > 0 && ((Date.now() - clickEvents[clickEvents.length - 1].timestamp) <= 15000);
+  indicators.periodicClicks = isRecentClicks && clickEvents.length >= 3 && clickIntervalStdDev < config.behavior.periodicClicksIntervalStdDevThreshold;
   if (indicators.periodicClicks) {
     reasons.push(`Periodic mouse clicks (std dev ${Math.round(clickIntervalStdDev)}ms): click triggers are highly periodic.`);
   }

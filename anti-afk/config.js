@@ -44,5 +44,50 @@ module.exports = {
     { min: 31, max: 60, label: 'Watch' },
     { min: 61, max: 80, label: 'Suspicious' },
     { min: 81, max: 100, label: 'Likely Automation' }
-  ]
+  ],
+
+  // Specific Mouse Automation Pattern Detection Configuration (Annotation Layer)
+  mousePatterns: {
+    periodicClicks: {
+      minClicks: 6,
+      targetIntervalMs: 400,
+      intervalToleranceMs: 150,
+      maxStdDevMs: 45,
+      maxDistancePx: 10,
+      maxRecencyMs: 15000
+    },
+    vibration: {
+      minSteps: 10,
+      maxAreaWidth: 25,
+      maxAreaHeight: 25,
+      nominalStepSize: 10,
+      minStepSize: 6,
+      maxStepSize: 16,
+      minIntervalMs: 60,
+      maxIntervalMs: 300,
+      maxRecencyMs: 15000
+    },
+    backAndForth: {
+      minSweeps: 4,
+      targetDistancePx: 150,
+      distanceTolerancePx: 35,
+      maxVerticalDriftPx: 30,
+      targetDurationMs: 500,
+      minDurationMs: 250,
+      maxDurationMs: 850,
+      maxDurationStdDevMs: 120,
+      maxRecencyMs: 15000
+    },
+    randomMovement: {
+      minLegs: 5,
+      minLegDistancePx: 40,
+      minDurationMs: 150,
+      maxDurationMs: 950,
+      minPauseMs: 140,
+      maxPauseMs: 650,
+      maxCurvature: 0.05,
+      minStraightness: 0.96,
+      maxRecencyMs: 15000
+    }
+  }
 };

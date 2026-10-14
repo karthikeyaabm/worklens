@@ -17,6 +17,7 @@
     "test:periods": "node test_activity_periods_suite.js",
     "test:progressive": "electron test_progressive_loading.js",
     "test:watchdog": "node scratch/test_watchdog_suite.js",
+    "test:mouse-patterns": "node test_mouse_pattern_suite.js",
     "build": "electron-builder",
     "release": "electron-builder --publish always"
   },

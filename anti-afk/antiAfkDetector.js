@@ -11,6 +11,7 @@ const { extractFeatures } = require('./featureExtractor');
 const { analyzeBehavior } = require('./behaviorAnalyzer');
 const { calculateConfidenceScore } = require('./scoreEngine');
 const { processDecision } = require('./decisionEngine');
+const mousePatternDetector = require('./mousePatternDetector');
 const config = require('./config');
 const log = require('../logger');
 
@@ -165,6 +166,11 @@ function resumeActivity(context) {
 function mapDecisionToActivityType(evaluation) {
   if (!evaluation) return 'Unknown';
 
+  // Check specific detected mouse automation patterns first
+  if (evaluation.detectedPattern) {
+    return evaluation.detectedPattern;
+  }
+
   const indicators = evaluation.indicators || {};
   const metrics = evaluation.metrics || {};
 
@@ -254,6 +260,13 @@ function evaluateActivity() {
   const decision = processDecision(scoreResult.score, analysis.reasons, metrics);
   logDebug('[Decision]', `Status classified as [${decision.status}] with score ${decision.confidenceScore}%`);
 
+  // Stage 6: Specific Mouse Pattern Detection (isolated annotation layer)
+  // Does not alter confidence score, active/inactive state, or session timers
+  const patternResult = mousePatternDetector.detectMousePatterns(events, now);
+  if (patternResult) {
+    logDebug('[MousePattern]', `Detected pattern: ${patternResult.pattern}`, patternResult.details);
+  }
+
   // Handle suspicious status flag transitions
   if (decision.isSuspicious) {
     if (!isFakeActivityDetected) {
@@ -290,7 +303,10 @@ function evaluateActivity() {
       idleTime: metrics.idle.idleTime
     },
     status: decision.status,
-    reasons: decision.reasons
+    reasons: decision.reasons,
+    indicators: analysis.indicators,
+    detectedPattern: patternResult ? patternResult.pattern : null,
+    patternDetails: patternResult ? patternResult.details : null
   };
 }
 
@@ -331,6 +347,8 @@ module.exports = {
   isUserActive,
   getActivityType,
   mapDecisionToActivityType,
+  mousePatternDetector,
+  PATTERNS: mousePatternDetector.PATTERNS,
   CONFIG: {
     sameKeyWindow: config.evaluationWindowSeconds || config.rollingWindowSeconds,
     sameKeyThreshold: config.behavior.sameKeyThreshold,
