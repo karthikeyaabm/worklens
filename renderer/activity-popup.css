@@ -544,6 +544,22 @@ body {
   transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Dynamic Active Time Progress Bar Colors (<7h: Red, 7h-7h30m: Blue, >7h30m: Green) */
+.history-progress-bar.color-red,
+.history-progress-bar.progress-red {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.history-progress-bar.color-blue,
+.history-progress-bar.progress-blue {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+
+.history-progress-bar.color-green,
+.history-progress-bar.progress-green {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
 .history-duration {
   font-size: 12px;
   font-weight: 600;

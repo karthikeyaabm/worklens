@@ -66,6 +66,12 @@ const TEST_SUITES = [
     file: 'test_weekend_toggle_suite.js',
     runner: 'node',
     description: 'Show Weekends checkbox, Sat & Sun filtering, zero-activity preservation, tab sync'
+  },
+  {
+    name: '11. Dashboard Dynamic Progress Bar Color Suite',
+    file: 'test_progress_bar_colors_suite.js',
+    runner: 'node',
+    description: 'Dynamic Active Time progress bar colors: Red (<7h), Blue (7h-7h30m), Green (>7h30m)'
   }
 ];
 

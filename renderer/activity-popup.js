@@ -1,22 +1,23 @@
 // ================= DOM ELEMENTS =================
-const popupContainer = document.getElementById('popup-container');
-const arrowEl = document.getElementById('arrow');
-const closeBtn = document.getElementById('close-btn');
-const dateEl = document.getElementById('current-date');
-const loadingState = document.getElementById('loading-state');
-const errorState = document.getElementById('error-state');
-const emptyState = document.getElementById('empty-state');
-const emptyMsg = document.getElementById('empty-msg');
-const retryBtn = document.getElementById('retry-btn');
-const activityList = document.getElementById('activity-list');
-const historyList = document.getElementById('history-list');
-const totalTimeEl = document.getElementById('total-time');
-const periodTabs = document.querySelectorAll('.period-tab');
-const colHeaderName = document.getElementById('col-header-name');
-const colHeaderTime = document.getElementById('col-header-time');
-const loadingText = document.getElementById('loading-text');
-const weekendToggleContainer = document.getElementById('weekend-toggle-container');
-const weekendCheckbox = document.getElementById('toggle-weekends');
+const getEl = (id) => (typeof document !== 'undefined' ? document.getElementById(id) : null);
+const popupContainer = getEl('popup-container');
+const arrowEl = getEl('arrow');
+const closeBtn = getEl('close-btn');
+const dateEl = getEl('current-date');
+const loadingState = getEl('loading-state');
+const errorState = getEl('error-state');
+const emptyState = getEl('empty-state');
+const emptyMsg = getEl('empty-msg');
+const retryBtn = getEl('retry-btn');
+const activityList = getEl('activity-list');
+const historyList = getEl('history-list');
+const totalTimeEl = getEl('total-time');
+const periodTabs = typeof document !== 'undefined' ? document.querySelectorAll('.period-tab') : [];
+const colHeaderName = getEl('col-header-name');
+const colHeaderTime = getEl('col-header-time');
+const loadingText = getEl('loading-text');
+const weekendToggleContainer = getEl('weekend-toggle-container');
+const weekendCheckbox = getEl('toggle-weekends');
 
 // ================= STATE VARIABLES =================
 let pollInterval = null;
@@ -36,6 +37,7 @@ let lastCacheTimestamp = Date.now();
 const CLIENT_CACHE_TTL_MS = 60 * 1000; // 60s cache TTL
 
 // ================= INITIALIZATION =================
+if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   setupPeriodTabs();
   updateDateDisplay();
@@ -107,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.api.sendPopupReady();
   }
 });
+}
 
 // ================= PERIOD TABS CONTROLLER =================
 function setupPeriodTabs() {
@@ -224,6 +227,21 @@ function isWeekend(dateStr) {
   const date = new Date(year, month, day, 12, 0, 0);
   const dayOfWeek = date.getDay();
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday = 0, Saturday = 6
+}
+
+function getDailyActiveTimeColor(durationSeconds) {
+  const duration = Number(durationSeconds) || 0;
+  // Thresholds:
+  // - RED: Less than 7 hours (< 420 minutes / < 25200 seconds)
+  // - BLUE: 7 hours through exactly 7 hours 30 minutes (420–450 minutes, inclusive / 25200–27000 seconds)
+  // - GREEN: More than 7 hours 30 minutes (> 450 minutes / > 27000 seconds)
+  if (duration < 25200) {
+    return 'red';
+  } else if (duration <= 27000) {
+    return 'blue';
+  } else {
+    return 'green';
+  }
 }
 
 // ================= UTILITIES & HELPERS =================
@@ -633,8 +651,10 @@ function renderHistoryView(rawData) {
     const progressContainer = document.createElement('div');
     progressContainer.className = 'history-progress-container';
 
+    const color = getDailyActiveTimeColor(day.duration);
     const progressBar = document.createElement('div');
-    progressBar.className = 'history-progress-bar';
+    progressBar.className = `history-progress-bar color-${color} progress-${color}`;
+    progressBar.dataset.color = color;
     progressBar.style.width = '0%';
 
     progressContainer.appendChild(progressBar);
@@ -997,6 +1017,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     isWeekend,
     formatDuration,
+    getDailyActiveTimeColor,
     getShowWeekends: () => showWeekends,
     setShowWeekends: (val) => { showWeekends = Boolean(val); },
     updateWeekendToggleVisibility,
