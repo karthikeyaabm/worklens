@@ -60,6 +60,12 @@ const TEST_SUITES = [
     file: 'test_mouse_pattern_suite.js',
     runner: 'node',
     description: 'Periodic clicks, mouse vibration, back-and-forth, random movement annotation'
+  },
+  {
+    name: '10. Dashboard Weekend Visibility Toggle Suite',
+    file: 'test_weekend_toggle_suite.js',
+    runner: 'node',
+    description: 'Show Weekends checkbox, Sat & Sun filtering, zero-activity preservation, tab sync'
   }
 ];
 

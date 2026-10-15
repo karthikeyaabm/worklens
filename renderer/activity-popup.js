@@ -15,12 +15,15 @@ const periodTabs = document.querySelectorAll('.period-tab');
 const colHeaderName = document.getElementById('col-header-name');
 const colHeaderTime = document.getElementById('col-header-time');
 const loadingText = document.getElementById('loading-text');
+const weekendToggleContainer = document.getElementById('weekend-toggle-container');
+const weekendCheckbox = document.getElementById('toggle-weekends');
 
 // ================= STATE VARIABLES =================
 let pollInterval = null;
 let renderedRows = {}; // Holds map of appName -> DOM element
 let expandedAppName = null; // Currently expanded application name
 let currentPeriod = 'today'; // 'today' | 'yesterday' | 'last7days' | 'current_month'
+let showWeekends = false; // Default: false (unchecked, hides Sat & Sun in historical views)
 
 // Client-side view cache for instant tab switching (0ms)
 let clientViewCache = {
@@ -36,12 +39,25 @@ const CLIENT_CACHE_TTL_MS = 60 * 1000; // 60s cache TTL
 document.addEventListener('DOMContentLoaded', () => {
   setupPeriodTabs();
   updateDateDisplay();
-  
+  updateWeekendToggleVisibility();
+
+  if (weekendCheckbox) {
+    weekendCheckbox.checked = showWeekends;
+    weekendCheckbox.addEventListener('change', (e) => {
+      showWeekends = Boolean(e.target.checked);
+      if (currentPeriod === 'last7days' || currentPeriod === 'last30days' || currentPeriod === 'current_month') {
+        if (clientViewCache[currentPeriod]) {
+          renderHistoryView(clientViewCache[currentPeriod]);
+        }
+      }
+    });
+  }
+
   // Register close button click
-  closeBtn.addEventListener('click', initiateCloseAnimation);
-  
+  if (closeBtn) closeBtn.addEventListener('click', initiateCloseAnimation);
+
   // Register retry button click
-  retryBtn.addEventListener('click', fetchAndRender);
+  if (retryBtn) retryBtn.addEventListener('click', fetchAndRender);
 
   // Set up listeners from main process
   if (window.api) {
@@ -122,6 +138,7 @@ function selectPeriod(period, triggerFetch = true) {
 
   updateDateDisplay();
   updateColumnHeaders();
+  updateWeekendToggleVisibility();
 
   // If already cached, switch view INSTANTLY with zero network/IPC delay
   if (clientViewCache[period]) {
@@ -180,6 +197,33 @@ function updateColumnHeaders() {
     colHeaderName.textContent = 'DATE';
     colHeaderTime.textContent = 'ACTIVE TIME';
   }
+}
+
+function updateWeekendToggleVisibility() {
+  if (!weekendToggleContainer) return;
+  const isHistorical = (currentPeriod === 'last7days' || currentPeriod === 'last30days' || currentPeriod === 'current_month');
+  if (isHistorical) {
+    weekendToggleContainer.classList.remove('hidden');
+    if (weekendCheckbox) {
+      weekendCheckbox.checked = showWeekends;
+    }
+  } else {
+    weekendToggleContainer.classList.add('hidden');
+  }
+}
+
+function isWeekend(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return false;
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return false;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+  // Use local noon (12:00:00) to ensure reliable local calendar weekday without DST transition effects
+  const date = new Date(year, month, day, 12, 0, 0);
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6; // Sunday = 0, Saturday = 6
 }
 
 // ================= UTILITIES & HELPERS =================
@@ -515,13 +559,18 @@ function renderHistoryView(rawData) {
   renderedRows = {};
   expandedAppName = null;
 
-  const days = rawData?.days || [];
+  const allDays = rawData?.days || [];
+  const days = showWeekends ? allDays : allDays.filter(day => !isWeekend(day.dateStr));
+
   if (!days || days.length === 0) {
     if (emptyMsg) {
       emptyMsg.textContent = 'No activity recorded.';
     }
     showState(emptyState);
-    totalTimeEl.textContent = '0m';
+    const totalSeconds = rawData?.totalSeconds !== undefined
+      ? rawData.totalSeconds
+      : allDays.reduce((sum, d) => sum + d.duration, 0);
+    totalTimeEl.textContent = formatDuration(totalSeconds);
     return;
   }
 
@@ -619,9 +668,9 @@ function renderHistoryView(rawData) {
     }, 50);
   });
 
-  const totalSeconds = rawData.totalSeconds !== undefined
+  const totalSeconds = rawData?.totalSeconds !== undefined
     ? rawData.totalSeconds
-    : days.reduce((sum, d) => sum + d.duration, 0);
+    : allDays.reduce((sum, d) => sum + d.duration, 0);
 
   totalTimeEl.textContent = formatDuration(totalSeconds);
 }
@@ -943,3 +992,15 @@ function getAppIconSvg(appName) {
     </svg>
   `;
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    isWeekend,
+    formatDuration,
+    getShowWeekends: () => showWeekends,
+    setShowWeekends: (val) => { showWeekends = Boolean(val); },
+    updateWeekendToggleVisibility,
+    renderHistoryView
+  };
+}
+

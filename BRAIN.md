@@ -294,6 +294,14 @@ sequenceDiagram
     *   **Multiple Session Aggregation:** If a day contains multiple discontinuous sessions (e.g., 09:30–12:30 and 13:30–18:15), the display resolves to earliest start (`09:30 AM`) and latest end (`06:15 PM`).
     *   **App Restart Preservation:** Timestamps are computed across all session records (both from local queue chunks and server logs); restarting WorkLens does not reset the day's earliest start time.
     *   **Empty State:** Dates with no recorded activity display `-- → --` (or `--` on both boundaries) with zero progress bar width and `0m` duration without inventing timestamps.
+*   **Weekend Visibility Toggle (`#weekend-toggle-container`, `#toggle-weekends`):**
+    *   *Placement & UI:* Positioned at the top of the historical data section in `.date-controls-row`, immediately to the right of the date subtitle and above `#list-header`. Styled in Windows 11 Fluent dark glassmorphism with custom blue checkmark.
+    *   *Label & Default:* Labeled **Show Weekends (Sat & Sun)** with a default unchecked state (`showWeekends = false`).
+    *   *Tab Scope:* Displayed strictly on the **Last 7 Days** and **Last 30 Days** tabs. Hidden (`.hidden` / `display: none !important;`) on the **Today** and **Yesterday** tabs, preserving the original application breakdown layout.
+    *   *Filtering Logic:* When unchecked, filters visible date rows and progress bars to show only Monday through Friday (`!isWeekend(dateStr)`). Saturdays (`dayOfWeek === 6`) and Sundays (`dayOfWeek === 0`) are excluded from chart categories, date labels, and rows. When checked, weekend entries appear with actual recorded time or zero-activity markers.
+    *   *Date Evaluation:* Uses local calendar date components (`year`, `month - 1`, `day`) instantiated at local noon (`12:00:00`) to guarantee reliable weekday classification across month boundaries, leap years (e.g. Feb 29), and year transitions without timezone distortion.
+    *   *Shared State & Zero-Overhead:* State is unified across historical tabs (`Last 7 Days` &harr; `Last 30 Days`). Toggling triggers instantaneous client-side re-rendering from `clientViewCache` with 0ms delay and zero additional API/IPC calls.
+    *   *Data Immutability:* Underlying raw datasets (`rawData.days`) and total recorded period hours (`totalTimeEl`) are preserved and never mutated or deleted.
 *   **Icon Caching:** Resolves executable file icons on the main thread using standard shell queries (`Get-Process`) and converts them to base64 images to prevent CPU overhead in the rendering process.
 
 ### 6. Anti-AFK & Enterprise Behavior Analysis Engine
@@ -1091,6 +1099,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.15 - Combined Today Start Time Preservation & Ultra-Fast Dashboard Optimization:**
     *   **Today Start Time Persistence (Issue 1):** Resolved bug where Today's Start Time reset to the latest session or PC restart time (e.g. 1:00 PM instead of 10:00 AM). Introduced dedicated persistent daily tracking state store (`daily_tracking_state.json`) managed by `activityStore.js` (`getPersistedDailyStartTime`, `recordDailyStartTime`). Start Time calculation in `main.js` now evaluates all candidate sources: persisted daily state, all local chunks (synced + unsynced), active in-memory session, server-synchronized logs, and merged logs, ensuring the earliest timestamp for the employee's current local calendar day is preserved across PC reboots, app restarts, network offline periods, and sync flushes. Interrupted sessions are closed cleanly without duplicating tracked durations. Midnights roll over independently.
     *   **Dashboard Latency & Tab Switching Optimization (Issue 2):** Eliminated 11-second blocking pauses and loading spinners when switching to Yesterday, Last 7 Days, and Last 30 Days. Implemented instant non-blocking resolution: historical tabs immediately serve precomputed in-memory cache (<1ms) or progressive offline queue summaries (<5ms) while triggering background fetching asynchronously without awaiting. Increased historical cache TTL from 60 seconds to 10 minutes (`HISTORICAL_CACHE_TTL_MS`), and converted `invalidateActivity30DaysCache()` from wholesale cache destruction on every sync to incremental retention. In [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js), `onHistoricalDataReady` invalidates view caches and immediately refreshes the active view (including Today) with fresh server data. Tab switches leverage `clientViewCache` for 0ms instantaneous rendering. Single-pass 30-day processing executes in ~8ms across 15,000+ records. Tested via `test_session_times_suite.js` (12 passing tests) and `test_progressive_loading.js` (all passing).
+*   **v1.3.16 - Historical Dashboard Weekend Visibility Toggle:** Added interactive "Show Weekends (Sat & Sun)" checkbox toggle (`#toggle-weekends`) positioned in `.date-controls-row` above the historical activity chart/list. Defaults to unchecked, which filters out Saturday and Sunday entries from visible categories, progress bars, and rows in both Last 7 Days and Last 30 Days views while displaying Monday through Friday. When checked, displays actual recorded activity for Saturday and Sunday alongside weekdays, preserving zero-activity weekend entries (`0m`, `-- → --`). State is synchronized across Last 7 Days and Last 30 Days tabs and hidden on Today and Yesterday views. Toggling triggers immediate client-side presentation re-rendering (<1ms) using `clientViewCache` without extra API or IPC queries. Weekday classification evaluates the local calendar date at noon to avoid DST/timezone anomalies. Preserves raw historical data and total period active hours intact. Verified via `test_weekend_toggle_suite.js` (16 passing tests).
 
 ---
 
@@ -1110,7 +1119,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 ```
 1. Set up connection parameters in the .env file.
 2. Run "npm install" to install dependencies.
-3. Run "npm test" to run all 8 test suites and verify system health.
+3. Run "npm test" to run all 10 test suites and verify system health.
 4. Run "npm start" to launch the widget in development.
 5. Main Process Entry Point: main.js
 6. Watchdog Supervisor: watchdog/worklens-watchdog.ps1

@@ -157,7 +157,20 @@ body {
   outline-offset: -1px;
 }
 
-/* ================= SUBTITLE ================= */
+/* ================= SUBTITLE & CONTROLS ROW ================= */
+.date-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  min-height: 20px;
+  gap: 12px;
+}
+
+.date-controls-row .date-subtitle {
+  margin-bottom: 0;
+}
+
 .date-subtitle {
   display: flex;
   align-items: center;
@@ -166,6 +179,83 @@ body {
   color: #9CA3AF;
   font-weight: 500;
   margin-bottom: 12px;
+}
+
+/* ================= WEEKEND TOGGLE ================= */
+.weekend-toggle-container {
+  display: inline-flex;
+  align-items: center;
+}
+
+.weekend-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #9CA3AF;
+  cursor: pointer;
+  user-select: none;
+  transition: color 150ms ease;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.weekend-toggle-label:hover {
+  color: #E5E7EB;
+}
+
+.weekend-toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.weekend-toggle-custom {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+  background: rgba(20, 20, 20, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+.weekend-toggle-label:hover .weekend-toggle-custom {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(30, 30, 30, 0.8);
+}
+
+.weekend-toggle-input:focus-visible + .weekend-toggle-custom {
+  outline: 2px solid rgba(96, 165, 250, 0.6);
+  outline-offset: 1px;
+}
+
+.weekend-toggle-input:checked + .weekend-toggle-custom {
+  background: #2563eb;
+  border-color: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+}
+
+.weekend-toggle-custom .check-icon {
+  width: 9px;
+  height: 9px;
+  color: #ffffff;
+  display: none;
+}
+
+.weekend-toggle-input:checked + .weekend-toggle-custom .check-icon {
+  display: block;
+}
+
+.weekend-toggle-label .toggle-text {
+  letter-spacing: 0.2px;
 }
 
 .date-subtitle .date-label {

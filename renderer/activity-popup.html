@@ -30,8 +30,21 @@
       </nav>
     </div>
 
-    <!-- Subtitle Date -->
-    <div class="date-subtitle" id="current-date">Today's Date</div>
+    <!-- Subtitle Date & Historical Controls -->
+    <div class="date-controls-row">
+      <div class="date-subtitle" id="current-date">Today's Date</div>
+      <div id="weekend-toggle-container" class="weekend-toggle-container hidden">
+        <label class="weekend-toggle-label" for="toggle-weekends">
+          <input type="checkbox" id="toggle-weekends" class="weekend-toggle-input">
+          <span class="weekend-toggle-custom" aria-hidden="true">
+            <svg class="check-icon" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="toggle-text">Show Weekends (Sat & Sun)</span>
+        </label>
+      </div>
+    </div>
 
     <!-- Column Headers -->
     <div class="list-header" id="list-header">
