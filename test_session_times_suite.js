@@ -18,7 +18,11 @@ const {
   parseTimestampToDate,
   formatTime12,
   getDateWiseTimeRanges,
-  getLocalDateString
+  getLocalDateString,
+  getPersistedDailyStartTime,
+  recordDailyStartTime,
+  closeOrphanedSessions,
+  markSessionSynced
 } = require('./activityStore');
 
 let passedTests = 0;
@@ -133,38 +137,38 @@ runTest('6. Empty dates return null boundaries that format to --', () => {
 });
 
 // 5. APP RESTART PERSISTENCE
-runTest('7. App restart preserves the earliest start time for today', () => {
+runTest('7. App restart preserves the earliest start time for a given day', () => {
   const testUser = 'karthikeya.kondavath';
-  const todayStr = getLocalDateString();
+  const testDate = '2026-10-14';
 
   // Morning session before app close
   saveOrUpdateActiveSessionLocal({
-    local_id: 'today-sess-morning',
+    local_id: 'day-sess-morning',
     appName: 'Teams',
     windowTitle: 'Standup',
     status: 'active',
-    startTime: `${todayStr}T09:32:00`,
-    endTime: `${todayStr}T10:00:00`,
-    activityOn: `${todayStr}T09:32:00`,
+    startTime: `${testDate}T09:32:00`,
+    endTime: `${testDate}T10:00:00`,
+    activityOn: `${testDate}T09:32:00`,
     duration: 1680,
     closed: true
   }, 890, testUser);
 
   // App restarted hours later: new session created in the afternoon
   saveOrUpdateActiveSessionLocal({
-    local_id: 'today-sess-afternoon',
+    local_id: 'day-sess-afternoon',
     appName: 'Antigravity IDE',
     windowTitle: 'WorkLens',
     status: 'active',
-    startTime: `${todayStr}T14:15:00`,
-    endTime: `${todayStr}T14:45:00`,
-    activityOn: `${todayStr}T14:15:00`,
+    startTime: `${testDate}T14:15:00`,
+    endTime: `${testDate}T14:45:00`,
+    activityOn: `${testDate}T14:15:00`,
     duration: 1800,
     closed: true
   }, 890, testUser);
 
-  const ranges = getDateWiseTimeRanges([todayStr], 890, testUser);
-  const range = ranges[todayStr];
+  const ranges = getDateWiseTimeRanges([testDate], 890, testUser);
+  const range = ranges[testDate];
 
   assert.strictEqual(formatTime12(range.earliestStart), '09:32 AM', 'App restart must not reset earliest start time');
   assert.strictEqual(formatTime12(range.latestEnd), '02:45 PM', 'Latest end must reflect recent afternoon session');
@@ -180,6 +184,112 @@ runTest('8. Running session state resolves to Present while tracking is active',
   const stoppedTracking = false;
   const endStopped = isToday && stoppedTracking ? 'Present' : '05:00 PM';
   assert.strictEqual(endStopped, '05:00 PM');
+});
+
+// 7. REGRESSION TEST: 10:00 AM START, RESTART AT 1:00 PM -> START TIME PRESERVED
+runTest('9. Employee starts at 10:00 AM; PC restarts at 1:00 PM -> Start Time remains 10:00 AM', () => {
+  const testUser = 'karthikeya.kondavath';
+  const todayStr = getLocalDateString();
+
+  // Employee starts at 10:00 AM
+  saveOrUpdateActiveSessionLocal({
+    local_id: 'sess-10am',
+    appName: 'VSCode',
+    windowTitle: 'WorkLens',
+    status: 'active',
+    startTime: `${todayStr}T10:00:00`,
+    endTime: `${todayStr}T12:59:50`,
+    activityOn: `${todayStr}T10:00:00`,
+    duration: 10790,
+    closed: false // interrupted by PC restart at 1:00 PM!
+  }, 890, testUser);
+
+  // PC restarts at 1:00 PM: Startup recovery closes orphaned session
+  closeOrphanedSessions();
+
+  // WorkLens starts new tracking session at 1:00 PM (13:00)
+  saveOrUpdateActiveSessionLocal({
+    local_id: 'sess-1pm',
+    appName: 'Chrome',
+    windowTitle: 'Google Docs',
+    status: 'active',
+    startTime: `${todayStr}T13:00:00`,
+    endTime: `${todayStr}T13:05:00`,
+    activityOn: `${todayStr}T13:00:00`,
+    duration: 300,
+    closed: false
+  }, 890, testUser);
+
+  // Resolve start time
+  const ranges = getDateWiseTimeRanges([todayStr], 890, testUser);
+  const earliest = ranges[todayStr].earliestStart;
+  assert.strictEqual(formatTime12(earliest), '10:00 AM', 'Start Time MUST remain 10:00 AM after 1:00 PM restart');
+});
+
+// 8. REGRESSION TEST: MULTIPLE RESTARTS PRESERVE START TIME
+runTest('10. Multiple WorkLens/PC restarts keep the original 10:00 AM start time unchanged', () => {
+  const testUser = 'karthikeya.kondavath';
+  const todayStr = getLocalDateString();
+
+  // Simulating 3 consecutive restarts throughout the afternoon
+  for (let i = 1; i <= 3; i++) {
+    closeOrphanedSessions();
+    saveOrUpdateActiveSessionLocal({
+      local_id: `restart-sess-${i}`,
+      appName: 'WorkLens',
+      windowTitle: `Session after restart ${i}`,
+      status: 'active',
+      startTime: `${todayStr}T${13 + i}:00:00`,
+      endTime: `${todayStr}T${13 + i}:10:00`,
+      activityOn: `${todayStr}T${13 + i}:00:00`,
+      duration: 600,
+      closed: true
+    }, 890, testUser);
+  }
+
+  const ranges = getDateWiseTimeRanges([todayStr], 890, testUser);
+  assert.strictEqual(formatTime12(ranges[todayStr].earliestStart), '10:00 AM', 'Multiple restarts must never reset Start Time');
+});
+
+// 9. REGRESSION TEST: RESTART WHILE OFFLINE & SUBSEQUENT SYNC
+runTest('11. Restart while offline preserves Start Time, and syncing causes no duplicate time or jump', () => {
+  const testUser = 'karthikeya.kondavath';
+  const todayStr = getLocalDateString();
+
+  // Restart offline: persisted state and local queue preserve 10:00 AM
+  const offlineStart = getPersistedDailyStartTime(todayStr, testUser, 890);
+  assert.strictEqual(formatTime12(offlineStart), '10:00 AM', 'Offline startup must immediately load 10:00 AM from persistence');
+
+  // Sync completed: sessions marked synced
+  markSessionSynced('sess-10am');
+  markSessionSynced('sess-1pm');
+
+  const afterSyncRanges = getDateWiseTimeRanges([todayStr], 890, testUser);
+  assert.strictEqual(formatTime12(afterSyncRanges[todayStr].earliestStart), '10:00 AM', 'Syncing must preserve 10:00 AM start time');
+});
+
+// 10. REGRESSION TEST: NEW CALENDAR DAY IS CALCULATED INDEPENDENTLY
+runTest('12. New local calendar day calculates its Start Time independently', () => {
+  const testUser = 'karthikeya.kondavath';
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = getLocalDateString(tomorrow);
+
+  // New day starts at 08:45 AM
+  saveOrUpdateActiveSessionLocal({
+    local_id: 'tomorrow-sess-1',
+    appName: 'Outlook',
+    windowTitle: 'Inbox',
+    status: 'active',
+    startTime: `${tomorrowStr}T08:45:00`,
+    endTime: `${tomorrowStr}T09:15:00`,
+    activityOn: `${tomorrowStr}T08:45:00`,
+    duration: 1800,
+    closed: true
+  }, 890, testUser);
+
+  const tomorrowRanges = getDateWiseTimeRanges([tomorrowStr], 890, testUser);
+  assert.strictEqual(formatTime12(tomorrowRanges[tomorrowStr].earliestStart), '08:45 AM', 'Tomorrow must calculate 08:45 AM independently');
 });
 
 console.log('\n================ TEST SUMMARY ================');

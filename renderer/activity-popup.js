@@ -77,14 +77,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (typeof window.api.onHistoricalDataReady === 'function') {
       window.api.onHistoricalDataReady((data) => {
-        // Clear cached historical views so fresh server data will be loaded
+        // Clear cached views so fresh server data will be loaded
+        clientViewCache.today = null;
         clientViewCache.yesterday = null;
         clientViewCache.last7days = null;
         clientViewCache.last30days = null;
-        // If user is currently viewing a historical period, refresh immediately
-        if (currentPeriod !== 'today') {
-          fetchAndRender();
-        }
+        // Always refresh currently visible period immediately with synchronized server data
+        fetchAndRender();
       });
     }
 

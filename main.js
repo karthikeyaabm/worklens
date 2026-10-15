@@ -195,7 +195,9 @@ const {
   getDateWiseActiveDurations,
   getDateWiseTimeRanges,
   parseTimestampToDate,
-  formatTime12
+  formatTime12,
+  getPersistedDailyStartTime,
+  recordDailyStartTime
 } = require('./activityStore');
 const storageHealth = require('./storageHealth');
 const locationService = require('./locationService');
@@ -751,7 +753,6 @@ async function flushPendingClosedSessions() {
         if (success) {
           markSessionSynced(session.local_id);
           successCount++;
-          invalidateActivity30DaysCache();
           await new Promise(resolve => setTimeout(resolve, 200));
         }
       } catch (error) {
@@ -759,6 +760,10 @@ async function flushPendingClosedSessions() {
         const errMsg = error.message || String(error);
         markSessionFailed(session.local_id, errMsg);
       }
+    }
+
+    if (successCount > 0) {
+      invalidateActivity30DaysCache(false);
     }
 
     console.log(`[Sync] Flush completed. Successes: ${successCount}, Failures: ${failureCount}`);
@@ -1566,15 +1571,20 @@ let precomputedHistoricalCache = {
   serverTodayLogs: []
 };
 let historicalFetchPromise = null;
-const HISTORICAL_CACHE_TTL_MS = 60 * 1000; // 60s cache TTL
+const HISTORICAL_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL for stable historical data
 
-function invalidateActivity30DaysCache() {
-  precomputedHistoricalCache.isReady = false;
-  precomputedHistoricalCache.timestamp = 0;
-  precomputedHistoricalCache.yesterday = null;
-  precomputedHistoricalCache.last7days = null;
-  precomputedHistoricalCache.last30days = null;
-  precomputedHistoricalCache.serverTodayLogs = [];
+function invalidateActivity30DaysCache(full = false) {
+  if (full) {
+    precomputedHistoricalCache.isReady = false;
+    precomputedHistoricalCache.timestamp = 0;
+    precomputedHistoricalCache.yesterday = null;
+    precomputedHistoricalCache.last7days = null;
+    precomputedHistoricalCache.last30days = null;
+    precomputedHistoricalCache.serverTodayLogs = [];
+  } else {
+    // Incremental sync refresh: retain 30-day historical views while allowing today's data to update
+    precomputedHistoricalCache.timestamp = Date.now() - (HISTORICAL_CACHE_TTL_MS - 60 * 1000);
+  }
 }
 
 // Single-pass processor for the 30-day API entries (executes in ~25-30ms for 14.5k records)
@@ -2029,7 +2039,21 @@ async function handleFetchActivity(period = 'today') {
         longitude: c.longitude || null,
         current_address: c.current_address || null
       }));
-      logs = [...unsyncedMapped, ...precomputedHistoricalCache.serverTodayLogs];
+      // Merge unsynced and server records avoiding duplicates
+      const seenIds = new Set();
+      const mergedLogs = [];
+      for (const item of unsyncedMapped) {
+        if (item.id) seenIds.add(String(item.id));
+        mergedLogs.push(item);
+      }
+      for (const item of precomputedHistoricalCache.serverTodayLogs) {
+        const idKey = String(item.id || item.local_id || '');
+        if (!idKey || !seenIds.has(idKey)) {
+          if (idKey) seenIds.add(idKey);
+          mergedLogs.push(item);
+        }
+      }
+      logs = mergedLogs;
     } else {
       logs = getAllTodayLogs(userId, currentOsUser);
     }
@@ -2048,6 +2072,46 @@ async function handleFetchActivity(period = 'today') {
     let todayStart = null;
     let todayEnd = null;
 
+    // Source 1: Persisted daily tracking state (survives PC restarts, app restarts, offline mode)
+    const persistedStart = getPersistedDailyStartTime(todayStr, currentOsUser, userId);
+    if (persistedStart) {
+      todayStart = persistedStart;
+    }
+
+    // Source 2: All local chunks for today (both synced and unsynced)
+    const localTodayChunks = getAllTodayLogs(userId, currentOsUser);
+    if (localTodayChunks && localTodayChunks.length > 0) {
+      localTodayChunks.forEach(e => {
+        const s = parseTimestampToDate(e.start_time);
+        const end = parseTimestampToDate(e.end_time);
+        if (s && (!todayStart || s < todayStart)) todayStart = s;
+        if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
+      });
+    }
+
+    // Source 3: Active in-memory session (currentRecord)
+    if (currentRecord && currentRecord.startTime) {
+      const curStart = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
+      if (curStart && normalizeToLocalDateStr(curStart) === todayStr) {
+        if (!todayStart || curStart < todayStart) todayStart = curStart;
+      }
+      if (currentRecord.endTime) {
+        const curEnd = (currentRecord.endTime instanceof Date) ? currentRecord.endTime : parseTimestampToDate(currentRecord.endTime);
+        if (curEnd && (!todayEnd || curEnd > todayEnd)) todayEnd = curEnd;
+      }
+    }
+
+    // Source 4: Precomputed server logs for today (if available)
+    if (precomputedHistoricalCache && precomputedHistoricalCache.serverTodayLogs && precomputedHistoricalCache.serverTodayLogs.length > 0) {
+      precomputedHistoricalCache.serverTodayLogs.forEach(e => {
+        const s = parseTimestampToDate(e.start_time);
+        const end = parseTimestampToDate(e.end_time);
+        if (s && (!todayStart || s < todayStart)) todayStart = s;
+        if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
+      });
+    }
+
+    // Source 5: Resolved logs array
     if (logs && logs.length > 0) {
       logs.forEach(e => {
         const s = parseTimestampToDate(e.start_time);
@@ -2055,6 +2119,11 @@ async function handleFetchActivity(period = 'today') {
         if (s && (!todayStart || s < todayStart)) todayStart = s;
         if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
       });
+    }
+
+    // Keep persisted daily state in sync with earliest resolved start time
+    if (todayStart) {
+      recordDailyStartTime(todayStr, currentOsUser, userId, todayStart);
     }
 
     const todayStartTime = todayStart ? formatTime12(todayStart) : '--';
@@ -2069,45 +2138,36 @@ async function handleFetchActivity(period = 'today') {
       endTime: todayEndTime,
       isPresent: isCurrentlyTracking,
       isTrackingActive: isCurrentlyTracking,
-      hasData: logs.length > 0
+      hasData: logs.length > 0 || todayStart !== null
     };
   }
 
-  // 2. YESTERDAY
+  // 2. YESTERDAY (Ultra-fast non-blocking resolution)
   if (normalizedPeriod === 'yesterday') {
     if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.yesterday) {
       return precomputedHistoricalCache.yesterday;
     }
-    await loadHistoricalDataInBackground(userId, currentOsUser);
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.yesterday) {
-      return precomputedHistoricalCache.yesterday;
-    }
+    loadHistoricalDataInBackground(userId, currentOsUser);
     const offline = processHistoricalOfflineData(userId, currentOsUser);
     return offline.yesterday;
   }
 
-  // 3. LAST 7 DAYS
+  // 3. LAST 7 DAYS (Ultra-fast non-blocking resolution)
   if (normalizedPeriod === 'last7days' || normalizedPeriod === 'last_7_days') {
     if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last7days) {
       return precomputedHistoricalCache.last7days;
     }
-    await loadHistoricalDataInBackground(userId, currentOsUser);
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last7days) {
-      return precomputedHistoricalCache.last7days;
-    }
+    loadHistoricalDataInBackground(userId, currentOsUser);
     const offline = processHistoricalOfflineData(userId, currentOsUser);
     return offline.last7days;
   }
 
-  // 4. LAST 30 DAYS
+  // 4. LAST 30 DAYS (Ultra-fast non-blocking resolution)
   if (normalizedPeriod === 'last30days' || normalizedPeriod === 'last_30_days' || normalizedPeriod === 'current_month' || normalizedPeriod === 'month') {
     if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last30days) {
       return precomputedHistoricalCache.last30days;
     }
-    await loadHistoricalDataInBackground(userId, currentOsUser);
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last30days) {
-      return precomputedHistoricalCache.last30days;
-    }
+    loadHistoricalDataInBackground(userId, currentOsUser);
     const offline = processHistoricalOfflineData(userId, currentOsUser);
     return offline.last30days;
   }

@@ -81,6 +81,93 @@ function getCachedUserIdForOsUser(currentOsUsername) {
   return null;
 }
 
+let dailyStateFilePath = null;
+
+function getDailyStateFilePath() {
+  if (!dailyStateFilePath) {
+    dailyStateFilePath = path.join(app.getPath('userData'), 'daily_tracking_state.json');
+  }
+  return dailyStateFilePath;
+}
+
+function getStoredDailyState() {
+  const filePath = getDailyStateFilePath();
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    if (!raw.trim()) return {};
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('[Storage] Failed to read daily_tracking_state.json:', err);
+    return {};
+  }
+}
+
+function getPersistedDailyStartTime(dateStr, osUsername = null, userId = null) {
+  if (!dateStr) return null;
+  const state = getStoredDailyState();
+  const dayData = state[dateStr];
+  if (!dayData) return null;
+
+  const userKey = (osUsername || (userId ? String(userId) : 'default')).toLowerCase();
+  const userRecord = dayData[userKey] || dayData['default'];
+  if (!userRecord || !userRecord.earliestStartTime) return null;
+  return parseTimestampToDate(userRecord.earliestStartTime);
+}
+
+function recordDailyStartTime(dateStr, osUsername, userId, timestamp) {
+  if (!dateStr || !timestamp) return null;
+  const dateObj = (timestamp instanceof Date) ? timestamp : parseTimestampToDate(timestamp);
+  if (!dateObj || isNaN(dateObj.getTime())) return null;
+
+  const filePath = getDailyStateFilePath();
+  const state = getStoredDailyState();
+  if (!state[dateStr]) {
+    // Automatically prune dates older than 35 days to keep file compact
+    const limitDate = new Date();
+    limitDate.setDate(limitDate.getDate() - 35);
+    const limitStr = getLocalDateString(limitDate);
+    Object.keys(state).forEach(k => {
+      if (k < limitStr) delete state[k];
+    });
+    state[dateStr] = {};
+  }
+
+  const userKey = (osUsername || (userId ? String(userId) : 'default')).toLowerCase();
+  const existing = state[dateStr][userKey];
+  let earliest = dateObj;
+
+  if (existing && existing.earliestStartTime) {
+    const existingDate = parseTimestampToDate(existing.earliestStartTime);
+    if (existingDate && existingDate < earliest) {
+      earliest = existingDate;
+    }
+  }
+
+  const formatted = ensureFormattedDateTime(earliest);
+  state[dateStr][userKey] = {
+    earliestStartTime: formatted,
+    os_username: osUsername || null,
+    user_id: userId ? parseInt(userId, 10) : null,
+    updated_at: new Date().toISOString()
+  };
+
+  try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Storage] Failed to write daily_tracking_state.json:', err);
+    storageHealth.recordStorageFailure(err);
+  }
+
+  return earliest;
+}
+
 function formatDateTime(date) {
   const yyyy = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -228,6 +315,12 @@ function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
   if (duration < 0) duration = 0;
   if (duration > MAX_SESSION_DURATION) {
     duration = MAX_SESSION_DURATION;
+  }
+
+  // Persist earliest start time for this local calendar day
+  const chunkDate = normalizeToLocalDateStr(startFormatted || actOnFormatted);
+  if (chunkDate && start) {
+    recordDailyStartTime(chunkDate, currentOsUser, userId, start);
   }
 
   if (index >= 0) {
@@ -582,6 +675,11 @@ function getDateWiseTimeRanges(dateStrings, userId = null, osUsername = null) {
       earliestStart: null,
       latestEnd: null
     };
+    // Include persisted earliest start time for this employee and date if available
+    const persisted = getPersistedDailyStartTime(ds, osUsername, userId);
+    if (persisted) {
+      result[ds].earliestStart = persisted;
+    }
   });
 
   chunks.forEach(c => {
@@ -625,6 +723,11 @@ module.exports = {
   saveStoredUserProfile,
   getCachedUserIdForOsUser,
   backfillUserIdForOsUsername,
+  // Persistent daily tracking state
+  getDailyStateFilePath,
+  getStoredDailyState,
+  getPersistedDailyStartTime,
+  recordDailyStartTime,
   // History & Date-wise queries
   getLocalDateString,
   normalizeToLocalDateStr,
