@@ -103,6 +103,9 @@ function isIntentionalShutdown() {
     if (fs.existsSync(stateFile)) {
       const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
       if (state && state.intentionalShutdown) {
+        if (state.reason === 'shutdown' || state.reason === 'session-end') {
+          return false;
+        }
         const diffSeconds = (Date.now() - (state.timestamp || 0)) / 1000;
         if (diffSeconds >= 0 && diffSeconds <= 300) {
           return true;
@@ -123,39 +126,40 @@ function clearIntentionalShutdown() {
   } catch (_) {}
 }
 
-function resolveWorkLensTarget() {
+function resolveWorkLensTarget(mode = 'startup') {
+  const arg = mode === 'recovered' ? '--recovered' : '--startup';
   try {
     if (fs.existsSync(stateFile)) {
       const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
       if (state.execPath && fs.existsSync(state.execPath)) {
         if (!state.isPackaged && state.appPath) {
-          return { file: state.execPath, args: [state.appPath, '--recovered'] };
+          return { file: state.execPath, args: [state.appPath, arg] };
         }
-        return { file: state.execPath, args: ['--recovered'] };
+        return { file: state.execPath, args: [arg] };
       }
     }
   } catch (_) {}
 
   const relativeInstalledExe = path.resolve(__dirname, '..', '..', 'WorkLens.exe');
   if (fs.existsSync(relativeInstalledExe)) {
-    return { file: relativeInstalledExe, args: ['--recovered'] };
+    return { file: relativeInstalledExe, args: [arg] };
   }
 
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
   const installedExe = path.join(localAppData, 'Programs', 'worklens', 'WorkLens.exe');
   if (fs.existsSync(installedExe)) {
-    return { file: installedExe, args: ['--recovered'] };
+    return { file: installedExe, args: [arg] };
   }
 
   const unpackedExe = path.resolve(__dirname, '..', 'dist', 'win-unpacked', 'WorkLens.exe');
   if (fs.existsSync(unpackedExe)) {
-    return { file: unpackedExe, args: ['--recovered'] };
+    return { file: unpackedExe, args: [arg] };
   }
 
   const electronExe = path.resolve(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron.exe');
   const appRoot = path.resolve(__dirname, '..');
   if (fs.existsSync(electronExe)) {
-    return { file: electronExe, args: [appRoot, '--recovered'] };
+    return { file: electronExe, args: [appRoot, arg] };
   }
 
   return null;
@@ -216,7 +220,7 @@ async function checkLoop() {
       logWatchdog(`Restart attempt #${attemptNum}`);
       restartTimestamps.push(now);
 
-      const target = resolveWorkLensTarget();
+      const target = resolveWorkLensTarget('recovered');
       if (target) {
         const child = spawn(target.file, target.args, {
           detached: true,
@@ -246,7 +250,7 @@ async function checkLoop() {
           logWatchdog(`Restart attempt #${attemptNum}`);
           restartTimestamps.push(now);
 
-          const target = resolveWorkLensTarget();
+          const target = resolveWorkLensTarget('startup');
           if (target) {
             const child = spawn(target.file, target.args, {
               detached: true,

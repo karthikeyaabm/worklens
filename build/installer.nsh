@@ -14,13 +14,18 @@
 
 !macro customInstall
   # Clean up legacy invalid asar-based startup registry entry, or set to valid resources/watchdog path
-  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
-  ${If} $0 != ""
-    ${If} ${FileExists} "$INSTDIR\resources\watchdog\worklens-watchdog.vbs"
-      WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog" 'wscript.exe "$INSTDIR\resources\watchdog\worklens-watchdog.vbs"'
-    ${Else}
-      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
-    ${EndIf}
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.WorkLens"
+
+  # Register native WorkLens app in Windows Startup (shows as WorkLens in Task Manager and Windows Settings)
+  ${If} ${FileExists} "$INSTDIR\WorkLens.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLens" '"$INSTDIR\WorkLens.exe" --startup'
+  ${EndIf}
+
+  # Register independent watchdog supervisor in Windows Startup
+  ${If} ${FileExists} "$INSTDIR\resources\watchdog\worklens-watchdog.vbs"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog" 'wscript.exe "$INSTDIR\resources\watchdog\worklens-watchdog.vbs"'
+  ${Else}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
   ${EndIf}
 !macroend
 
@@ -57,7 +62,9 @@
           DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY}"
           DeleteRegKey HKCU "Software\${APP_GUID}"
           DeleteRegKey HKCU "Software\${APP_PACKAGE_NAME}"
+          DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLens"
           DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
+          DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.WorkLens"
           Delete "$DESKTOP\${PRODUCT_FILENAME}.lnk"
           Delete "$SMPROGRAMS\${PRODUCT_FILENAME}.lnk"
         ${EndIf}
@@ -84,5 +91,7 @@
 !macroend
 
 !macro customUnInstall
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLens"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WorkLensWatchdog"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.WorkLens"
 !macroend

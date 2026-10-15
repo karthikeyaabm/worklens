@@ -73,8 +73,18 @@ console.log('  Registry entry found:', regOutput.trim());
 assert(regOutput.includes('WorkLensWatchdog'), 'Windows Run registry contains WorkLensWatchdog');
 assert(!regOutput.includes('app.asar'), 'Windows Run registry does NOT contain app.asar');
 
-// Test 5: Watchdog Log Directory & File Formatter
-console.log('\nTest 5: Watchdog Log Directory & File Formatter');
+// Test 5: Registry Native WorkLens Auto-Start Command Verification
+console.log('\nTest 5: Registry Native WorkLens Auto-Start Command Verification');
+const exePath = process.execPath;
+execSync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLens" /t REG_SZ /d "\\"${exePath}\\" --startup" /f`);
+const regCmdWorkLens = `reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLens"`;
+const regOutputWorkLens = execSync(regCmdWorkLens, { encoding: 'utf8' });
+console.log('  WorkLens registry entry found:', regOutputWorkLens.trim());
+assert(regOutputWorkLens.includes('WorkLens'), 'Windows Run registry contains WorkLens');
+assert(regOutputWorkLens.includes('--startup'), 'Windows Run registry contains --startup argument');
+
+// Test 6: Watchdog Log Directory & File Formatter
+console.log('\nTest 6: Watchdog Log Directory & File Formatter');
 const today = new Date().toISOString().slice(0, 10);
 const expectedLogFile = path.join(logsDir, `worklens-watchdog-${today}.log`);
 fs.appendFileSync(expectedLogFile, `[${new Date().toISOString()}] [INFO] [Watchdog] Watchdog test entry\n`, 'utf8');

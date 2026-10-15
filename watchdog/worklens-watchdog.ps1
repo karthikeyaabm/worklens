@@ -101,9 +101,14 @@ function Show-WindowsNotification {
 
 # 6. Resolve WorkLens Executable Path
 function Get-WorkLensTarget {
+    param (
+        [string]$Mode = "startup"
+    )
+    $arg = if ($Mode -eq "recovered") { "--recovered" } else { "--startup" }
+
     # Check if a custom target was passed
     if ($CustomTarget -and (Test-Path $CustomTarget)) {
-        return @{ Path = $CustomTarget; Arguments = "--recovered" }
+        return @{ Path = $CustomTarget; Arguments = $arg }
     }
 
     # Check watchdog state file for last recorded path
@@ -111,11 +116,11 @@ function Get-WorkLensTarget {
         try {
             $stateContent = Get-Content -Path $StateFile -Raw | ConvertFrom-Json
             if ($stateContent.execPath -and (Test-Path $stateContent.execPath)) {
-                $args = "--recovered"
+                $argsStr = $arg
                 if ($stateContent.isPackaged -eq $false -and $stateContent.appPath) {
-                    $args = "`"$($stateContent.appPath)`" --recovered"
+                    $argsStr = "`"$($stateContent.appPath)`" $arg"
                 }
-                return @{ Path = $stateContent.execPath; Arguments = $args }
+                return @{ Path = $stateContent.execPath; Arguments = $argsStr }
             }
         } catch {}
     }
@@ -124,28 +129,28 @@ function Get-WorkLensTarget {
     $relativeInstalledExe = Join-Path $PSScriptRoot "..\..\WorkLens.exe"
     if (Test-Path $relativeInstalledExe) {
         $resolved = (Resolve-Path $relativeInstalledExe).Path
-        return @{ Path = $resolved; Arguments = "--recovered" }
+        return @{ Path = $resolved; Arguments = $arg }
     }
 
     # Check installed production path
     $localApp = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::LocalApplicationData)
     $installedExe = Join-Path $localApp "Programs\worklens\WorkLens.exe"
     if (Test-Path $installedExe) {
-        return @{ Path = $installedExe; Arguments = "--recovered" }
+        return @{ Path = $installedExe; Arguments = $arg }
     }
 
     # Check unpacked dist path
     $unpackedExe = Join-Path $PSScriptRoot "..\dist\win-unpacked\WorkLens.exe"
     if (Test-Path $unpackedExe) {
         $resolved = (Resolve-Path $unpackedExe).Path
-        return @{ Path = $resolved; Arguments = "--recovered" }
+        return @{ Path = $resolved; Arguments = $arg }
     }
 
     # Check local development electron
     $electronExe = Join-Path $PSScriptRoot "..\node_modules\electron\dist\electron.exe"
     $appRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
     if (Test-Path $electronExe) {
-        return @{ Path = $electronExe; Arguments = "`"$appRoot`" --recovered" }
+        return @{ Path = $electronExe; Arguments = "`"$appRoot`" $arg" }
     }
 
     return $null
@@ -180,6 +185,10 @@ function Test-IsIntentionalShutdown {
         try {
             $state = Get-Content -Path $StateFile -Raw | ConvertFrom-Json
             if ($state -and $state.intentionalShutdown -eq $true) {
+                # System shutdowns and session-ends are OS lifecycle events, not intentional application halts
+                if ($state.reason -eq "shutdown" -or $state.reason -eq "session-end") {
+                    return $false
+                }
                 # Consider it valid if timestamp is within the last 5 minutes
                 $diffSeconds = ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [int64]$state.timestamp) / 1000
                 if ($diffSeconds -ge 0 -and $diffSeconds -le 300) {
@@ -233,14 +242,15 @@ if ($initialRunning) {
     
     # Check if this is a fresh boot / login where WorkLens should start
     if (-not (Test-IsIntentionalShutdown)) {
+        Clear-IntentionalShutdown
         Write-WatchdogLog "Starting WorkLens on initial watchdog startup..." "INFO"
-        $target = Get-WorkLensTarget
+        $target = Get-WorkLensTarget -Mode "startup"
         if ($target) {
             Start-Process -FilePath $target.Path -ArgumentList $target.Arguments
             Start-Sleep -Seconds 3
             if (Test-IsWorkLensRunning) {
                 $wasRunningBefore = $true
-                Write-WatchdogLog "WorkLens restarted successfully" "INFO"
+                Write-WatchdogLog "WorkLens started successfully" "INFO"
             } else {
                 Write-WatchdogLog "Watchdog error: Initial launch failed to start WorkLens" "ERROR"
             }
@@ -317,7 +327,7 @@ while ($true) {
         [void]$restartTimestamps.Add($now)
 
         # Resolve target and launch
-        $target = Get-WorkLensTarget
+        $target = Get-WorkLensTarget -Mode "recovered"
         if ($target) {
             try {
                 Write-WatchdogLog "Launching: $($target.Path) $($target.Arguments)" "INFO"

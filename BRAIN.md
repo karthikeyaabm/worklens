@@ -755,8 +755,9 @@ WorkLens Watchdog (Hidden PowerShell / VBS)
 3. **[watchdog/watchdog.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/watchdog/watchdog.js):**
    *   Node.js supervisor equivalent for developers and cross-platform verification (`npm run watchdog`).
 4. **State File (`%APPDATA%/WorkLens/watchdog-state.json`):**
-   *   Tracks `execPath`, `appPath`, `isPackaged`, `pid`, and `intentionalShutdown`.
-   *   When WorkLens performs a clean exit (`before-quit`, `powerMonitor.on('shutdown')`, `app.on('session-end')`, or `autoUpdater.quitAndInstall()`), `intentionalShutdown` is set to `true`.
+   *   Tracks `execPath`, `appPath`, `isPackaged`, `pid`, `intentionalShutdown`, `reason`, and `timestamp`.
+   *   When WorkLens performs a clean application exit (`before-quit` or `autoUpdater.quitAndInstall()`), `intentionalShutdown` is set to `true`.
+   *   System-level OS events (`powerMonitor.on('shutdown')` and `app.on('session-end')`) record `intentionalShutdown: false` (with `reason: 'shutdown'` or `reason: 'session-end'`), ensuring OS restarts and user logoffs do not block WorkLens from auto-starting on the subsequent Windows sign-in.
    *   When killed unexpectedly via Task Manager, no flag is written, allowing the watchdog to identify the termination as an abnormal event.
 
 ### 4. Restart-Loop Protection
@@ -766,13 +767,21 @@ WorkLens Watchdog (Hidden PowerShell / VBS)
 *   A native Windows dialog is displayed: *"WorkLens could not be started after multiple attempts. Please contact support."*
 
 ### 5. Windows Auto-Start Integration
-*   WorkLens registers `WorkLensWatchdog` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
-*   Points dynamically to:
-    *   **Development:** `wscript.exe "<projectRoot>\watchdog\worklens-watchdog.vbs"`
-    *   **Production:** `wscript.exe "<installDir>\resources\watchdog\worklens-watchdog.vbs"` (resolved dynamically via `process.resourcesPath`).
-*   Never points into `app.asar`. Auto-corrects legacy or stale `app.asar` registry entries on startup or install/upgrade.
-*   Direct startup item (`electron.app.WorkLens`) is disabled to prevent duplicate race conditions on login.
-*   On Windows login, the watchdog initializes first, detects WorkLens is not yet active, launches WorkLens, and begins supervision.
+*   **Native Windows Startup Apps Entry (`WorkLens`):**
+    *   WorkLens registers its native executable (`WorkLens.exe`) in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and configures Electron's `app.setLoginItemSettings({ openAtLogin: true, openAsHidden: false, path: process.execPath, args: ['--startup'] })`.
+    *   Ensures WorkLens is visible with native branding, application icon, and publisher (*"ABM Knowledgeware Ltd."*) in Windows Settings &rarr; Apps &rarr; Startup and Task Manager &rarr; Startup apps.
+*   **Independent Watchdog Supervisor Entry (`WorkLensWatchdog`):**
+    *   WorkLens registers `WorkLensWatchdog` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+    *   Points dynamically to:
+        *   **Development:** `wscript.exe "<projectRoot>\watchdog\worklens-watchdog.vbs"`
+        *   **Production:** `wscript.exe "<installDir>\resources\watchdog\worklens-watchdog.vbs"` (resolved dynamically via `process.resourcesPath`).
+    *   Never points into `app.asar`. Auto-corrects legacy or stale `app.asar` registry entries on startup or install/upgrade.
+*   **Installer Unconditional Registration:**
+    *   `build/installer.nsh` (`customInstall`) unconditionally registers both `WorkLens` and `WorkLensWatchdog` upon installation and update, ensuring startup is immediately active on fresh machines even before the first manual launch.
+    *   Cleans legacy `electron.app.WorkLens` entries to avoid duplicate startup instances.
+*   **Mode-Aware Launching:**
+    *   On Windows login, the app launches with `--startup` to suppress unwarranted crash notifications.
+    *   `--recovered` is exclusively reserved for mid-session crash and Task Manager termination recovery.
 
 ---
 
@@ -1072,6 +1081,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **v1.3.11 - PC Location Tracking & POST API Integration:** Integrated dedicated PC location provider and cache manager in [locationService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/locationService.js). Captures runtime Windows workstation coordinates (`latitude`, `longitude`) via native Windows Location and network IP geolocation fallback, and performs reverse geocoding for human-readable `current_address`. Includes 20-minute cached refresh strategy, offline queue preservation across travel/reconnect, graceful null fallbacks on failure, and privacy-sanitized logging. Enhanced `POST /user_system_activity_logs.json` payload in [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) and `activity_queue.jsonl` schema in [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js). Tested via `test_location_suite.js`.
 *   **v1.3.12 - Watchdog ASAR Decoupling & Windows Script Host Fix:** Resolved Windows Script Host missing script error (`resources\app.asar\watchdog\worklens-watchdog.vbs`) caused by native Windows binaries (`wscript.exe`, `powershell.exe`) attempting to access virtual files inside the packaged ASAR archive. Configured electron-builder `extraResources` in `package.json` to extract `watchdog` supervisor scripts directly into `<installDir>\resources\watchdog\`. Updated [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) to resolve `watchdogPath` dynamically using `process.resourcesPath` when packaged (`app.isPackaged === true`), guarding against executing any ASAR-internal path. Configured NSIS installer (`build/installer.nsh`) `customInstall` and `main.js` `configureWatchdogStartup` to auto-correct any legacy registry entries in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WorkLensWatchdog` to the physical filesystem path, and corrected uninstaller value removal.
 *   **v1.3.13 - Python Mouse Automation Pattern Detection & Activity Type Annotation:** Integrated an isolated behavioral annotation module in [anti-afk/mousePatternDetector.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/anti-afk/mousePatternDetector.js) to detect four specific PyAutoGUI automated mouse patterns: Pattern A (`PYTHON_PERIODIC_CLICKS`), Pattern B (`PYTHON_MOUSE_VIBRATION`), Pattern C (`PYTHON_BACK_AND_FORTH`), and Pattern D (`PYTHON_RANDOM_MOVEMENT`). Annotates the active session record, queue, and API submission payload (`activity_type`) with full backward compatibility without altering active/inactive status, session tracking, idle detection, active-time calculations, or existing activity scoring. Features a bounded rolling window with clean 15-second expiration when automation stops. Verified via `test_mouse_pattern_suite.js` (10 passing deterministic unit tests).
+*   **v1.3.14 - Windows Startup Alignment & Native Startup Apps Registration:** Resolved issue where WorkLens was missing from Windows Settings &rarr; Apps &rarr; Startup and Task Manager &rarr; Startup apps. Re-enabled native `app.setLoginItemSettings()` and direct `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WorkLens` registry registration with product branding and icon. Configured NSIS installer (`build/installer.nsh`) `customInstall` to unconditionally register startup on fresh installations and upgrades while cleaning up legacy `electron.app.WorkLens` keys. Resolved quick reboot lockout bug where fast restarts within 5 minutes aborted watchdog launch by decoupling OS `shutdown` and `session-end` from intentional application quits. Added mode-aware argument resolution (`--startup` on login vs `--recovered` on crash) to eliminate false crash recovery notifications on morning logins.
 
 ---
 

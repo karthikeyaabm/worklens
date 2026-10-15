@@ -117,9 +117,45 @@ function launchWatchdog() {
 function configureWatchdogStartup() {
   if (process.platform !== 'win32') return;
   try {
-    // Proactively clean up any stale startup registry entries pointing to app.asar
+    // 1. Proactively clean up any stale startup registry entries pointing to app.asar
     cleanLegacyWatchdogStartupIfInvalid();
 
+    // 2. Clean up legacy electron.app.WorkLens entry if present to prevent duplicate runs
+    exec('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "electron.app.WorkLens"', (err, stdout) => {
+      if (!err && stdout) {
+        console.log('[Startup] Cleaning up legacy electron.app.WorkLens entry...');
+        exec('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "electron.app.WorkLens" /f', () => {});
+      }
+    });
+
+    // 3. Register native WorkLens app in Windows Startup (shows as WorkLens in Task Manager and Windows Settings)
+    if (app.isPackaged) {
+      try {
+        app.setLoginItemSettings({
+          openAtLogin: true,
+          openAsHidden: false,
+          path: process.execPath,
+          args: ['--startup']
+        });
+      } catch (loginErr) {
+        console.error('[Startup] Failed to set login item settings:', loginErr.message);
+      }
+
+      // Explicitly register WorkLens in HKCU Run to guarantee clean display name and path
+      const exePath = process.execPath;
+      if (fs.existsSync(exePath)) {
+        const regCmdWorkLens = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLens" /t REG_SZ /d "\\"${exePath}\\" --startup" /f`;
+        exec(regCmdWorkLens, (err) => {
+          if (err) {
+            console.error('[Startup] Failed to register WorkLens startup registry:', err.message);
+          } else {
+            console.log(`[Startup] Registered WorkLens in Windows Startup registry: ${exePath}`);
+          }
+        });
+      }
+    }
+
+    // 4. Register watchdog supervisor in Windows Startup as secondary guardian
     const watchdogPath = getWatchdogPath('worklens-watchdog.vbs');
     if (fs.existsSync(watchdogPath) && !watchdogPath.includes('app.asar')) {
       const regCommand = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WorkLensWatchdog" /t REG_SZ /d "wscript.exe \\"${watchdogPath}\\"" /f`;
@@ -134,7 +170,7 @@ function configureWatchdogStartup() {
       console.warn(`[Watchdog] Skipping startup registration: valid filesystem VBS path not found (${watchdogPath}).`);
     }
   } catch (err) {
-    console.error('[Watchdog] configureWatchdogStartup error:', err);
+    console.error('[Startup] configureWatchdogStartup error:', err);
   }
 }
 
@@ -2300,7 +2336,7 @@ if (gotTheLock) {
 
     powerMonitor.on('shutdown', () => {
       console.log('System shutting down, closing current activity...');
-      updateWatchdogState({ intentionalShutdown: true, reason: 'shutdown', timestamp: Date.now() });
+      updateWatchdogState({ intentionalShutdown: false, reason: 'shutdown', timestamp: Date.now() });
       closeCurrentSession(new Date());
       flushPendingClosedSessions();
     });
@@ -2320,7 +2356,7 @@ if (gotTheLock) {
   // Graceful exit
   app.on('session-end', () => {
     console.log('[System] Windows session ending (logoff/shutdown), closing session...');
-    updateWatchdogState({ intentionalShutdown: true, reason: 'session-end', timestamp: Date.now() });
+    updateWatchdogState({ intentionalShutdown: false, reason: 'session-end', timestamp: Date.now() });
     closeCurrentSession(new Date());
     flushPendingClosedSessions();
   });
