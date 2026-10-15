@@ -377,8 +377,15 @@ function renderActivities(contentEl, activities) {
 
     const titleEl = document.createElement('span');
     titleEl.className = 'activity-title';
-    titleEl.textContent = act.title;
-    titleEl.title = act.title;
+    const rawTitle = act.title;
+    const titleText = (typeof rawTitle === 'string' && rawTitle.trim().length > 0)
+      ? rawTitle.trim()
+      : (act.appName || '(Untitled Activity)');
+    titleEl.textContent = titleText;
+    titleEl.title = (typeof rawTitle === 'string' && rawTitle.length > 0) ? rawTitle : titleText;
+    titleEl.tabIndex = 0;
+    titleEl.setAttribute('role', 'text');
+    titleEl.setAttribute('aria-label', titleEl.title);
 
     const durationEl = document.createElement('span');
     durationEl.className = 'activity-duration';
@@ -630,7 +637,12 @@ function renderHistoryView(rawData) {
 
     const dateText = document.createElement('span');
     dateText.className = 'history-date-text' + (day.isToday ? ' is-today' : '');
-    dateText.textContent = day.displayDate || day.dateStr;
+    const dateDisplay = day.displayDate || day.dateStr || 'Unknown Date';
+    dateText.textContent = dateDisplay;
+    dateText.title = dateDisplay;
+    dateText.tabIndex = 0;
+    dateText.setAttribute('role', 'text');
+    dateText.setAttribute('aria-label', dateDisplay);
 
     dateHeader.appendChild(dateText);
 
@@ -775,8 +787,12 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
 
       const nameEl = document.createElement('div');
       nameEl.className = 'app-name';
-      nameEl.textContent = name;
-      nameEl.title = name;
+      const displayName = (name && name.trim()) ? name.trim() : 'Unknown Application';
+      nameEl.textContent = displayName;
+      nameEl.title = name || 'Unknown Application';
+      nameEl.tabIndex = 0;
+      nameEl.setAttribute('role', 'text');
+      nameEl.setAttribute('aria-label', name || 'Unknown Application');
 
       const progressContainer = document.createElement('div');
       progressContainer.className = 'progress-container';
@@ -844,6 +860,20 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
       const durationEl = groupEl.querySelector('.app-duration');
       if (durationEl && durationEl.textContent !== formattedDuration) {
         durationEl.textContent = formattedDuration;
+      }
+
+      // Update application name and tooltip if needed
+      const nameEl = groupEl.querySelector('.app-name');
+      if (nameEl) {
+        const displayName = (name && name.trim()) ? name.trim() : 'Unknown Application';
+        if (nameEl.textContent !== displayName) {
+          nameEl.textContent = displayName;
+        }
+        const fullTitle = name || 'Unknown Application';
+        if (nameEl.title !== fullTitle) {
+          nameEl.title = fullTitle;
+          nameEl.setAttribute('aria-label', fullTitle);
+        }
       }
 
       // Update progress bar width
@@ -1021,7 +1051,8 @@ if (typeof module !== 'undefined' && module.exports) {
     getShowWeekends: () => showWeekends,
     setShowWeekends: (val) => { showWeekends = Boolean(val); },
     updateWeekendToggleVisibility,
-    renderHistoryView
+    renderHistoryView,
+    renderActivities
   };
 }
 

@@ -72,6 +72,12 @@ const TEST_SUITES = [
     file: 'test_progress_bar_colors_suite.js',
     runner: 'node',
     description: 'Dynamic Active Time progress bar colors: Red (<7h), Blue (7h-7h30m), Green (>7h30m)'
+  },
+  {
+    name: '12. Dashboard Title Truncation & Tooltip Suite',
+    file: 'test_title_truncation_suite.js',
+    runner: 'node',
+    description: 'Compact display, ellipsis truncation, responsive layout, full title tooltip, keyboard focus'
   }
 ];
 
