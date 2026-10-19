@@ -276,6 +276,53 @@ function getDailyActiveTimeColor(durationSeconds) {
   }
 }
 
+// Daily target: 9 hours 30 minutes = 570 minutes = 34,200 seconds (fixed 100% target)
+const DAILY_TARGET_MINUTES = 570;
+const DAILY_TARGET_SECONDS = DAILY_TARGET_MINUTES * 60; // 34,200 seconds
+
+/**
+ * Calculates progress percentages for daily progress bars based on the fixed 9h 30m (570 minutes) target:
+ * Formula: (loggedActiveMinutes / 570) * 100 = (durationSeconds / 34200) * 100
+ *
+ * Examples:
+ * - 4h 45m (285m) = 50%
+ * - 7h (420m) = 73.68%
+ * - 7h 30m (450m) = 78.95%
+ * - 9h (540m) = 94.74%
+ * - 9h 30m (570m) = 100%
+ * - 10h (600m) = 105.26% (visually capped at 100%)
+ */
+function calculateDailyProgressPercentages(regularDurationSeconds, yellowDurationSeconds = 0) {
+  const regSec = Math.max(0, Number(regularDurationSeconds) || 0);
+  const yelSec = Math.max(0, Number(yellowDurationSeconds) || 0);
+
+  const rawRegularPercentage = (regSec / DAILY_TARGET_SECONDS) * 100;
+  const rawYellowPercentage = (yelSec / DAILY_TARGET_SECONDS) * 100;
+  const rawTotalPercentage = ((regSec + yelSec) / DAILY_TARGET_SECONDS) * 100;
+
+  // Visual capping: total displayed width must never exceed 100%
+  let regularPercentage = rawRegularPercentage;
+  let yellowPercentage = rawYellowPercentage;
+
+  if (regularPercentage + yellowPercentage > 100) {
+    if (regularPercentage >= 100) {
+      regularPercentage = 100;
+      yellowPercentage = 0;
+    } else {
+      yellowPercentage = Math.max(0, 100 - regularPercentage);
+    }
+  }
+
+  return {
+    rawRegularPercentage,
+    rawYellowPercentage,
+    rawTotalPercentage,
+    regularPercentage,
+    yellowPercentage,
+    cappedTotalPercentage: Math.min(rawTotalPercentage, 100)
+  };
+}
+
 // ================= UTILITIES & HELPERS =================
 function updateDateDisplay() {
   if (!dateEl) return;
@@ -644,8 +691,6 @@ function renderHistoryView(rawData) {
     targetHistoryList.scrollTop = 0;
   }
 
-  const maxDuration = Math.max(...days.map(d => d.duration), 1);
-
   days.forEach((day, index) => {
     const rowEl = document.createElement('div');
     rowEl.className = 'history-row';
@@ -656,8 +701,7 @@ function renderHistoryView(rawData) {
     const regularDuration = day.regularDuration !== undefined ? Number(day.regularDuration) : totalDuration;
     const yellowDuration = day.yellowDuration !== undefined ? Number(day.yellowDuration) : 0;
 
-    const regularPercentage = maxDuration > 0 ? (regularDuration / maxDuration) * 100 : 0;
-    const yellowPercentage = maxDuration > 0 ? (yellowDuration / maxDuration) * 100 : 0;
+    const { regularPercentage, yellowPercentage } = calculateDailyProgressPercentages(regularDuration, yellowDuration);
     const formattedDuration = totalDuration > 0 ? formatDuration(totalDuration) : '0m';
 
     // Left column: Calendar icon + Date info + Progress bar
@@ -1141,6 +1185,9 @@ function getAppIconSvg(appName) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    DAILY_TARGET_MINUTES,
+    DAILY_TARGET_SECONDS,
+    calculateDailyProgressPercentages,
     isWeekend,
     formatDuration,
     formatShortHours,

@@ -84,6 +84,12 @@ const TEST_SUITES = [
     file: 'test_redmine_yellow_integration_suite.js',
     runner: 'node',
     description: 'Redmine time entries aggregation, 5 yellow categories classification, segmented progress bar rendering'
+  },
+  {
+    name: '14. Dashboard 9h 30m Progress Target Suite',
+    file: 'test_daily_progress_target_suite.js',
+    runner: 'node',
+    description: 'Fixed 9h 30m (570m) progress target, loggedActiveMinutes / 570 * 100, visual capping at 100%'
   }
 ];
 
