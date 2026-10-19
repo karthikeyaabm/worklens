@@ -6,6 +6,7 @@ const YELLOW_CATEGORIES = new Set([
   'Early Out',
   'Leave',
   'Holiday',
+  'Non Productive - ABM Function, Activity',
   'Non Productive - ABM Function'
 ]);
 
@@ -102,7 +103,7 @@ function formatShortHours(hours) {
  * 2. Early Out
  * 3. Leave
  * 4. Holiday
- * 5. Non Productive - ABM Function
+ * 5. Non Productive - ABM Function, Activity (also accepts Non Productive - ABM Function)
  * All other categories (e.g., Development, Data Analysis, Project Management) are strictly excluded
  * and contribute zero additional hours.
  */

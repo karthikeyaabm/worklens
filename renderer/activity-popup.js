@@ -734,7 +734,7 @@ function renderHistoryView(rawData) {
     dateInfo.appendChild(dateHeader);
     dateInfo.appendChild(barRow);
 
-    // Sub-row: highlight specified Redmine categories (Big Late, Early Out, Leave, Holiday, Non Productive - ABM Function)
+    // Sub-row: highlight specified Redmine categories (Big Late, Early Out, Leave, Holiday, Non Productive - ABM Function, Activity)
     if (yellowDuration > 0) {
       const subRow = document.createElement('div');
       subRow.className = 'history-subrow';

@@ -54,6 +54,7 @@ const expectedYellowCategories = [
   'Early Out',
   'Leave',
   'Holiday',
+  'Non Productive - ABM Function, Activity',
   'Non Productive - ABM Function'
 ];
 
@@ -550,6 +551,7 @@ runTest('Spec Test 1: All five approved categories contribute their hours', () =
     'Early Out',
     'Leave',
     'Holiday',
+    'Non Productive - ABM Function, Activity',
     'Non Productive - ABM Function'
   ];
   testCats.forEach((cat, idx) => {
