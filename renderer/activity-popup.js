@@ -704,10 +704,7 @@ function renderHistoryView(rawData) {
     const { regularPercentage, yellowPercentage } = calculateDailyProgressPercentages(regularDuration, yellowDuration);
     const formattedDuration = totalDuration > 0 ? formatDuration(totalDuration) : '0m';
 
-    // Left column: Calendar icon + Date info + Progress bar
-    const dateCol = document.createElement('div');
-    dateCol.className = 'history-date-col';
-
+    // Left column: Calendar icon
     const iconContainer = document.createElement('div');
     iconContainer.className = 'history-calendar-icon';
     iconContainer.innerHTML = `
@@ -727,7 +724,8 @@ function renderHistoryView(rawData) {
 
     const dateText = document.createElement('span');
     dateText.className = 'history-date-text' + (day.isToday ? ' is-today' : '');
-    const dateDisplay = day.weekdayDisplay || day.displayDate || day.dateStr || 'Unknown Date';
+    const rawDateDisplay = day.weekdayDisplay || day.displayDate || day.dateStr || 'Unknown Date';
+    const dateDisplay = typeof rawDateDisplay === 'string' ? rawDateDisplay.replace(',', '') : rawDateDisplay;
     dateText.textContent = dateDisplay;
     dateText.title = dateDisplay;
     dateText.tabIndex = 0;
@@ -739,85 +737,91 @@ function renderHistoryView(rawData) {
     if (day.isToday) {
       const todayBadge = document.createElement('span');
       todayBadge.className = 'history-today-badge';
-      todayBadge.textContent = 'Today';
+      todayBadge.textContent = 'TODAY';
       dateHeader.appendChild(todayBadge);
     }
 
     if (day.startTime && day.startTime !== '--' && day.endTime && day.endTime !== '--') {
       const sessionTimeEl = document.createElement('span');
       sessionTimeEl.className = 'history-session-time';
-      sessionTimeEl.textContent = `${day.startTime} – ${day.endTime}`;
+      sessionTimeEl.textContent = `${day.startTime} — ${day.endTime}`;
       dateHeader.appendChild(sessionTimeEl);
     }
+
+    dateInfo.appendChild(dateHeader);
+
+    // Progress bar row: side-by-side separate tracks + right duration
+    const color = getDailyActiveTimeColor(totalDuration);
 
     const barRow = document.createElement('div');
     barRow.className = 'history-bar-row';
 
-    const progressContainer = document.createElement('div');
-    progressContainer.className = 'history-progress-container';
+    const trackWrapper = document.createElement('div');
+    trackWrapper.className = 'history-track-wrapper';
 
-    const color = getDailyActiveTimeColor(totalDuration);
+    // Track 1: Regular progress bar (other logged time)
+    const regTrack = document.createElement('div');
+    regTrack.className = 'history-progress-container history-track-regular' + (yellowDuration === 0 ? ' history-track-full' : '');
     const progressBar = document.createElement('div');
     progressBar.className = `history-progress-bar history-segment-regular color-${color} progress-${color}`;
     progressBar.dataset.color = color;
     progressBar.style.width = '0%';
+    regTrack.appendChild(progressBar);
+    trackWrapper.appendChild(regTrack);
 
-    progressContainer.appendChild(progressBar);
-
+    // Track 2: Yellow progress bar (Special Hours) if yellowDuration > 0
     let yellowBar = null;
     if (yellowDuration > 0) {
+      const yelTrack = document.createElement('div');
+      yelTrack.className = 'history-progress-container history-track-yellow';
       yellowBar = document.createElement('div');
       yellowBar.className = 'history-progress-bar-yellow history-segment-yellow';
       yellowBar.dataset.color = 'yellow';
       yellowBar.style.width = '0%';
-      progressContainer.appendChild(yellowBar);
+      yelTrack.appendChild(yellowBar);
+      trackWrapper.appendChild(yelTrack);
     }
 
-    barRow.appendChild(progressContainer);
+    barRow.appendChild(trackWrapper);
 
-    dateInfo.appendChild(dateHeader);
+    // Right column: Total Active Time Duration
+    const durationEl = document.createElement('div');
+    durationEl.className = 'history-duration' + (totalDuration === 0 ? ' zero' : '');
+    durationEl.textContent = formattedDuration;
+    barRow.appendChild(durationEl);
+
     dateInfo.appendChild(barRow);
 
-    // Sub-row: highlight specified Redmine categories (Big Late, Early Out, Leave, Holiday, Non Productive - ABM Function, Activity)
+    // Sub-row: matching indicator dot and label directly beneath each bar
     if (yellowDuration > 0) {
       const subRow = document.createElement('div');
       subRow.className = 'history-subrow';
 
+      const regCol = document.createElement('div');
+      regCol.className = 'history-sub-col history-sub-col-regular';
       if (regularDuration > 0) {
-        const regItem = document.createElement('span');
-        regItem.className = 'history-sub-item';
-        regItem.innerHTML = `<span class="history-sub-dot dot-${color}">●</span> <span class="history-sub-text">${formatDuration(regularDuration)} other logged time</span>`;
-        subRow.appendChild(regItem);
+        regCol.innerHTML = `<span class="history-sub-dot dot-${color}">●</span> <span class="history-sub-text">${formatDuration(regularDuration)} other logged time</span>`;
       }
+      subRow.appendChild(regCol);
 
+      const yelCol = document.createElement('div');
+      yelCol.className = 'history-sub-col history-sub-col-yellow';
       if (Array.isArray(day.yellowCategories) && day.yellowCategories.length > 0) {
-        day.yellowCategories.forEach(cat => {
-          const catItem = document.createElement('span');
-          catItem.className = 'history-sub-item';
+        day.yellowCategories.forEach((cat, idx) => {
           const hrsText = formatShortHours(cat.hours);
-          catItem.innerHTML = `<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${hrsText} ${escapeHtml(cat.name)}</span>`;
-          subRow.appendChild(catItem);
+          const sep = idx > 0 ? ', ' : '';
+          yelCol.innerHTML += `${sep}<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${hrsText} ${escapeHtml(cat.name)}</span>`;
         });
       } else {
-        const yellowItem = document.createElement('span');
-        yellowItem.className = 'history-sub-item';
-        yellowItem.innerHTML = `<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${formatDuration(yellowDuration)} Special Hours</span>`;
-        subRow.appendChild(yellowItem);
+        yelCol.innerHTML = `<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${formatDuration(yellowDuration)} Special Hours</span>`;
       }
+      subRow.appendChild(yelCol);
 
       dateInfo.appendChild(subRow);
     }
 
-    dateCol.appendChild(iconContainer);
-    dateCol.appendChild(dateInfo);
-
-    // Right column: Duration
-    const durationEl = document.createElement('div');
-    durationEl.className = 'history-duration' + (totalDuration === 0 ? ' zero' : '');
-    durationEl.textContent = formattedDuration;
-
-    rowEl.appendChild(dateCol);
-    rowEl.appendChild(durationEl);
+    rowEl.appendChild(iconContainer);
+    rowEl.appendChild(dateInfo);
 
     if (targetHistoryList) {
       targetHistoryList.appendChild(rowEl);
