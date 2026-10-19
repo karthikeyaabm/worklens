@@ -11,6 +11,21 @@ const YELLOW_CATEGORIES = new Set([
 ]);
 
 /**
+ * Standard project 90 (ABM Org Team) issue IDs for yellow categories.
+ * In Redmine's /time_entries.json, issue.subject is omitted and entries only have issue.id.
+ * For categories like "Non Productive - ABM Function, Activity" which are tracked as issues
+ * rather than activity dropdown items (e.g., activity is "Do"), mapping the issue ID ensures
+ * correct classification without requiring extra slow network queries.
+ */
+const KNOWN_YELLOW_ISSUE_IDS = {
+  236611: 'Non Productive - ABM Function, Activity',
+  226878: 'Big Late',
+  226879: 'Early Out',
+  226884: 'Leave',
+  277728: 'Holiday'
+};
+
+/**
  * Normalizes and parses spent_on date strings into YYYY-MM-DD.
  * Strictly avoids new Date() timezone / DST offset shifts.
  * Supports:
@@ -44,14 +59,14 @@ function parseSpentOnDateStr(spentOn) {
 
 /**
  * Classifies a Redmine time entry.
- * Checks both issue_subject (or issue.subject) and activity (string or object with name).
+ * Checks issue_subject, issue.subject, known issue IDs, and activity (string or object with name).
  * Uses exact matching after trimming whitespace.
  * Returns the matched yellow category name if matched, or null if regular time.
  */
 function getEntryYellowCategory(entry) {
   if (!entry) return null;
 
-  // 1. Check issue_subject field / issue.subject object
+  // 1. Check issue_subject field / issue.subject object / entry.subject
   const rawSubject = typeof entry.issue_subject === 'string'
     ? entry.issue_subject
     : (entry.issue && typeof entry.issue.subject === 'string' ? entry.issue.subject : (typeof entry.subject === 'string' ? entry.subject : ''));
@@ -60,8 +75,20 @@ function getEntryYellowCategory(entry) {
   if (YELLOW_CATEGORIES.has(issueSubject)) {
     return issueSubject;
   }
+  // Check if issueSubject without trailing punctuation (e.g. "Leave.") matches
+  const cleanSubject = issueSubject.replace(/[\.\s]+$/, '').trim();
+  if (cleanSubject && YELLOW_CATEGORIES.has(cleanSubject)) {
+    return cleanSubject;
+  }
 
-  // 2. Check activity field (supports { id, name } object or raw string)
+  // 2. Check known issue ID (e.g. Issue 236611 = Non Productive - ABM Function, Activity)
+  const issueId = entry.issue_id || (entry.issue && (entry.issue.id || entry.issue));
+  const numericIssueId = Number(issueId);
+  if (numericIssueId && KNOWN_YELLOW_ISSUE_IDS[numericIssueId]) {
+    return KNOWN_YELLOW_ISSUE_IDS[numericIssueId];
+  }
+
+  // 3. Check activity field (supports { id, name } object or raw string)
   let rawActivity = '';
   if (entry.activity) {
     if (typeof entry.activity === 'object' && typeof entry.activity.name === 'string') {
@@ -74,6 +101,18 @@ function getEntryYellowCategory(entry) {
 
   if (YELLOW_CATEGORIES.has(activityName)) {
     return activityName;
+  }
+  const cleanActivity = activityName.replace(/[\.\s]+$/, '').trim();
+  if (cleanActivity && YELLOW_CATEGORIES.has(cleanActivity)) {
+    return cleanActivity;
+  }
+
+  // 4. Fallback check on comments if entry was logged with exact category in notes
+  if (typeof entry.comments === 'string') {
+    const trimmedComment = entry.comments.trim();
+    if (YELLOW_CATEGORIES.has(trimmedComment)) {
+      return trimmedComment;
+    }
   }
 
   return null;
@@ -318,12 +357,22 @@ async function fetchRedmineTimeEntries(userId, fromDateStr, toDateStr, client) {
     }
   }
 
+  // Enrich entries with issue_subject from KNOWN_YELLOW_ISSUE_IDS so downstream components always have it
+  allEntries.forEach(entry => {
+    const issueId = entry.issue_id || (entry.issue && (entry.issue.id || entry.issue));
+    const numId = Number(issueId);
+    if (numId && KNOWN_YELLOW_ISSUE_IDS[numId] && !entry.issue_subject) {
+      entry.issue_subject = KNOWN_YELLOW_ISSUE_IDS[numId];
+    }
+  });
+
   return allEntries;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     YELLOW_CATEGORIES,
+    KNOWN_YELLOW_ISSUE_IDS,
     parseSpentOnDateStr,
     getEntryYellowCategory,
     formatShortHours,

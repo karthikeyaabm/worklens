@@ -865,6 +865,82 @@ runTest('Spec Test 10: The yellow bar shows only approved-category hours', () =>
   }
 });
 
+// 11. Issue ID 236611 (Non Productive - ABM Function, Activity) with generic activity (Do)
+runTest('Spec Test 11: Issue ID 236611 (Non Productive - ABM Function, Activity) with activity "Do" classifies and renders yellow line', () => {
+  const dateStr = '2026-10-16';
+  const entry = {
+    id: 721778,
+    project: { id: 90, name: 'ABM Org Team' },
+    issue: { id: 236611 },
+    user: { id: 890, name: 'Karthikeya Kondavathri' },
+    activity: { id: 941, name: 'Do' },
+    hours: 3.0,
+    comments: 'Navaratri Event',
+    spent_on: dateStr
+  };
+
+  assert.strictEqual(getEntryYellowCategory(entry), 'Non Productive - ABM Function, Activity');
+
+  const agg = aggregateRedmineTimeEntries([entry], new Set([dateStr]));
+  assert.strictEqual(agg.yellowHoursByDate[dateStr], 3.0);
+  assert.strictEqual(agg.yellowCatsByDate[dateStr]['Non Productive - ABM Function, Activity'], 3.0);
+
+  // Verify UI Rendering with yellow segment and sub-row
+  const domState = setupMockDom();
+  try {
+    const rawData = {
+      days: [
+        {
+          dateStr: dateStr,
+          weekdayDisplay: 'Fri, 16 Oct',
+          duration: 30600, // 8.5h total (green)
+          regularDuration: 19800, // 5.5h active tracking
+          yellowDuration: 10800, // 3h yellow
+          yellowCategories: [{ name: 'Non Productive - ABM Function, Activity', hours: 3.0 }],
+          startTime: '09:00 AM',
+          endTime: '05:30 PM',
+          hasData: true
+        }
+      ],
+      totalSeconds: 30600
+    };
+
+    popupModule.renderHistoryView(rawData);
+
+    const historyList = domState.elements['history-list'];
+    const row = historyList.children[0];
+    const regularBar = row.querySelector('.history-segment-regular');
+    const yellowBar = row.querySelector('.history-segment-yellow');
+    const subRow = row.querySelector('.history-subrow');
+
+    assert.ok(regularBar, 'Regular bar must exist for active time');
+    assert.ok(yellowBar, 'Yellow bar must exist for 3h Non Productive - ABM Function, Activity');
+    assert.strictEqual(yellowBar.dataset.color, 'yellow');
+    assert.ok(subRow.textContent.includes('3h Non Productive - ABM Function, Activity'), 'Sub-row must show "3h Non Productive - ABM Function, Activity"');
+  } finally {
+    teardownMockDom(domState);
+  }
+});
+
+// 12. All KNOWN_YELLOW_ISSUE_IDS classify correctly when issue_subject is omitted
+runTest('Spec Test 12: All KNOWN_YELLOW_ISSUE_IDS classify correctly when issue_subject is omitted', () => {
+  const { KNOWN_YELLOW_ISSUE_IDS } = redmineTimeIntegration;
+  assert.ok(KNOWN_YELLOW_ISSUE_IDS, 'KNOWN_YELLOW_ISSUE_IDS must be exported');
+
+  Object.entries(KNOWN_YELLOW_ISSUE_IDS).forEach(([issueId, expectedCategory]) => {
+    const entry = {
+      id: 99000 + Number(issueId),
+      issue: { id: Number(issueId) },
+      activity: { id: 941, name: 'Do' }, // Generic activity
+      hours: 2.0,
+      spent_on: '2026-10-18'
+    };
+
+    const classified = getEntryYellowCategory(entry);
+    assert.strictEqual(classified, expectedCategory, `Issue ${issueId} must classify as "${expectedCategory}"`);
+  });
+});
+
 // ---------------------------------------------------------------------------------
 // MINIMAL DOM MOCK HELPER FOR UI RENDERING TESTS
 // ---------------------------------------------------------------------------------
