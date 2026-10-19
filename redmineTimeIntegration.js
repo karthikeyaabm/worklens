@@ -6,8 +6,7 @@ const YELLOW_CATEGORIES = new Set([
   'Early Out',
   'Leave',
   'Holiday',
-  'Non Productive - ABM Function, Activity',
-  'Non Productive - ABM Function'
+  'Non Productive - ABM Function, Activity'
 ]);
 
 /**
