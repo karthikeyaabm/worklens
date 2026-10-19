@@ -244,6 +244,7 @@ let inactivityCheckRunning = false;
 const util = require('util');
 const execPromise = util.promisify(exec);
 const redmineClient = require('./redmineClient');
+const redmineTimeIntegration = require('./redmineTimeIntegration');
 const { autoUpdater } = require('electron-updater');
 const log = require('./logger');
 autoUpdater.logger = log;
@@ -1588,7 +1589,20 @@ function invalidateActivity30DaysCache(full = false) {
 }
 
 // Single-pass processor for the 30-day API entries (executes in ~25-30ms for 14.5k records)
-function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
+function processHistorical30DaysData(apiEntries, timeEntriesOrUserId, userIdOrCurrentOsUser, currentOsUserArg) {
+  let timeEntries = [];
+  let userId = userIdOrCurrentOsUser;
+  let currentOsUser = currentOsUserArg;
+
+  if (Array.isArray(timeEntriesOrUserId)) {
+    timeEntries = timeEntriesOrUserId;
+  } else {
+    // Legacy 3-argument signature fallback: (apiEntries, userId, currentOsUser)
+    userId = timeEntriesOrUserId;
+    currentOsUser = userIdOrCurrentOsUser;
+    timeEntries = [];
+  }
+
   const today = new Date();
   const todayStr = getLocalDateString(today);
   const yesterday = new Date();
@@ -1680,81 +1694,39 @@ function processHistorical30DaysData(apiEntries, userId, currentOsUser) {
     console.error('[Historical Processor] Error adding local queue data:', err);
   }
 
+  // Aggregate Redmine time entries across the last 30 calendar days
+  const validDatesSet = new Set(last30DateObjects.map(d => getLocalDateString(d)));
+  const redmineAggregation = redmineTimeIntegration.aggregateRedmineTimeEntries(timeEntries, validDatesSet);
+
   // Precompute Yesterday
   const yesterdayAppNames = [...new Set(serverYesterdayLogs.map(e => e.app_name).filter(Boolean))];
   const yesterdayRange = dailyTimeRanges[yesterdayStr] || { earliestStart: null, latestEnd: null };
   const yesterdayStartTime = yesterdayRange.earliestStart ? formatTime12(yesterdayRange.earliestStart) : '--';
   const yesterdayEndTime = yesterdayRange.latestEnd ? formatTime12(yesterdayRange.latestEnd) : '--';
 
-  // Precompute Last 7 Days
-  const last7DaysList = last7DateObjects.map(d => {
-    const ds = getLocalDateString(d);
-    const isToday = (ds === todayStr);
-    const duration = dailyDurations[ds] || 0;
-    const range = dailyTimeRanges[ds] || { earliestStart: null, latestEnd: null };
-    const hasData = Boolean(range.earliestStart || duration > 0);
-    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
-    let endTime = '--';
-    if (isToday) {
-      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
-    } else {
-      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
-    }
-
-    return {
-      dateStr: ds,
-      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-      isToday: isToday,
-      duration: duration,
-      startTime: startTime,
-      endTime: endTime,
-      isPresent: isToday && isCurrentlyTracking,
-      hasData: hasData
-    };
+  // Build combined Last 7 Days view with Redmine time entries & yellow segment categorization
+  const last7View = redmineTimeIntegration.buildCombinedHistoricalView({
+    periodName: 'last7days',
+    dateObjects: last7DateObjects,
+    dailyDurations,
+    dailyTimeRanges,
+    redmineAggregation,
+    todayStr,
+    isCurrentlyTracking,
+    formatTime12Fn: formatTime12
   });
-  const last7TotalSeconds = last7DaysList.reduce((sum, d) => sum + d.duration, 0);
-  const last7View = {
-    period: 'last7days',
-    days: last7DaysList,
-    totalSeconds: last7TotalSeconds,
-    dateRange: `${last7DaysList[last7DaysList.length - 1].shortDate} — ${last7DaysList[0].shortDate}`
-  };
 
-  // Precompute Last 30 Days
-  const last30DaysList = last30DateObjects.map(d => {
-    const ds = getLocalDateString(d);
-    const isToday = (ds === todayStr);
-    const duration = dailyDurations[ds] || 0;
-    const range = dailyTimeRanges[ds] || { earliestStart: null, latestEnd: null };
-    const hasData = Boolean(range.earliestStart || duration > 0);
-    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
-    let endTime = '--';
-    if (isToday) {
-      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
-    } else {
-      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
-    }
-
-    return {
-      dateStr: ds,
-      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-      isToday: isToday,
-      duration: duration,
-      startTime: startTime,
-      endTime: endTime,
-      isPresent: isToday && isCurrentlyTracking,
-      hasData: hasData
-    };
+  // Build combined Last 30 Days view with Redmine time entries & yellow segment categorization
+  const last30View = redmineTimeIntegration.buildCombinedHistoricalView({
+    periodName: 'last30days',
+    dateObjects: last30DateObjects,
+    dailyDurations,
+    dailyTimeRanges,
+    redmineAggregation,
+    todayStr,
+    isCurrentlyTracking,
+    formatTime12Fn: formatTime12
   });
-  const last30TotalSeconds = last30DaysList.reduce((sum, d) => sum + d.duration, 0);
-  const last30View = {
-    period: 'last30days',
-    days: last30DaysList,
-    totalSeconds: last30TotalSeconds,
-    dateRange: `${last30DaysList[last30DaysList.length - 1].shortDate} — ${last30DaysList[0].shortDate}`
-  };
 
   return {
     yesterdayStr,
@@ -1804,34 +1776,6 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   const last7Durations = getDateWiseActiveDurations(last7DateStrings, userId, currentOsUser);
   const last7TimeRanges = getDateWiseTimeRanges(last7DateStrings, userId, currentOsUser);
 
-  const last7DaysList = last7DateObjects.map(d => {
-    const ds = getLocalDateString(d);
-    const isToday = (ds === todayStr);
-    const duration = last7Durations[ds] || 0;
-    const range = last7TimeRanges[ds] || { earliestStart: null, latestEnd: null };
-    const hasData = Boolean(range.earliestStart || duration > 0);
-    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
-    let endTime = '--';
-    if (isToday) {
-      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
-    } else {
-      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
-    }
-
-    return {
-      dateStr: ds,
-      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-      isToday: isToday,
-      duration: duration,
-      startTime: startTime,
-      endTime: endTime,
-      isPresent: isToday && isCurrentlyTracking,
-      hasData: hasData
-    };
-  });
-  const last7TotalSeconds = last7DaysList.reduce((sum, d) => sum + d.duration, 0);
-
   const last30DateObjects = [];
   for (let i = 0; i < 30; i++) {
     const d = new Date();
@@ -1842,33 +1786,27 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   const last30Durations = getDateWiseActiveDurations(last30DateStrings, userId, currentOsUser);
   const last30TimeRanges = getDateWiseTimeRanges(last30DateStrings, userId, currentOsUser);
 
-  const last30DaysList = last30DateObjects.map(d => {
-    const ds = getLocalDateString(d);
-    const isToday = (ds === todayStr);
-    const duration = last30Durations[ds] || 0;
-    const range = last30TimeRanges[ds] || { earliestStart: null, latestEnd: null };
-    const hasData = Boolean(range.earliestStart || duration > 0);
-    const startTime = range.earliestStart ? formatTime12(range.earliestStart) : '--';
-    let endTime = '--';
-    if (isToday) {
-      endTime = isCurrentlyTracking ? 'Present' : (range.latestEnd ? formatTime12(range.latestEnd) : '--');
-    } else {
-      endTime = range.latestEnd ? formatTime12(range.latestEnd) : '--';
-    }
-
-    return {
-      dateStr: ds,
-      displayDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      shortDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-      isToday: isToday,
-      duration: duration,
-      startTime: startTime,
-      endTime: endTime,
-      isPresent: isToday && isCurrentlyTracking,
-      hasData: hasData
-    };
+  const last7View = redmineTimeIntegration.buildCombinedHistoricalView({
+    periodName: 'last7days',
+    dateObjects: last7DateObjects,
+    dailyDurations: last7Durations,
+    dailyTimeRanges: last7TimeRanges,
+    redmineAggregation: null,
+    todayStr,
+    isCurrentlyTracking,
+    formatTime12Fn: formatTime12
   });
-  const last30TotalSeconds = last30DaysList.reduce((sum, d) => sum + d.duration, 0);
+
+  const last30View = redmineTimeIntegration.buildCombinedHistoricalView({
+    periodName: 'last30days',
+    dateObjects: last30DateObjects,
+    dailyDurations: last30Durations,
+    dailyTimeRanges: last30TimeRanges,
+    redmineAggregation: null,
+    todayStr,
+    isCurrentlyTracking,
+    formatTime12Fn: formatTime12
+  });
 
   return {
     yesterday: {
@@ -1880,18 +1818,8 @@ function processHistoricalOfflineData(userId, currentOsUser) {
       endTime: yesterdayEndTime,
       hasData: yesterdayLogs.length > 0
     },
-    last7days: {
-      period: 'last7days',
-      days: last7DaysList,
-      totalSeconds: last7TotalSeconds,
-      dateRange: `${last7DaysList[last7DaysList.length - 1].shortDate} — ${last7DaysList[0].shortDate}`
-    },
-    last30days: {
-      period: 'last30days',
-      days: last30DaysList,
-      totalSeconds: last30TotalSeconds,
-      dateRange: `${last30DaysList[last30DaysList.length - 1].shortDate} — ${last30DaysList[0].shortDate}`
-    }
+    last7days: last7View,
+    last30days: last30View
   };
 }
 
@@ -1912,9 +1840,31 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
     try {
       console.log(`[Historical Loader] Starting background 30-day API fetch for user ${userId}...`);
       let apiData = null;
+      let timeEntries = [];
       if (userId) {
-        apiData = await redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId }, { timeout: 90000 });
-        isBackendReachable = true;
+        const dFrom = new Date();
+        dFrom.setDate(dFrom.getDate() - 35);
+        const fromDateStr = getLocalDateString(dFrom);
+        const toDateStr = getLocalDateString(new Date());
+
+        const [activityResult, timeEntriesResult] = await Promise.allSettled([
+          redmineClient.get('/user_system_activity_logs/today.json', { user_id: userId }, { timeout: 90000 }),
+          redmineTimeIntegration.fetchRedmineTimeEntries(userId, fromDateStr, toDateStr, redmineClient)
+        ]);
+
+        if (activityResult.status === 'fulfilled') {
+          apiData = activityResult.value;
+          isBackendReachable = true;
+        } else {
+          console.error('[Historical Loader] Error fetching system activity logs:', activityResult.reason);
+        }
+
+        if (timeEntriesResult.status === 'fulfilled') {
+          timeEntries = timeEntriesResult.value || [];
+          console.log(`[Historical Loader] Fetched ${timeEntries.length} Redmine time entries.`);
+        } else {
+          console.error('[Historical Loader] Error fetching time_entries:', timeEntriesResult.reason);
+        }
       }
 
       let apiEntries = [];
@@ -1924,7 +1874,7 @@ function loadHistoricalDataInBackground(userId, currentOsUser, force = false) {
         apiEntries = apiData.entries;
       }
 
-      const processed = processHistorical30DaysData(apiEntries, userId, currentOsUser);
+      const processed = processHistorical30DaysData(apiEntries, timeEntries, userId, currentOsUser);
 
       // Pre-cache icons for yesterday's apps
       if (processed.yesterdayAppNames && processed.yesterdayAppNames.length > 0) {

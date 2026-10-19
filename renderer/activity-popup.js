@@ -18,6 +18,7 @@ const colHeaderTime = getEl('col-header-time');
 const loadingText = getEl('loading-text');
 const weekendToggleContainer = getEl('weekend-toggle-container');
 const weekendCheckbox = getEl('toggle-weekends');
+const historyLegend = getEl('history-legend');
 
 // ================= STATE VARIABLES =================
 let pollInterval = null;
@@ -42,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPeriodTabs();
   updateDateDisplay();
   updateWeekendToggleVisibility();
+  updateHistoryLegendVisibility();
 
   if (weekendCheckbox) {
     weekendCheckbox.checked = showWeekends;
@@ -213,6 +215,36 @@ function updateWeekendToggleVisibility() {
   } else {
     weekendToggleContainer.classList.add('hidden');
   }
+  updateHistoryLegendVisibility();
+}
+
+function updateHistoryLegendVisibility() {
+  if (!historyLegend) return;
+  const isHistorical = (currentPeriod === 'last7days' || currentPeriod === 'last30days' || currentPeriod === 'current_month');
+  if (isHistorical) {
+    historyLegend.classList.remove('hidden');
+  } else {
+    historyLegend.classList.add('hidden');
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatShortHours(hours) {
+  const totalMinutes = Math.round((Number(hours) || 0) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
 }
 
 function isWeekend(dateStr) {
@@ -587,21 +619,30 @@ function renderHistoryView(rawData) {
   const allDays = rawData?.days || [];
   const days = showWeekends ? allDays : allDays.filter(day => !isWeekend(day.dateStr));
 
+  const targetHistoryList = historyList || getEl('history-list');
+  const targetTotalTimeEl = totalTimeEl || getEl('total-time');
+  const targetEmptyMsg = emptyMsg || getEl('empty-msg');
+  const targetEmptyState = emptyState || getEl('empty-state');
+
   if (!days || days.length === 0) {
-    if (emptyMsg) {
-      emptyMsg.textContent = 'No activity recorded.';
+    if (targetEmptyMsg) {
+      targetEmptyMsg.textContent = 'No activity recorded.';
     }
-    showState(emptyState);
+    showState(targetEmptyState);
     const totalSeconds = rawData?.totalSeconds !== undefined
       ? rawData.totalSeconds
       : allDays.reduce((sum, d) => sum + d.duration, 0);
-    totalTimeEl.textContent = formatDuration(totalSeconds);
+    if (targetTotalTimeEl) {
+      targetTotalTimeEl.textContent = formatDuration(totalSeconds);
+    }
     return;
   }
 
-  showState(historyList);
-  historyList.innerHTML = '';
-  historyList.scrollTop = 0;
+  showState(targetHistoryList);
+  if (targetHistoryList) {
+    targetHistoryList.innerHTML = '';
+    targetHistoryList.scrollTop = 0;
+  }
 
   const maxDuration = Math.max(...days.map(d => d.duration), 1);
 
@@ -611,8 +652,13 @@ function renderHistoryView(rawData) {
     rowEl.style.animation = 'rowFadeIn 250ms ease forwards';
     rowEl.style.animationDelay = `${Math.min(index * 30, 300)}ms`;
 
-    const percentage = maxDuration > 0 ? (day.duration / maxDuration) * 100 : 0;
-    const formattedDuration = day.duration > 0 ? formatDuration(day.duration) : '0m';
+    const totalDuration = Number(day.duration) || 0;
+    const regularDuration = day.regularDuration !== undefined ? Number(day.regularDuration) : totalDuration;
+    const yellowDuration = day.yellowDuration !== undefined ? Number(day.yellowDuration) : 0;
+
+    const regularPercentage = maxDuration > 0 ? (regularDuration / maxDuration) * 100 : 0;
+    const yellowPercentage = maxDuration > 0 ? (yellowDuration / maxDuration) * 100 : 0;
+    const formattedDuration = totalDuration > 0 ? formatDuration(totalDuration) : '0m';
 
     // Left column: Calendar icon + Date info + Progress bar
     const dateCol = document.createElement('div');
@@ -637,7 +683,7 @@ function renderHistoryView(rawData) {
 
     const dateText = document.createElement('span');
     dateText.className = 'history-date-text' + (day.isToday ? ' is-today' : '');
-    const dateDisplay = day.displayDate || day.dateStr || 'Unknown Date';
+    const dateDisplay = day.weekdayDisplay || day.displayDate || day.dateStr || 'Unknown Date';
     dateText.textContent = dateDisplay;
     dateText.title = dateDisplay;
     dateText.tabIndex = 0;
@@ -653,50 +699,91 @@ function renderHistoryView(rawData) {
       dateHeader.appendChild(todayBadge);
     }
 
+    if (day.startTime && day.startTime !== '--' && day.endTime && day.endTime !== '--') {
+      const sessionTimeEl = document.createElement('span');
+      sessionTimeEl.className = 'history-session-time';
+      sessionTimeEl.textContent = `${day.startTime} – ${day.endTime}`;
+      dateHeader.appendChild(sessionTimeEl);
+    }
+
     const barRow = document.createElement('div');
     barRow.className = 'history-bar-row';
-
-    const startTimeEl = document.createElement('span');
-    startTimeEl.className = 'history-time-boundary start' + (!day.hasData ? ' empty' : '');
-    startTimeEl.textContent = day.startTime || '--';
 
     const progressContainer = document.createElement('div');
     progressContainer.className = 'history-progress-container';
 
-    const color = getDailyActiveTimeColor(day.duration);
+    const color = getDailyActiveTimeColor(totalDuration);
     const progressBar = document.createElement('div');
-    progressBar.className = `history-progress-bar color-${color} progress-${color}`;
+    progressBar.className = `history-progress-bar history-segment-regular color-${color} progress-${color}`;
     progressBar.dataset.color = color;
     progressBar.style.width = '0%';
 
     progressContainer.appendChild(progressBar);
 
-    const endTimeEl = document.createElement('span');
-    endTimeEl.className = 'history-time-boundary end' + (day.isPresent ? ' is-present' : '') + (!day.hasData ? ' empty' : '');
-    endTimeEl.textContent = day.endTime || '--';
+    let yellowBar = null;
+    if (yellowDuration > 0) {
+      yellowBar = document.createElement('div');
+      yellowBar.className = 'history-progress-bar-yellow history-segment-yellow';
+      yellowBar.dataset.color = 'yellow';
+      yellowBar.style.width = '0%';
+      progressContainer.appendChild(yellowBar);
+    }
 
-    barRow.appendChild(startTimeEl);
     barRow.appendChild(progressContainer);
-    barRow.appendChild(endTimeEl);
 
     dateInfo.appendChild(dateHeader);
     dateInfo.appendChild(barRow);
+
+    // Sub-row: highlight specified Redmine categories (Big Late, Early Out, Leave, Holiday, Non Productive - ABM Function)
+    if (yellowDuration > 0) {
+      const subRow = document.createElement('div');
+      subRow.className = 'history-subrow';
+
+      if (regularDuration > 0) {
+        const regItem = document.createElement('span');
+        regItem.className = 'history-sub-item';
+        regItem.innerHTML = `<span class="history-sub-dot dot-${color}">●</span> <span class="history-sub-text">${formatDuration(regularDuration)} other logged time</span>`;
+        subRow.appendChild(regItem);
+      }
+
+      if (Array.isArray(day.yellowCategories) && day.yellowCategories.length > 0) {
+        day.yellowCategories.forEach(cat => {
+          const catItem = document.createElement('span');
+          catItem.className = 'history-sub-item';
+          const hrsText = formatShortHours(cat.hours);
+          catItem.innerHTML = `<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${hrsText} ${escapeHtml(cat.name)}</span>`;
+          subRow.appendChild(catItem);
+        });
+      } else {
+        const yellowItem = document.createElement('span');
+        yellowItem.className = 'history-sub-item';
+        yellowItem.innerHTML = `<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${formatDuration(yellowDuration)} Special Hours</span>`;
+        subRow.appendChild(yellowItem);
+      }
+
+      dateInfo.appendChild(subRow);
+    }
 
     dateCol.appendChild(iconContainer);
     dateCol.appendChild(dateInfo);
 
     // Right column: Duration
     const durationEl = document.createElement('div');
-    durationEl.className = 'history-duration' + (day.duration === 0 ? ' zero' : '');
+    durationEl.className = 'history-duration' + (totalDuration === 0 ? ' zero' : '');
     durationEl.textContent = formattedDuration;
 
     rowEl.appendChild(dateCol);
     rowEl.appendChild(durationEl);
 
-    historyList.appendChild(rowEl);
+    if (targetHistoryList) {
+      targetHistoryList.appendChild(rowEl);
+    }
 
     setTimeout(() => {
-      progressBar.style.width = `${percentage}%`;
+      progressBar.style.width = `${regularPercentage}%`;
+      if (yellowBar) {
+        yellowBar.style.width = `${yellowPercentage}%`;
+      }
     }, 50);
   });
 
@@ -704,11 +791,20 @@ function renderHistoryView(rawData) {
     ? rawData.totalSeconds
     : allDays.reduce((sum, d) => sum + d.duration, 0);
 
-  totalTimeEl.textContent = formatDuration(totalSeconds);
+  if (targetTotalTimeEl) {
+    targetTotalTimeEl.textContent = formatDuration(totalSeconds);
+  }
 }
 
 function showState(visibleElement) {
-  [loadingState, errorState, emptyState, activityList, historyList].forEach(el => {
+  const elements = [
+    loadingState || getEl('loading-state'),
+    errorState || getEl('error-state'),
+    emptyState || getEl('empty-state'),
+    activityList || getEl('activity-list'),
+    historyList || getEl('history-list')
+  ];
+  elements.forEach(el => {
     if (el) el.classList.add('hidden');
   });
   if (visibleElement) {
@@ -1047,10 +1143,13 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     isWeekend,
     formatDuration,
+    formatShortHours,
+    escapeHtml,
     getDailyActiveTimeColor,
     getShowWeekends: () => showWeekends,
     setShowWeekends: (val) => { showWeekends = Boolean(val); },
     updateWeekendToggleVisibility,
+    updateHistoryLegendVisibility,
     renderHistoryView,
     renderActivities
   };

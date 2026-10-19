@@ -78,6 +78,12 @@ const TEST_SUITES = [
     file: 'test_title_truncation_suite.js',
     runner: 'node',
     description: 'Compact display, ellipsis truncation, responsive layout, full title tooltip, keyboard focus'
+  },
+  {
+    name: '13. Redmine Time Integration & Yellow Progress Bar Segments Suite',
+    file: 'test_redmine_yellow_integration_suite.js',
+    runner: 'node',
+    description: 'Redmine time entries aggregation, 5 yellow categories classification, segmented progress bar rendering'
   }
 ];
 

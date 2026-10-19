@@ -535,10 +535,13 @@ body {
 
 .history-progress-container {
   flex: 1;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.06);
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
   overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 .history-progress-bar {
@@ -546,6 +549,7 @@ body {
   border-radius: 2px;
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
   transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 }
 
 /* Dynamic Active Time Progress Bar Colors (<7h: Red, 7h-7h30m: Blue, >7h30m: Green) */
@@ -562,6 +566,94 @@ body {
 .history-progress-bar.color-green,
 .history-progress-bar.progress-green {
   background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+/* Yellow Segment for Redmine Special/Leave Categories */
+.history-segment-yellow,
+.history-progress-bar-yellow {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+/* Sub-row detail breakdown below progress bar */
+.history-subrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.history-sub-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.history-sub-dot {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.history-sub-text {
+  font-size: 10px;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+/* History Legend for Last 7 / Last 30 Days */
+.history-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 10px;
+  color: #9ca3af;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 4px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.legend-dot {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.dot-red, .legend-dot.dot-red {
+  color: #ef4444;
+}
+
+.dot-blue, .legend-dot.dot-blue {
+  color: #3b82f6;
+}
+
+.dot-green, .legend-dot.dot-green {
+  color: #10b981;
+}
+
+.dot-yellow, .legend-dot.dot-yellow {
+  color: #f59e0b;
+}
+
+.history-session-time {
+  font-size: 10px;
+  color: #6b7280;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .history-duration {

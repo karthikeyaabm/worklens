@@ -3,9 +3,11 @@ const path = require('path');
 const { app } = require('electron');
 const dotenv = require('dotenv');
 
+const isPackaged = Boolean(app && app.isPackaged);
+
 // Load .env correctly in both development and packaged app
 dotenv.config({
-  path: app.isPackaged
+  path: isPackaged
     ? path.join(process.resourcesPath, '.env')
     : path.join(__dirname, '.env')
 });
@@ -17,7 +19,7 @@ const BASE_URL = process.env.REDMINE_BASE_URL
 const API_KEY = process.env.REDMINE_API_KEY || '';
 
 console.log('===== ENV CHECK =====');
-console.log('Packaged :', app.isPackaged);
+console.log('Packaged :', isPackaged);
 console.log('BASE_URL :', BASE_URL);
 console.log('API_KEY  :', API_KEY ? 'Loaded' : 'Missing');
 console.log('=====================');
