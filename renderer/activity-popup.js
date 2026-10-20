@@ -750,7 +750,7 @@ function renderHistoryView(rawData) {
 
     dateInfo.appendChild(dateHeader);
 
-    // Progress bar row: side-by-side separate tracks + right duration
+    // Progress bar row: stacked vertical column of tracks + right duration
     const color = getDailyActiveTimeColor(totalDuration);
 
     const barRow = document.createElement('div');
@@ -759,7 +759,7 @@ function renderHistoryView(rawData) {
     const trackWrapper = document.createElement('div');
     trackWrapper.className = 'history-track-wrapper';
 
-    // Track 1: Regular progress bar (other logged time)
+    // Track 1: Regular progress bar (workstation active time)
     const regTrack = document.createElement('div');
     regTrack.className = 'history-progress-container history-track-regular' + (yellowDuration === 0 ? ' history-track-full' : '');
     const progressBar = document.createElement('div');
@@ -767,10 +767,20 @@ function renderHistoryView(rawData) {
     progressBar.dataset.color = color;
     progressBar.style.width = '0%';
     regTrack.appendChild(progressBar);
+
+    let regTimeLabel = null;
+    if (yellowDuration > 0 && regularDuration > 0) {
+      regTimeLabel = document.createElement('span');
+      regTimeLabel.className = `history-bar-floating-time time-${color}`;
+      regTimeLabel.textContent = formatShortHours(regularDuration / 3600);
+      regTimeLabel.style.left = '0%';
+      regTrack.appendChild(regTimeLabel);
+    }
     trackWrapper.appendChild(regTrack);
 
-    // Track 2: Yellow progress bar (Special Hours) if yellowDuration > 0
+    // Track 2: Yellow progress bar (Special Hours) stacked vertically below Track 1 if yellowDuration > 0
     let yellowBar = null;
+    let yelTimeLabel = null;
     if (yellowDuration > 0) {
       const yelTrack = document.createElement('div');
       yelTrack.className = 'history-progress-container history-track-yellow';
@@ -779,6 +789,13 @@ function renderHistoryView(rawData) {
       yellowBar.dataset.color = 'yellow';
       yellowBar.style.width = '0%';
       yelTrack.appendChild(yellowBar);
+
+      yelTimeLabel = document.createElement('span');
+      yelTimeLabel.className = 'history-bar-floating-time time-yellow';
+      yelTimeLabel.textContent = formatShortHours(yellowDuration / 3600);
+      yelTimeLabel.style.left = '0%';
+      yelTrack.appendChild(yelTimeLabel);
+
       trackWrapper.appendChild(yelTrack);
     }
 
@@ -792,34 +809,6 @@ function renderHistoryView(rawData) {
 
     dateInfo.appendChild(barRow);
 
-    // Sub-row: matching indicator dot and label directly beneath each bar
-    if (yellowDuration > 0) {
-      const subRow = document.createElement('div');
-      subRow.className = 'history-subrow';
-
-      const regCol = document.createElement('div');
-      regCol.className = 'history-sub-col history-sub-col-regular';
-      if (regularDuration > 0) {
-        regCol.innerHTML = `<span class="history-sub-dot dot-${color}">●</span> <span class="history-sub-text">${formatDuration(regularDuration)} other logged time</span>`;
-      }
-      subRow.appendChild(regCol);
-
-      const yelCol = document.createElement('div');
-      yelCol.className = 'history-sub-col history-sub-col-yellow';
-      if (Array.isArray(day.yellowCategories) && day.yellowCategories.length > 0) {
-        day.yellowCategories.forEach((cat, idx) => {
-          const hrsText = formatShortHours(cat.hours);
-          const sep = idx > 0 ? ', ' : '';
-          yelCol.innerHTML += `${sep}<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${hrsText} ${escapeHtml(cat.name)}</span>`;
-        });
-      } else {
-        yelCol.innerHTML = `<span class="history-sub-dot dot-yellow">●</span> <span class="history-sub-text">${formatDuration(yellowDuration)} Special Hours</span>`;
-      }
-      subRow.appendChild(yelCol);
-
-      dateInfo.appendChild(subRow);
-    }
-
     rowEl.appendChild(iconContainer);
     rowEl.appendChild(dateInfo);
 
@@ -831,6 +820,28 @@ function renderHistoryView(rawData) {
       progressBar.style.width = `${regularPercentage}%`;
       if (yellowBar) {
         yellowBar.style.width = `${yellowPercentage}%`;
+      }
+
+      if (regTimeLabel) {
+        if (regularPercentage > 78) {
+          regTimeLabel.style.left = 'auto';
+          regTimeLabel.style.right = `${Math.max(4, 100 - regularPercentage + 2)}%`;
+        } else {
+          regTimeLabel.style.left = `calc(${regularPercentage}% + 6px)`;
+          regTimeLabel.style.right = 'auto';
+        }
+        regTimeLabel.classList.add('visible');
+      }
+
+      if (yelTimeLabel) {
+        if (yellowPercentage > 78) {
+          yelTimeLabel.style.left = 'auto';
+          yelTimeLabel.style.right = `${Math.max(4, 100 - yellowPercentage + 2)}%`;
+        } else {
+          yelTimeLabel.style.left = `calc(${yellowPercentage}% + 6px)`;
+          yelTimeLabel.style.right = 'auto';
+        }
+        yelTimeLabel.classList.add('visible');
       }
     }, 50);
   });

@@ -1044,8 +1044,8 @@ function createActivityWindow() {
   if (activityWindow) return activityWindow;
 
   activityWindow = new BrowserWindow({
-    width: 650,
-    height: 440,
+    width: 690,
+    height: 510,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -1085,8 +1085,8 @@ function positionActivityWindow() {
   const primaryDisplay = screen.getDisplayNearestPoint({ x: wx, y: wy });
   const { x: workX, y: workY, width: workWidth, height: workHeight } = primaryDisplay.workArea;
 
-  const popupWidth = 650;
-  const popupHeight = 440;
+  const popupWidth = 690;
+  const popupHeight = 510;
   const widgetWidth = 185;
   const widgetHeight = 60;
 

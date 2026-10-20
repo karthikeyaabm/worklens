@@ -20,14 +20,14 @@ body {
 /* ================= CONTAINER ================= */
 #popup-container {
   width: calc(100% - 20px);
-  height: calc(100% - 30px); /* 10px top, 20px bottom to allow space for the connection arrow */
-  margin: 10px 10px 20px 10px;
+  height: calc(100% - 24px); /* 6px top, 18px bottom to allow space for the connection arrow */
+  margin: 6px 10px 18px 10px;
   background: rgba(20, 24, 30, 0.96); /* Dark Fluent background with opacity */
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  padding: 14px 18px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -65,7 +65,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .header-title {
@@ -109,7 +109,7 @@ body {
 
 /* ================= PERIOD SELECTOR ================= */
 .period-selector-container {
-  margin: 4px 0 8px 0;
+  margin: 2px 0 6px 0;
 }
 
 .period-selector {
@@ -162,8 +162,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
-  min-height: 20px;
+  margin-bottom: 4px;
+  min-height: 18px;
   gap: 12px;
 }
 
@@ -423,11 +423,11 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  margin-bottom: 6px;
+  border-radius: 7px;
+  margin-bottom: 5px;
   transition: all 150ms ease;
   user-select: none;
   opacity: 0;
@@ -439,9 +439,9 @@ body {
 }
 
 .history-calendar-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
   background: rgba(59, 130, 246, 0.08);
   border: 1px solid rgba(59, 130, 246, 0.25);
   display: flex;
@@ -453,8 +453,8 @@ body {
 }
 
 .history-calendar-icon svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .history-date-info {
@@ -462,17 +462,18 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  gap: 5px;
+  gap: 3px;
 }
 
 .history-date-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  line-height: 1.2;
 }
 
 .history-date-text {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: #ffffff;
   letter-spacing: 0.2px;
@@ -484,19 +485,19 @@ body {
 }
 
 .history-today-badge {
-  font-size: 9px;
+  font-size: 8.5px;
   color: #60a5fa;
   background: rgba(59, 130, 246, 0.15);
   border: 1px solid rgba(59, 130, 246, 0.35);
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
 
 .history-session-time {
-  font-size: 10px;
+  font-size: 9.5px;
   color: #9CA3AF;
   font-variant-numeric: tabular-nums;
   margin-left: 2px;
@@ -506,39 +507,33 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
 }
 
 .history-track-wrapper {
   flex: 1;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
   min-width: 0;
 }
 
 .history-progress-container {
+  width: 100%;
   height: 4px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 
-.history-track-regular {
-  flex: 1.2;
-  min-width: 0;
-}
-
-.history-track-yellow {
-  flex: 1;
-  min-width: 0;
-}
-
+.history-track-regular,
+.history-track-yellow,
 .history-track-full {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  flex: none;
 }
 
 .history-progress-bar {
@@ -574,12 +569,58 @@ body {
   flex-shrink: 0;
 }
 
+/* Floating timing label positioned directly after the colored fill of each bar */
+.history-bar-floating-time {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: rgba(18, 22, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: left 350ms cubic-bezier(0.16, 1, 0.3, 1), right 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease;
+  z-index: 2;
+  opacity: 0;
+}
+
+.history-bar-floating-time.visible {
+  opacity: 1;
+}
+
+.history-bar-floating-time.time-red {
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.history-bar-floating-time.time-blue {
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.history-bar-floating-time.time-green {
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.history-bar-floating-time.time-yellow {
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
 .history-duration {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #ffffff;
   text-align: right;
-  flex: 0 0 70px;
+  flex: 0 0 65px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.2px;
 }
@@ -589,51 +630,6 @@ body {
   font-weight: 500;
 }
 
-/* Sub-row aligned directly under the two separate bars */
-.history-subrow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 10px;
-  color: #9ca3af;
-  margin-top: 1px;
-  padding-right: 82px; /* 70px duration + 12px gap */
-}
-
-.history-sub-col {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-sub-col-regular {
-  flex: 1.2;
-  min-width: 0;
-}
-
-.history-sub-col-yellow {
-  flex: 1;
-  min-width: 0;
-}
-
-.history-sub-dot {
-  font-size: 8px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.history-sub-text {
-  font-size: 10px;
-  font-weight: 500;
-  color: #9ca3af;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* History Legend for Last 7 / Last 30 Days */
 .history-legend {
   display: flex;
@@ -641,11 +637,11 @@ body {
   justify-content: flex-start;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 4px 2px;
+  padding: 3px 2px;
   font-size: 9px;
   color: #9ca3af;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .legend-item {
@@ -895,9 +891,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
 .footer-left {

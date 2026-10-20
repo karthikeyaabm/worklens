@@ -414,13 +414,18 @@ runTest('Yellow segments render with non-zero width alongside regular segment', 
     const regularBar = row.querySelector('.history-segment-regular');
     const yellowBar = row.querySelector('.history-segment-yellow');
     const subRow = row.querySelector('.history-subrow');
+    const trackWrapper = row.querySelector('.history-track-wrapper');
 
     assert.ok(regularBar, 'Regular segment must exist in progress container');
     assert.ok(yellowBar, 'Yellow segment must exist in progress container');
     assert.ok(regularBar.className.includes('color-blue'), 'Regular segment must have status color blue');
-    assert.ok(subRow, 'Sub-row breakdown must exist');
-    assert.ok(subRow.textContent.includes('6h 30m other logged time'), 'Sub-row must show other logged time');
-    assert.ok(subRow.textContent.includes('1h Early Out'), 'Sub-row must show yellow category name');
+    assert.ok(trackWrapper, 'Track wrapper must exist');
+    assert.strictEqual(trackWrapper.children.length, 2, 'Two progress bars must be stacked vertically in a column within track wrapper');
+    assert.ok(trackWrapper.children[0].className.includes('history-track-regular'), 'Top bar must be regular progress bar');
+    assert.ok(trackWrapper.children[1].className.includes('history-track-yellow'), 'Bottom bar must be yellow progress bar');
+    assert.strictEqual(subRow, null, 'Sub-row text labels must not be displayed underneath the progress bars');
+    assert.strictEqual(row.textContent.includes('other logged time'), false, 'Row must not show "other logged time" label');
+    assert.strictEqual(row.textContent.includes('Early Out'), false, 'Row must not show yellow category label under bars');
   } finally {
     teardownMockDom(domState);
   }
@@ -454,8 +459,9 @@ runTest('Date with ONLY yellow-category hours renders visible yellow bar', () =>
     const subRow = row.querySelector('.history-subrow');
 
     assert.ok(yellowBar, 'Yellow segment must be present when date has only yellow hours');
-    assert.ok(subRow.textContent.includes('2h Leave'), 'Sub-row must show 2h Leave');
-    assert.strictEqual(subRow.textContent.includes('other logged time'), false, 'Sub-row must not show 0m other logged time');
+    assert.strictEqual(subRow, null, 'Sub-row text labels must not be displayed underneath the progress bars');
+    assert.strictEqual(row.textContent.includes('Leave'), false, 'Sub-row must not show Leave label under bars');
+    assert.strictEqual(row.textContent.includes('other logged time'), false, 'Sub-row must not show 0m other logged time');
   } finally {
     teardownMockDom(domState);
   }
@@ -857,9 +863,10 @@ runTest('Spec Test 10: The yellow bar shows only approved-category hours', () =>
     assert.ok(regularBar, 'Regular bar must exist for active time');
     assert.ok(yellowBar, 'Yellow bar must exist for approved Holiday hours');
     assert.strictEqual(yellowBar.dataset.color, 'yellow');
-    assert.ok(subRow.textContent.includes('1h Holiday'), 'Sub-row must display approved Holiday name');
-    assert.strictEqual(subRow.textContent.includes('Development'), false, 'Sub-row must NOT mention unapproved activities');
-    assert.strictEqual(subRow.textContent.includes('Data Analysis'), false);
+    assert.strictEqual(subRow, null, 'Sub-row text labels must not be displayed underneath the progress bars');
+    assert.strictEqual(row.textContent.includes('Holiday'), false, 'Row must not display Holiday label under bars');
+    assert.strictEqual(row.textContent.includes('Development'), false);
+    assert.strictEqual(row.textContent.includes('Data Analysis'), false);
   } finally {
     teardownMockDom(domState);
   }
@@ -916,7 +923,8 @@ runTest('Spec Test 11: Issue ID 236611 (Non Productive - ABM Function, Activity)
     assert.ok(regularBar, 'Regular bar must exist for active time');
     assert.ok(yellowBar, 'Yellow bar must exist for 3h Non Productive - ABM Function, Activity');
     assert.strictEqual(yellowBar.dataset.color, 'yellow');
-    assert.ok(subRow.textContent.includes('3h Non Productive - ABM Function, Activity'), 'Sub-row must show "3h Non Productive - ABM Function, Activity"');
+    assert.strictEqual(subRow, null, 'Sub-row text labels must not be displayed underneath the progress bars');
+    assert.strictEqual(row.textContent.includes('Non Productive - ABM Function, Activity'), false, 'Row must not display yellow category name under bars');
   } finally {
     teardownMockDom(domState);
   }
