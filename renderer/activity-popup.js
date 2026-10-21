@@ -19,6 +19,9 @@ const loadingText = getEl('loading-text');
 const weekendToggleContainer = getEl('weekend-toggle-container');
 const weekendCheckbox = getEl('toggle-weekends');
 const historyLegend = getEl('history-legend');
+const viewToggleContainer = getEl('view-toggle-container');
+const viewToggleAppBtn = getEl('view-toggle-app');
+const viewToggleHoursBtn = getEl('view-toggle-hours');
 
 // ================= STATE VARIABLES =================
 let pollInterval = null;
@@ -27,6 +30,7 @@ let renderedHourRows = {}; // Holds map of hour -> DOM element
 let expandedAppName = null; // Currently expanded application name
 let expandedHours = new Set(); // Set of currently expanded hour numbers
 let currentPeriod = 'today'; // 'today' | 'yesterday' | 'last7days' | 'current_month'
+let currentActivityView = 'app'; // 'app' | 'hours' (defaults to App-Wise)
 let showWeekends = false; // Default: false (unchecked, hides Sat & Sun in historical views)
 
 // Client-side view cache for instant tab switching (0ms)
@@ -43,7 +47,9 @@ const CLIENT_CACHE_TTL_MS = 60 * 1000; // 60s cache TTL
 if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   setupPeriodTabs();
+  setupViewToggle();
   updateDateDisplay();
+  updateViewToggleVisibility();
   updateWeekendToggleVisibility();
   updateHistoryLegendVisibility();
 
@@ -144,6 +150,7 @@ function selectPeriod(period, triggerFetch = true) {
   });
 
   updateDateDisplay();
+  updateViewToggleVisibility();
   updateColumnHeaders();
   updateWeekendToggleVisibility();
   updateFooterLabel();
@@ -151,20 +158,7 @@ function selectPeriod(period, triggerFetch = true) {
   // If already cached, switch view INSTANTLY with zero network/IPC delay
   if (clientViewCache[period]) {
     if (isPeriodChange) {
-      for (const h in renderedHourRows) {
-        if (renderedHourRows[h]) renderedHourRows[h].remove();
-      }
-      renderedHourRows = {};
-      for (const name in renderedRows) {
-        if (renderedRows[name]) renderedRows[name].remove();
-      }
-      renderedRows = {};
-      expandedHours = new Set();
-      expandedAppName = null;
-      if (activityList) {
-        activityList.innerHTML = '';
-        activityList.scrollTop = 0;
-      }
+      clearRenderedActivityRows();
       if (historyList) {
         historyList.innerHTML = '';
         historyList.scrollTop = 0;
@@ -174,27 +168,14 @@ function selectPeriod(period, triggerFetch = true) {
     if (period === 'last7days' || period === 'last30days' || period === 'current_month') {
       renderHistoryView(clientViewCache[period]);
     } else {
-      renderAppView(clientViewCache[period]);
+      renderTodayYesterdayView(clientViewCache[period]);
     }
     return;
   }
 
   // Not in client cache yet: clear current items to avoid stale flashing
   if (isPeriodChange) {
-    for (const h in renderedHourRows) {
-      if (renderedHourRows[h]) renderedHourRows[h].remove();
-    }
-    renderedHourRows = {};
-    for (const name in renderedRows) {
-      if (renderedRows[name]) renderedRows[name].remove();
-    }
-    renderedRows = {};
-    expandedHours = new Set();
-    expandedAppName = null;
-    if (activityList) {
-      activityList.innerHTML = '';
-      activityList.scrollTop = 0;
-    }
+    clearRenderedActivityRows();
     if (historyList) {
       historyList.innerHTML = '';
       historyList.scrollTop = 0;
@@ -206,14 +187,112 @@ function selectPeriod(period, triggerFetch = true) {
   }
 }
 
-function updateColumnHeaders() {
-  if (!colHeaderName || !colHeaderTime) return;
+// ================= VIEW TOGGLE CONTROLLER (APP WISE / HOURS WISE) =================
+function setupViewToggle() {
+  const appBtn = viewToggleAppBtn || getEl('view-toggle-app');
+  const hoursBtn = viewToggleHoursBtn || getEl('view-toggle-hours');
+
+  if (appBtn) {
+    appBtn.addEventListener('click', () => {
+      selectActivityView('app');
+    });
+    appBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        appBtn.click();
+      }
+    });
+  }
+
+  if (hoursBtn) {
+    hoursBtn.addEventListener('click', () => {
+      selectActivityView('hours');
+    });
+    hoursBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        hoursBtn.click();
+      }
+    });
+  }
+}
+
+function selectActivityView(viewMode) {
+  if (viewMode !== 'app' && viewMode !== 'hours') return;
+  if (viewMode === currentActivityView) return;
+
+  currentActivityView = viewMode;
+  updateViewToggleButtons();
+  updateColumnHeaders();
+
+  clearRenderedActivityRows();
+
   if (currentPeriod === 'today' || currentPeriod === 'yesterday') {
-    colHeaderName.textContent = 'TIME SLOT';
-    colHeaderTime.textContent = 'ACTIVE TIME';
+    if (clientViewCache[currentPeriod]) {
+      renderTodayYesterdayView(clientViewCache[currentPeriod]);
+    } else {
+      fetchAndRender();
+    }
+  }
+}
+
+function updateViewToggleButtons() {
+  const appBtn = viewToggleAppBtn || getEl('view-toggle-app');
+  const hoursBtn = viewToggleHoursBtn || getEl('view-toggle-hours');
+  const isApp = (currentActivityView === 'app');
+  if (appBtn) {
+    appBtn.classList.toggle('active', isApp);
+    appBtn.setAttribute('aria-pressed', isApp ? 'true' : 'false');
+  }
+  if (hoursBtn) {
+    hoursBtn.classList.toggle('active', !isApp);
+    hoursBtn.setAttribute('aria-pressed', !isApp ? 'true' : 'false');
+  }
+}
+
+function updateViewToggleVisibility() {
+  const container = viewToggleContainer || getEl('view-toggle-container');
+  if (!container) return;
+  const isTodayOrYesterday = (currentPeriod === 'today' || currentPeriod === 'yesterday');
+  if (isTodayOrYesterday) {
+    container.classList.remove('hidden');
+    updateViewToggleButtons();
   } else {
-    colHeaderName.textContent = 'DATE';
-    colHeaderTime.textContent = 'ACTIVE TIME';
+    container.classList.add('hidden');
+  }
+}
+
+function clearRenderedActivityRows() {
+  for (const h in renderedHourRows) {
+    if (renderedHourRows[h]) renderedHourRows[h].remove();
+  }
+  renderedHourRows = {};
+
+  for (const name in renderedRows) {
+    if (renderedRows[name]) renderedRows[name].remove();
+  }
+  renderedRows = {};
+
+  expandedHours = new Set();
+  expandedAppName = null;
+
+  const targetList = activityList || getEl('activity-list');
+  if (targetList) {
+    targetList.innerHTML = '';
+    targetList.scrollTop = 0;
+  }
+}
+
+function updateColumnHeaders() {
+  const targetName = colHeaderName || getEl('col-header-name');
+  const targetTime = colHeaderTime || getEl('col-header-time');
+  if (!targetName || !targetTime) return;
+  if (currentPeriod === 'today' || currentPeriod === 'yesterday') {
+    targetName.textContent = currentActivityView === 'hours' ? 'TIME SLOT' : 'APPLICATION';
+    targetTime.textContent = 'ACTIVE TIME';
+  } else {
+    targetName.textContent = 'DATE';
+    targetTime.textContent = 'ACTIVE TIME';
   }
 }
 
@@ -386,6 +465,73 @@ function formatWindowOrWebsiteTitle(rawTitle, appName = '') {
   }
 
   return title;
+}
+
+/**
+ * Computes application-wise activity aggregation from raw session records.
+ * Groups by application name and individual activity window titles.
+ * Sorts applications by total active time in descending order by default.
+ * Sorts activities within each application by duration descending.
+ * Calculates total active seconds without double-counting.
+ */
+function computeAppWiseActivity(logs) {
+  const activeLogs = (logs || []).filter(e => {
+    if (!e) return false;
+    const status = (e.status || '').toLowerCase();
+    const duration = Number(e.duration) || 0;
+    return status === 'active' && duration > 0;
+  });
+
+  const totalDailySeconds = activeLogs.reduce((acc, entry) => acc + (Number(entry.duration) || 0), 0);
+
+  if (activeLogs.length === 0) {
+    return {
+      sortedApps: [],
+      totalDailySeconds: 0,
+      hasActivity: false
+    };
+  }
+
+  const grouped = {};
+  activeLogs.forEach(entry => {
+    const rawAppName = entry.app_name;
+    const appName = (rawAppName && String(rawAppName).trim()) ? String(rawAppName).trim() : 'Unknown Application';
+    const rawWindowTitle = (entry.window_title && String(entry.window_title).trim()) ? String(entry.window_title).trim() : appName;
+    const duration = Number(entry.duration) || 0;
+
+    if (!grouped[appName]) {
+      grouped[appName] = {
+        name: appName,
+        totalDuration: 0,
+        activitiesMap: {}
+      };
+    }
+    grouped[appName].totalDuration += duration;
+    grouped[appName].activitiesMap[rawWindowTitle] = (grouped[appName].activitiesMap[rawWindowTitle] || 0) + duration;
+  });
+
+  const sortedApps = Object.keys(grouped)
+    .map(name => {
+      const appGroup = grouped[name];
+      const activities = Object.keys(appGroup.activitiesMap).map(title => ({
+        title,
+        appName: name,
+        duration: appGroup.activitiesMap[title]
+      })).sort((a, b) => b.duration - a.duration);
+
+      return {
+        name,
+        duration: appGroup.totalDuration,
+        activities
+      };
+    })
+    .sort((a, b) => b.duration - a.duration);
+
+  return {
+    sortedApps,
+    totalDailySeconds,
+    hasActivity: sortedApps.length > 0
+  };
 }
 
 /**
@@ -616,42 +762,47 @@ function getDailyActiveTimeColor(durationSeconds) {
   }
 }
 
-// Daily target: 9 hours 30 minutes = 570 minutes = 34,200 seconds (fixed 100% target)
+// Daily reference scale: 9 hours 30 minutes = 570 minutes = 34,200 seconds (fixed 100% target scale)
 const DAILY_TARGET_MINUTES = 570;
 const DAILY_TARGET_SECONDS = DAILY_TARGET_MINUTES * 60; // 34,200 seconds
+const DAILY_REFERENCE_MINUTES = 570;
+const DAILY_REFERENCE_SECONDS = DAILY_TARGET_SECONDS;
+const STANDARD_TARGET_HOURS = 8;
+const STANDARD_TARGET_MINUTES = STANDARD_TARGET_HOURS * 60; // 480 minutes
+const STANDARD_TARGET_SECONDS = STANDARD_TARGET_MINUTES * 60; // 28,800 seconds
 
 /**
- * Calculates progress percentages for daily progress bars based on the fixed 9h 30m (570 minutes) target:
- * Formula: (loggedActiveMinutes / 570) * 100 = (durationSeconds / 34200) * 100
+ * Calculates progress percentages for daily progress bars based on the fixed 9h 30m (570 minutes) reference scale:
+ * Both the green bar (actual tracked active time) and yellow bar (8-hour target / special hours)
+ * share the exact same 9h 30m reference denominator (570 minutes = 34,200 seconds = 100%).
+ *
+ * Formula:
+ * - actualPercent = (actualMinutes / 570) * 100 = (actualSeconds / 34200) * 100
+ * - targetPercent = (targetMinutes / 570) * 100 = (targetSeconds / 34200) * 100
  *
  * Examples:
- * - 4h 45m (285m) = 50%
- * - 7h (420m) = 73.68%
- * - 7h 30m (450m) = 78.95%
- * - 9h (540m) = 94.74%
- * - 9h 30m (570m) = 100%
- * - 10h (600m) = 105.26% (visually capped at 100%)
+ * - Actual tracked: 5h 9m (309m = 18,540s) -> 54.21%
+ * - Target: 8h (480m = 28,800s) -> 84.21%
+ * - 9h 30m (570m = 34,200s) -> 100.00%
+ * - 10h (600m = 36,000s) -> 105.26% (visually capped at 100% so it stays within the track)
+ *
+ * Both bars start at the same horizontal position (0%) and use the same available track width (100%).
+ * Each bar is individually visually capped at 100% so neither exceeds the track.
  */
-function calculateDailyProgressPercentages(regularDurationSeconds, yellowDurationSeconds = 0) {
-  const regSec = Math.max(0, Number(regularDurationSeconds) || 0);
-  const yelSec = Math.max(0, Number(yellowDurationSeconds) || 0);
+function calculateDailyProgressPercentages(regularDuration, yellowDuration = 0, unit = 'seconds') {
+  const isMinutes = unit === true || unit === 'minutes' || unit === 'min' || unit === 'm' || (typeof unit === 'object' && unit && unit.unit === 'minutes');
+  const denominator = isMinutes ? DAILY_REFERENCE_MINUTES : DAILY_REFERENCE_SECONDS;
 
-  const rawRegularPercentage = (regSec / DAILY_TARGET_SECONDS) * 100;
-  const rawYellowPercentage = (yelSec / DAILY_TARGET_SECONDS) * 100;
-  const rawTotalPercentage = ((regSec + yelSec) / DAILY_TARGET_SECONDS) * 100;
+  const regVal = Math.max(0, Number(regularDuration) || 0);
+  const yelVal = Math.max(0, Number(yellowDuration) || 0);
 
-  // Visual capping: total displayed width must never exceed 100%
-  let regularPercentage = rawRegularPercentage;
-  let yellowPercentage = rawYellowPercentage;
+  const rawRegularPercentage = (regVal / denominator) * 100;
+  const rawYellowPercentage = (yelVal / denominator) * 100;
+  const rawTotalPercentage = ((regVal + yelVal) / denominator) * 100;
 
-  if (regularPercentage + yellowPercentage > 100) {
-    if (regularPercentage >= 100) {
-      regularPercentage = 100;
-      yellowPercentage = 0;
-    } else {
-      yellowPercentage = Math.max(0, 100 - regularPercentage);
-    }
-  }
+  // Visual capping: each displayed bar must never exceed 100% of the available track width
+  const regularPercentage = Math.min(100, Math.max(0, rawRegularPercentage));
+  const yellowPercentage = Math.min(100, Math.max(0, rawYellowPercentage));
 
   return {
     rawRegularPercentage,
@@ -661,6 +812,16 @@ function calculateDailyProgressPercentages(regularDurationSeconds, yellowDuratio
     yellowPercentage,
     cappedTotalPercentage: Math.min(rawTotalPercentage, 100)
   };
+}
+
+function calculateDailyProgressPercentagesMinutes(actualMinutes, targetMinutes = 0) {
+  return calculateDailyProgressPercentages(actualMinutes, targetMinutes, 'minutes');
+}
+
+function calculateProgressPercent(duration, reference = DAILY_TARGET_SECONDS) {
+  const d = Math.max(0, Number(duration) || 0);
+  const ref = Math.max(1, Number(reference) || DAILY_TARGET_SECONDS);
+  return Math.min(100, Math.max(0, (d / ref) * 100));
 }
 
 // ================= UTILITIES & HELPERS =================
@@ -889,7 +1050,7 @@ async function fetchAndRender() {
   const targetPeriod = currentPeriod;
   // Show loading state if no rows have been rendered for this view yet
   const hasRows = (targetPeriod === 'today' || targetPeriod === 'yesterday')
-    ? Object.keys(renderedRows).length > 0
+    ? (currentActivityView === 'hours' ? Object.keys(renderedHourRows).length > 0 : Object.keys(renderedRows).length > 0)
     : (historyList && historyList.children.length > 0);
 
   if (!hasRows) {
@@ -913,22 +1074,83 @@ async function fetchAndRender() {
       return;
     }
 
-    renderAppView(rawData);
+    renderTodayYesterdayView(rawData);
 
   } catch (error) {
     if (currentPeriod !== targetPeriod) return;
     console.error('Failed to load activity details:', error);
     // Only show full screen error state if we have no loaded data
-    const hasData = Object.keys(renderedRows).length > 0 || (historyList && historyList.children.length > 0);
+    const hasData = Object.keys(renderedRows).length > 0 || Object.keys(renderedHourRows).length > 0 || (historyList && historyList.children.length > 0);
     if (!hasData) {
       showState(errorState);
     }
   }
 }
 
-function renderAppView(rawData) {
+function renderAppWiseView(rawData) {
   // Update subtitle date and start/end time for Today / Yesterday view
   updateDateSubtitleForAppView(rawData);
+  updateViewToggleVisibility();
+  updateColumnHeaders();
+
+  // Hide history list and show activity list
+  if (historyList) {
+    historyList.classList.add('hidden');
+    historyList.innerHTML = '';
+  }
+
+  let logsData = rawData;
+  let iconsMap = {};
+  if (rawData && rawData.logs) {
+    logsData = rawData.logs;
+    iconsMap = rawData.icons || {};
+  }
+
+  const logs = Array.isArray(logsData) ? logsData : (logsData?.entries || []);
+  const isToday = (currentPeriod === 'today');
+
+  const { sortedApps, totalDailySeconds, hasActivity } = computeAppWiseActivity(logs);
+
+  if (!hasActivity || sortedApps.length === 0) {
+    if (emptyMsg) {
+      emptyMsg.textContent = isToday ? 'No activity recorded today.' : 'No activity recorded yesterday.';
+    }
+    showState(emptyState);
+    if (totalTimeEl) {
+      totalTimeEl.textContent = '0m';
+    }
+
+    for (const name in renderedRows) {
+      if (renderedRows[name]) renderedRows[name].remove();
+    }
+    renderedRows = {};
+    expandedAppName = null;
+    return;
+  }
+
+  // Clear hourly rows if they exist
+  for (const h in renderedHourRows) {
+    if (renderedHourRows[h]) renderedHourRows[h].remove();
+  }
+  renderedHourRows = {};
+  expandedHours = new Set();
+
+  showState(activityList);
+
+  // Render and reconcile app-wise rows
+  reconcileRows(sortedApps, totalDailySeconds, iconsMap);
+
+  if (totalTimeEl) {
+    totalTimeEl.textContent = formatDuration(totalDailySeconds);
+  }
+  updateFooterLabel();
+}
+
+function renderHoursWiseView(rawData) {
+  // Update subtitle date and start/end time for Today / Yesterday view
+  updateDateSubtitleForAppView(rawData);
+  updateViewToggleVisibility();
+  updateColumnHeaders();
 
   // Hide history list and show activity list
   if (historyList) {
@@ -972,14 +1194,16 @@ function renderAppView(rawData) {
       if (renderedHourRows[h]) renderedHourRows[h].remove();
     }
     renderedHourRows = {};
-    for (const name in renderedRows) {
-      if (renderedRows[name]) renderedRows[name].remove();
-    }
-    renderedRows = {};
     expandedHours = new Set();
-    expandedAppName = null;
     return;
   }
+
+  // Clear app rows if they exist
+  for (const name in renderedRows) {
+    if (renderedRows[name]) renderedRows[name].remove();
+  }
+  renderedRows = {};
+  expandedAppName = null;
 
   // Hide all states and show activity list
   showState(activityList);
@@ -992,6 +1216,18 @@ function renderAppView(rawData) {
     totalTimeEl.textContent = formatDuration(totalDailySeconds);
   }
   updateFooterLabel();
+}
+
+function renderTodayYesterdayView(rawData) {
+  if (currentActivityView === 'hours') {
+    renderHoursWiseView(rawData);
+  } else {
+    renderAppWiseView(rawData);
+  }
+}
+
+function renderAppView(rawData) {
+  renderTodayYesterdayView(rawData);
 }
 
 function renderHistoryView(rawData) {
@@ -1039,7 +1275,16 @@ function renderHistoryView(rawData) {
 
     const totalDuration = Number(day.duration) || 0;
     const regularDuration = day.regularDuration !== undefined ? Number(day.regularDuration) : totalDuration;
-    const yellowDuration = day.yellowDuration !== undefined ? Number(day.yellowDuration) : 0;
+    let yellowDuration = day.yellowDuration !== undefined ? Number(day.yellowDuration) : 0;
+    if (yellowDuration === 0) {
+      if (day.targetDuration !== undefined) {
+        yellowDuration = Number(day.targetDuration) || 0;
+      } else if (day.targetMinutes !== undefined) {
+        yellowDuration = (Number(day.targetMinutes) || 0) * 60;
+      } else if (day.targetHours !== undefined) {
+        yellowDuration = (Number(day.targetHours) || 0) * 3600;
+      }
+    }
 
     const { regularPercentage, yellowPercentage } = calculateDailyProgressPercentages(regularDuration, yellowDuration);
     const formattedDuration = totalDuration > 0 ? formatDuration(totalDuration) : '0m';
@@ -1618,8 +1863,8 @@ function renderHourlyApps(containerEl, appList, hourlyTotalDuration, iconsMap) {
   });
 }
 
-// Legacy app-wise reconciler preserved for compatibility
-function reconcileRows(sortedApps, maxDuration, iconsMap) {
+// Application-wise reconciler for App-Wise view
+function reconcileRows(sortedApps, totalDailySeconds, iconsMap) {
   const currentAppNames = new Set(sortedApps.map(app => app.name));
   
   // 1. Remove stale rows
@@ -1636,7 +1881,8 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
   // 2. Add or update active rows
   sortedApps.forEach((app, index) => {
     const { name, duration, activities } = app;
-    const percentage = maxDuration > 0 ? (duration / maxDuration) * 100 : 0;
+    // Calculate application's share of total tracked activity
+    const percentage = totalDailySeconds > 0 ? (duration / totalDailySeconds) * 100 : 0;
     const formattedDuration = formatDuration(duration);
     const lowerName = name.toLowerCase();
     
@@ -2072,24 +2318,36 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DAILY_TARGET_MINUTES,
     DAILY_TARGET_SECONDS,
+    DAILY_REFERENCE_MINUTES,
+    DAILY_REFERENCE_SECONDS,
+    STANDARD_TARGET_MINUTES,
+    STANDARD_TARGET_SECONDS,
+    STANDARD_TARGET_HOURS,
     calculateDailyProgressPercentages,
+    calculateDailyProgressPercentagesMinutes,
+    calculateProgressPercent,
     isWeekend,
     formatDuration,
     formatShortHours,
     formatHour12,
     formatHourRange,
     parse12HourTimeToHours,
+    computeAppWiseActivity,
     computeHourlyActivity,
     formatWindowOrWebsiteTitle,
     getWindowIconSvg,
     getAppColor,
     getAppIconSvg,
+    reconcileRows,
     reconcileHourlyRows,
     renderHourlyApps,
     renderHourlyWindows,
     toggleHourExpansion,
+    toggleAppExpansion,
     getExpandedHours: () => expandedHours,
     setExpandedHours: (set) => { expandedHours = set; },
+    getExpandedAppName: () => expandedAppName,
+    setExpandedAppName: (name) => { expandedAppName = name; },
     escapeHtml,
     getDailyActiveTimeColor,
     getShowWeekends: () => showWeekends,
@@ -2098,10 +2356,18 @@ if (typeof module !== 'undefined' && module.exports) {
     updateHistoryLegendVisibility,
     updateFooterLabel,
     renderHistoryView,
-    renderAppView,
-    renderHourlyView: renderAppView,
+    renderAppWiseView,
+    renderHoursWiseView,
+    renderTodayYesterdayView,
+    renderAppView: renderTodayYesterdayView,
+    renderHourlyView: renderHoursWiseView,
     renderActivities,
-    reconcileRows
+    getCurrentActivityView: () => currentActivityView,
+    setCurrentActivityView: (val) => { currentActivityView = val; },
+    selectActivityView,
+    updateViewToggleVisibility,
+    updateViewToggleButtons,
+    clearRenderedActivityRows
   };
 }
 

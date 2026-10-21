@@ -96,6 +96,12 @@ const TEST_SUITES = [
     file: 'test_hourly_activity_suite.js',
     runner: 'node',
     description: 'Hourly slots, exact interval calculation, proportional multi-hour splits, independent expand/collapse'
+  },
+  {
+    name: '16. Dashboard App-Wise / Hours-Wise View Toggle Suite',
+    file: 'test_app_hours_toggle_suite.js',
+    runner: 'node',
+    description: 'Segmented view toggle, app-wise aggregation, share of total tracked time, in-place switching, date preservation'
   }
 ];
 

@@ -8,7 +8,14 @@ const popupModule = require('./renderer/activity-popup.js');
 const {
   DAILY_TARGET_MINUTES,
   DAILY_TARGET_SECONDS,
+  DAILY_REFERENCE_MINUTES,
+  DAILY_REFERENCE_SECONDS,
+  STANDARD_TARGET_MINUTES,
+  STANDARD_TARGET_SECONDS,
+  STANDARD_TARGET_HOURS,
   calculateDailyProgressPercentages,
+  calculateDailyProgressPercentagesMinutes,
+  calculateProgressPercent,
   getDailyActiveTimeColor,
   renderHistoryView
 } = popupModule;
@@ -41,6 +48,11 @@ console.log('--- 1. Target Constants ---');
 runTest('Daily Target constants must be 570 minutes and 34,200 seconds', () => {
   assert.strictEqual(DAILY_TARGET_MINUTES, 570, 'Target minutes must be 570 (9h 30m)');
   assert.strictEqual(DAILY_TARGET_SECONDS, 34200, 'Target seconds must be 34200 (570 * 60)');
+  assert.strictEqual(DAILY_REFERENCE_MINUTES, 570, 'Reference minutes must be 570 (9h 30m)');
+  assert.strictEqual(DAILY_REFERENCE_SECONDS, 34200, 'Reference seconds must be 34200');
+  assert.strictEqual(STANDARD_TARGET_HOURS, 8, 'Standard target must be 8 hours');
+  assert.strictEqual(STANDARD_TARGET_MINUTES, 480, 'Standard target must be 480 minutes');
+  assert.strictEqual(STANDARD_TARGET_SECONDS, 28800, 'Standard target must be 28,800 seconds');
 });
 
 // ---------------------------------------------------------------------------------
@@ -116,30 +128,30 @@ runTest('Green threshold: Over 7h 30m (> 450m / > 27000s)', () => {
 });
 
 // ---------------------------------------------------------------------------------
-// 4. Combined Regular + Yellow Segment Capping
+// 4. Combined Regular + Yellow Scaling (Both on 9h 30m / 570m Reference Scale)
 // ---------------------------------------------------------------------------------
 console.log('\n--- 4. Combined Regular + Yellow Segment Progress & Capping ---');
 
-runTest('Combined 6h Regular + 2h Yellow = 8h (84.21% total, within 100%)', () => {
+runTest('Combined 6h Regular + 2h Yellow: both scaled independently against 9h 30m', () => {
   const regSec = 6 * 3600; // 360m -> 63.16%
   const yelSec = 2 * 3600; // 120m -> 21.05%
   const res = calculateDailyProgressPercentages(regSec, yelSec);
   assert.strictEqual(Number(res.rawTotalPercentage.toFixed(2)), 84.21);
   assert.strictEqual(Number(res.regularPercentage.toFixed(2)), 63.16);
   assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 21.05);
-  assert.ok(res.regularPercentage + res.yellowPercentage <= 100.00);
+  assert.ok(res.regularPercentage <= 100.00);
+  assert.ok(res.yellowPercentage <= 100.00);
 });
 
-runTest('Combined 8h Regular + 3h Yellow = 11h (115.79% raw, capped at 100% visual width)', () => {
+runTest('Combined 8h Regular + 3h Yellow: each individually scaled & capped at 100%', () => {
   const regSec = 8 * 3600; // 480m -> 84.21%
   const yelSec = 3 * 3600; // 180m -> 31.58%
   const res = calculateDailyProgressPercentages(regSec, yelSec);
   assert.strictEqual(Number(res.rawTotalPercentage.toFixed(2)), 115.79);
   assert.strictEqual(Number(res.regularPercentage.toFixed(2)), 84.21);
-  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 15.79);
-  // Total visual width must be exactly 100%
-  assert.strictEqual(Math.round(res.regularPercentage + res.yellowPercentage), 100);
-  assert.ok(res.regularPercentage + res.yellowPercentage <= 100.0001);
+  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 31.58);
+  assert.ok(res.regularPercentage <= 100.0001);
+  assert.ok(res.yellowPercentage <= 100.0001);
 });
 
 runTest('10h Yellow only (no regular) = 105.26% raw, capped at 100% visual width', () => {
@@ -147,6 +159,83 @@ runTest('10h Yellow only (no regular) = 105.26% raw, capped at 100% visual width
   assert.strictEqual(Number(res.rawTotalPercentage.toFixed(2)), 105.26);
   assert.strictEqual(res.regularPercentage, 0);
   assert.strictEqual(res.yellowPercentage, 100.00);
+});
+
+// ---------------------------------------------------------------------------------
+// 4b. Specification Target Benchmark: 5h 9m Actual vs 8h Target
+// ---------------------------------------------------------------------------------
+console.log('\n--- 4b. Specification Target Benchmark: 5h 9m Tracked vs 8h Target ---');
+
+runTest('Target Benchmark: 5h 9m (54.21%) vs 8h Target (84.21%) - Yellow visibly longer than Green', () => {
+  const referenceMinutes = 9 * 60 + 30; // 570 minutes
+  const actualMinutes = 5 * 60 + 9; // 309 minutes
+  const targetMinutes = 8 * 60; // 480 minutes
+
+  // Verification using minutes formula
+  const actualPercent = (actualMinutes / referenceMinutes) * 100;
+  const targetPercent = (targetMinutes / referenceMinutes) * 100;
+  assert.strictEqual(Number(actualPercent.toFixed(2)), 54.21, 'Actual 5h 9m must be approx 54.21%');
+  assert.strictEqual(Number(targetPercent.toFixed(2)), 84.21, 'Target 8h must be approx 84.21%');
+  assert.ok(targetPercent > actualPercent, 'Target percent (84.21%) must be greater than actual percent (54.21%)');
+
+  // Verification using calculateDailyProgressPercentages with seconds
+  const actualSec = actualMinutes * 60; // 18,540s
+  const targetSec = targetMinutes * 60; // 28,800s
+  const resSec = calculateDailyProgressPercentages(actualSec, targetSec);
+  assert.strictEqual(Number(resSec.regularPercentage.toFixed(2)), 54.21);
+  assert.strictEqual(Number(resSec.yellowPercentage.toFixed(2)), 84.21);
+  assert.ok(resSec.yellowPercentage > resSec.regularPercentage, 'Yellow bar must be visibly longer than green bar');
+  assert.ok(resSec.regularPercentage <= 100.00, 'Green bar must remain within track');
+  assert.ok(resSec.yellowPercentage <= 100.00, 'Yellow bar must remain within track');
+
+  // Verification using calculateDailyProgressPercentagesMinutes
+  const resMin = calculateDailyProgressPercentagesMinutes(actualMinutes, targetMinutes);
+  assert.strictEqual(Number(resMin.regularPercentage.toFixed(2)), 54.21);
+  assert.strictEqual(Number(resMin.yellowPercentage.toFixed(2)), 84.21);
+});
+
+// ---------------------------------------------------------------------------------
+// 4c. Verification Across Other Dates (< 8h, == 8h, > 8h, > 9h 30m, 0h)
+// ---------------------------------------------------------------------------------
+console.log('\n--- 4c. Verification Across Other Dates (< 8h, == 8h, > 8h, > 9h 30m, 0h) ---');
+
+runTest('Day with less than 8 hours: 4h tracked (42.11%) + 8h target (84.21%) -> Yellow > Green', () => {
+  const res = calculateDailyProgressPercentages(4 * 3600, 8 * 3600);
+  assert.strictEqual(Number(res.regularPercentage.toFixed(2)), 42.11);
+  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 84.21);
+  assert.ok(res.yellowPercentage > res.regularPercentage);
+});
+
+runTest('Day with exactly 8 hours: 8h tracked (84.21%) + 8h target (84.21%) -> Yellow == Green', () => {
+  const res = calculateDailyProgressPercentages(8 * 3600, 8 * 3600);
+  assert.strictEqual(Number(res.regularPercentage.toFixed(2)), 84.21);
+  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 84.21);
+  assert.strictEqual(res.regularPercentage, res.yellowPercentage);
+});
+
+runTest('Day with more than 8 hours: 9h tracked (94.74%) + 8h target (84.21%) -> Green > Yellow', () => {
+  const res = calculateDailyProgressPercentages(9 * 3600, 8 * 3600);
+  assert.strictEqual(Number(res.regularPercentage.toFixed(2)), 94.74);
+  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 84.21);
+  assert.ok(res.regularPercentage > res.yellowPercentage);
+  assert.ok(res.regularPercentage <= 100.00);
+  assert.ok(res.yellowPercentage <= 100.00);
+});
+
+runTest('Day with more than 9h 30m: 10h tracked (105.26% raw, capped at 100%) + 8h target (84.21%)', () => {
+  const res = calculateDailyProgressPercentages(10 * 3600, 8 * 3600);
+  assert.strictEqual(Number(res.rawRegularPercentage.toFixed(2)), 105.26);
+  assert.strictEqual(res.regularPercentage, 100.00, 'Green bar capped at 100%');
+  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 84.21);
+  assert.ok(res.regularPercentage <= 100.00);
+  assert.ok(res.yellowPercentage <= 100.00);
+});
+
+runTest('Day with 0 tracked time: 0h tracked (0%) + 8h target (84.21%) -> Yellow rendered, Green 0%', () => {
+  const res = calculateDailyProgressPercentages(0, 8 * 3600);
+  assert.strictEqual(res.regularPercentage, 0);
+  assert.strictEqual(Number(res.yellowPercentage.toFixed(2)), 84.21);
+  assert.ok(res.yellowPercentage > res.regularPercentage);
 });
 
 // ---------------------------------------------------------------------------------
@@ -286,12 +375,65 @@ runTest('DOM Rendering: Renders rows for 4h 45m, 7h, 7h 30m, 9h 30m, and 10h wit
   }
 });
 
+runTest('DOM Rendering: Two-bar row (5h 9m tracked vs 8h target) renders yellow bar longer than green bar', (done) => {
+  const domState = setupMockDom();
+  try {
+    const rawData = {
+      days: [
+        {
+          dateStr: '2026-10-18',
+          duration: 18540, // 5h 9m
+          regularDuration: 18540,
+          yellowDuration: 28800, // 8h target
+          hasData: true
+        }
+      ],
+      totalSeconds: 47340
+    };
+
+    popupModule.setShowWeekends(true);
+    renderHistoryView(rawData);
+
+    const historyList = domState.elements['history-list'];
+    assert.strictEqual(historyList.children.length, 1, '1 row must be rendered');
+
+    setTimeout(() => {
+      try {
+        const row = historyList.children[0];
+        const greenBar = row.querySelector('.history-segment-regular');
+        const yellowBar = row.querySelector('.history-segment-yellow');
+        const trackWrapper = row.querySelector('.history-track-wrapper');
+
+        assert.ok(greenBar, 'Green bar must exist');
+        assert.ok(yellowBar, 'Yellow bar must exist');
+        assert.ok(trackWrapper, 'Track wrapper must exist');
+
+        const greenWidth = parseFloat(greenBar.style.width);
+        const yellowWidth = parseFloat(yellowBar.style.width);
+
+        assert.strictEqual(greenWidth.toFixed(2), '54.21', 'Green bar must be 54.21%');
+        assert.strictEqual(yellowWidth.toFixed(2), '84.21', 'Yellow bar must be 84.21%');
+        assert.ok(yellowWidth > greenWidth, 'Yellow 8h bar must be visibly longer than green 5h 9m bar');
+
+        teardownMockDom(domState);
+        console.log('    Two-bar DOM row verified: Green 54.21% vs Yellow 84.21%');
+      } catch (e) {
+        teardownMockDom(domState);
+        throw e;
+      }
+    }, 60);
+  } catch (err) {
+    teardownMockDom(domState);
+    throw err;
+  }
+});
+
 // ---------------------------------------------------------------------------------
 // SUMMARY
 // ---------------------------------------------------------------------------------
 setTimeout(() => {
   console.log('\n================================================================================');
-  console.log(` ALL 13 PROGRESS TARGET TESTS PASSED (${passed}/${total}) - TARGET VERIFIED!`);
+  console.log(` ALL ${passed}/${total} PROGRESS TARGET TESTS PASSED - TARGET VERIFIED!`);
   console.log('================================================================================\n');
   process.exit(0);
-}, 100);
+}, 120);

@@ -30,9 +30,15 @@
       </nav>
     </div>
 
-    <!-- Subtitle Date & Historical Controls -->
+    <!-- Subtitle Date & View Controls -->
     <div class="date-controls-row">
       <div class="date-subtitle" id="current-date">Today's Date</div>
+      <div id="view-toggle-container" class="view-toggle-container">
+        <div class="view-toggle-group" role="group" aria-label="Activity view mode">
+          <button type="button" class="view-toggle-btn active" data-view="app" id="view-toggle-app" aria-pressed="true">App Wise</button>
+          <button type="button" class="view-toggle-btn" data-view="hours" id="view-toggle-hours" aria-pressed="false">Hours Wise</button>
+        </div>
+      </div>
       <div id="weekend-toggle-container" class="weekend-toggle-container hidden">
         <label class="weekend-toggle-label" for="toggle-weekends">
           <input type="checkbox" id="toggle-weekends" class="weekend-toggle-input">
