@@ -22,8 +22,10 @@ const historyLegend = getEl('history-legend');
 
 // ================= STATE VARIABLES =================
 let pollInterval = null;
-let renderedRows = {}; // Holds map of appName -> DOM element
+let renderedRows = {}; // Holds legacy map of appName -> DOM element
+let renderedHourRows = {}; // Holds map of hour -> DOM element
 let expandedAppName = null; // Currently expanded application name
+let expandedHours = new Set(); // Set of currently expanded hour numbers
 let currentPeriod = 'today'; // 'today' | 'yesterday' | 'last7days' | 'current_month'
 let showWeekends = false; // Default: false (unchecked, hides Sat & Sun in historical views)
 
@@ -144,14 +146,20 @@ function selectPeriod(period, triggerFetch = true) {
   updateDateDisplay();
   updateColumnHeaders();
   updateWeekendToggleVisibility();
+  updateFooterLabel();
 
   // If already cached, switch view INSTANTLY with zero network/IPC delay
   if (clientViewCache[period]) {
     if (isPeriodChange) {
+      for (const h in renderedHourRows) {
+        if (renderedHourRows[h]) renderedHourRows[h].remove();
+      }
+      renderedHourRows = {};
       for (const name in renderedRows) {
         if (renderedRows[name]) renderedRows[name].remove();
       }
       renderedRows = {};
+      expandedHours = new Set();
       expandedAppName = null;
       if (activityList) {
         activityList.innerHTML = '';
@@ -173,10 +181,15 @@ function selectPeriod(period, triggerFetch = true) {
 
   // Not in client cache yet: clear current items to avoid stale flashing
   if (isPeriodChange) {
+    for (const h in renderedHourRows) {
+      if (renderedHourRows[h]) renderedHourRows[h].remove();
+    }
+    renderedHourRows = {};
     for (const name in renderedRows) {
       if (renderedRows[name]) renderedRows[name].remove();
     }
     renderedRows = {};
+    expandedHours = new Set();
     expandedAppName = null;
     if (activityList) {
       activityList.innerHTML = '';
@@ -196,7 +209,7 @@ function selectPeriod(period, triggerFetch = true) {
 function updateColumnHeaders() {
   if (!colHeaderName || !colHeaderTime) return;
   if (currentPeriod === 'today' || currentPeriod === 'yesterday') {
-    colHeaderName.textContent = 'APPLICATION / WEBSITE';
+    colHeaderName.textContent = 'TIME SLOT';
     colHeaderTime.textContent = 'ACTIVE TIME';
   } else {
     colHeaderName.textContent = 'DATE';
@@ -245,6 +258,333 @@ function formatShortHours(hours) {
   if (h > 0 && m > 0) return `${h}h ${m}m`;
   if (h > 0) return `${h}h`;
   return `${m}m`;
+}
+
+function parseTimestampToDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  const str = String(val).trim();
+  // Match YYYY-MM-DDTHH:mm:ss or YYYY-MM-DD HH:mm:ss
+  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}):?(\d{2})?)?/);
+  if (ymdMatch) {
+    const y = parseInt(ymdMatch[1], 10);
+    const m = parseInt(ymdMatch[2], 10) - 1;
+    const d = parseInt(ymdMatch[3], 10);
+    const hh = parseInt(ymdMatch[4] || 0, 10);
+    const mm = parseInt(ymdMatch[5] || 0, 10);
+    const ss = parseInt(ymdMatch[6] || 0, 10);
+    return new Date(y, m, d, hh, mm, ss);
+  }
+  // Match DD-MM-YYYYTHH:mm:ss or DD-MM-YYYY HH:mm:ss
+  const dmyMatch = str.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T\s](\d{2}):(\d{2}):?(\d{2})?)?/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10) - 1;
+    const y = parseInt(dmyMatch[3], 10);
+    const hh = parseInt(dmyMatch[4] || 0, 10);
+    const mm = parseInt(dmyMatch[5] || 0, 10);
+    const ss = parseInt(dmyMatch[6] || 0, 10);
+    return new Date(y, m, d, hh, mm, ss);
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) return parsed;
+  return null;
+}
+
+function formatHour12(h) {
+  const normalizedHour = ((h % 24) + 24) % 24;
+  const period = normalizedHour >= 12 ? 'PM' : 'AM';
+  let h12 = normalizedHour % 12;
+  if (h12 === 0) h12 = 12;
+  const hh = String(h12).padStart(2, '0');
+  return `${hh}:00 ${period}`;
+}
+
+function formatHourRange(startH) {
+  const startStr = formatHour12(startH);
+  const endStr = formatHour12(startH + 1);
+  return `${startStr} – ${endStr}`;
+}
+
+function parse12HourTimeToHours(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const m = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let hh = parseInt(m[1], 10);
+  const period = (m[3] || '').toUpperCase();
+  if (period === 'PM' && hh < 12) hh += 12;
+  if (period === 'AM' && hh === 12) hh = 0;
+  return hh;
+}
+
+/**
+ * Cleanly formats a window or website title.
+ * For browser applications, strips trailing browser suffixes and produces clean domain / page titles.
+ * For desktop applications, preserves the recorded window title.
+ */
+function formatWindowOrWebsiteTitle(rawTitle, appName = '') {
+  if (!rawTitle || typeof rawTitle !== 'string') {
+    return appName || 'Active Window';
+  }
+
+  let title = rawTitle.trim();
+  const lowerApp = (appName || '').toLowerCase();
+  const isBrowser = lowerApp.includes('chrome') || lowerApp.includes('edge') || lowerApp.includes('firefox') || lowerApp.includes('brave') || lowerApp.includes('opera');
+
+  if (isBrowser) {
+    // Strip trailing browser names like " - Google Chrome", " - Microsoft Edge", etc.
+    title = title.replace(/\s*[-–—]\s*(Google Chrome|Microsoft Edge|Mozilla Firefox|Brave|Opera)$/i, '').trim();
+
+    const lowerTitle = title.toLowerCase();
+
+    // Google Docs
+    if (lowerTitle.includes('docs.google.com') || lowerTitle.includes('google docs')) {
+      let cleanDoc = title
+        .replace(/https?:\/\//i, '')
+        .replace(/docs\.google\.com\/?/i, '')
+        .replace(/\s*[-–—:]*\s*google docs\s*[-–—:]*\s*/gi, '')
+        .trim();
+      cleanDoc = cleanDoc.replace(/^[-–—:]+\s*/, '').replace(/\s*[-–—:]+$/, '').trim();
+      return cleanDoc ? `docs.google.com – ${cleanDoc}` : 'docs.google.com';
+    }
+
+    // Google Sheets
+    if (lowerTitle.includes('sheets.google.com') || lowerTitle.includes('google sheets')) {
+      let cleanSheet = title
+        .replace(/https?:\/\//i, '')
+        .replace(/sheets\.google\.com\/?/i, '')
+        .replace(/\s*[-–—:]*\s*google sheets\s*[-–—:]*\s*/gi, '')
+        .trim();
+      cleanSheet = cleanSheet.replace(/^[-–—:]+\s*/, '').replace(/\s*[-–—:]+$/, '').trim();
+      return cleanSheet ? `sheets.google.com – ${cleanSheet}` : 'sheets.google.com';
+    }
+
+    // Gmail / Google Mail
+    if (lowerTitle.includes('mail.google.com') || lowerTitle.includes('gmail')) {
+      return 'mail.google.com';
+    }
+
+    // YouTube
+    if (lowerTitle.includes('youtube.com') || lowerTitle.includes('youtube')) {
+      return 'youtube.com';
+    }
+
+    // Notion
+    if (lowerTitle.includes('notion.so') || lowerTitle.includes('notion')) {
+      return 'notion.so';
+    }
+
+    // Stack Overflow
+    if (lowerTitle.includes('stackoverflow.com') || lowerTitle.includes('stack overflow')) {
+      return 'stackoverflow.com';
+    }
+
+    // GitHub
+    if (lowerTitle.includes('github.com')) {
+      return 'github.com';
+    }
+  }
+
+  return title;
+}
+
+/**
+ * Computes hourly activity distribution from raw session records.
+ * Calculates exact interval overlap within each hour without double-counting.
+ * For today, caps current hour activity at the present time.
+ */
+function computeHourlyActivity(logs, dayDateStr, isToday, now = new Date(), startTimeStr = null, endTimeStr = null) {
+  const activeLogs = (logs || []).filter(e => {
+    if (!e) return false;
+    const status = (e.status || '').toLowerCase();
+    const duration = Number(e.duration) || 0;
+    return status === 'active' && duration > 0;
+  });
+
+  const totalDailySeconds = activeLogs.reduce((acc, entry) => acc + (Number(entry.duration) || 0), 0);
+
+  if (activeLogs.length === 0) {
+    return {
+      hourlySlots: [],
+      totalDailySeconds: 0,
+      hasActivity: false
+    };
+  }
+
+  // Determine earliest and latest activity hours
+  let minHour = null;
+  let maxHour = null;
+
+  activeLogs.forEach(entry => {
+    const s = parseTimestampToDate(entry.start_time);
+    if (s) {
+      const h = s.getHours();
+      if (minHour === null || h < minHour) minHour = h;
+      if (maxHour === null || h > maxHour) maxHour = h;
+    }
+    const e = parseTimestampToDate(entry.end_time);
+    if (e) {
+      const h = e.getHours();
+      if (maxHour === null || h > maxHour) maxHour = h;
+    }
+  });
+
+  // Start hour: strictly when PC / tracking started
+  let startHour = minHour !== null ? minHour : 9;
+  if (startTimeStr && startTimeStr !== '--') {
+    const parsedStartHour = parse12HourTimeToHours(startTimeStr);
+    if (parsedStartHour !== null) {
+      startHour = (minHour !== null) ? Math.min(minHour, parsedStartHour) : parsedStartHour;
+    }
+  }
+
+  // End hour: up to Present (for Today) or up to when PC tracking ended (for Yesterday)
+  let endHour;
+  if (isToday) {
+    const currentHour = now.getHours();
+    endHour = Math.max(currentHour, maxHour !== null ? maxHour : currentHour);
+  } else {
+    if (endTimeStr && endTimeStr !== '--' && endTimeStr !== 'Present') {
+      const parsedEndHour = parse12HourTimeToHours(endTimeStr);
+      if (parsedEndHour !== null) {
+        endHour = (maxHour !== null) ? Math.max(maxHour, parsedEndHour) : parsedEndHour;
+      } else {
+        endHour = (maxHour !== null) ? maxHour : startHour;
+      }
+    } else {
+      endHour = (maxHour !== null) ? maxHour : startHour;
+    }
+  }
+
+  if (endHour < startHour) {
+    endHour = startHour;
+  }
+
+  // Parse target date components
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  let day = now.getDate();
+  if (dayDateStr && typeof dayDateStr === 'string' && dayDateStr.includes('-')) {
+    const parts = dayDateStr.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        year = y;
+        month = m;
+        day = d;
+      }
+    }
+  }
+
+  const hourlySlots = [];
+
+  for (let h = startHour; h <= endHour; h++) {
+    const slotStart = new Date(year, month, day, h, 0, 0, 0);
+    const slotEnd = new Date(year, month, day, h + 1, 0, 0, 0);
+    const slotStartMs = slotStart.getTime();
+    const slotEndMs = slotEnd.getTime();
+
+    // For the current hour, show activity only up to the present time
+    const isCurrentHour = isToday && (h === now.getHours());
+    const effectiveLimitMs = isCurrentHour ? Math.min(slotEndMs, now.getTime()) : slotEndMs;
+
+    const appsMap = {};
+    const windowsMap = {};
+    let slotTotalDuration = 0;
+
+    activeLogs.forEach(entry => {
+      const s = parseTimestampToDate(entry.start_time);
+      if (!s) return;
+      const sMs = s.getTime();
+      const durationSec = Number(entry.duration) || 0;
+      if (durationSec <= 0) return;
+
+      const parsedEnd = parseTimestampToDate(entry.end_time);
+      const eMs = (parsedEnd && parsedEnd.getTime() > sMs)
+        ? parsedEnd.getTime()
+        : (sMs + durationSec * 1000);
+
+      // Calculate intersection [overlapStart, overlapEnd]
+      const overlapStart = Math.max(sMs, slotStartMs);
+      const overlapEnd = Math.min(eMs, effectiveLimitMs);
+
+      if (overlapEnd > overlapStart) {
+        const overlapMs = overlapEnd - overlapStart;
+        const totalSpanMs = Math.max(1, eMs - sMs);
+
+        let activeSecInHour = Math.round(durationSec * (overlapMs / totalSpanMs));
+        if (activeSecInHour <= 0 && overlapMs > 0 && durationSec >= 1) {
+          activeSecInHour = 1;
+        }
+        activeSecInHour = Math.min(3600, activeSecInHour);
+
+        if (activeSecInHour > 0) {
+          const appName = (entry.app_name && entry.app_name.trim()) ? entry.app_name.trim() : 'Unknown Application';
+          const rawWindowTitle = (entry.window_title && entry.window_title.trim()) ? entry.window_title.trim() : appName;
+          const displayTitle = formatWindowOrWebsiteTitle(rawWindowTitle, appName);
+
+          // 1. Group by application
+          if (!appsMap[appName]) {
+            appsMap[appName] = {
+              name: appName,
+              duration: 0,
+              windowTitles: {}
+            };
+          }
+          appsMap[appName].duration += activeSecInHour;
+          appsMap[appName].windowTitles[rawWindowTitle] = (appsMap[appName].windowTitles[rawWindowTitle] || 0) + activeSecInHour;
+
+          // 2. Group by website / window title
+          if (!windowsMap[displayTitle]) {
+            windowsMap[displayTitle] = {
+              displayTitle,
+              rawTitle: rawWindowTitle,
+              appName,
+              duration: 0
+            };
+          }
+          windowsMap[displayTitle].duration += activeSecInHour;
+
+          slotTotalDuration += activeSecInHour;
+        }
+      }
+    });
+
+    slotTotalDuration = Math.min(3600, slotTotalDuration);
+
+    const appList = Object.keys(appsMap).map(name => {
+      const appObj = appsMap[name];
+      return {
+        name,
+        duration: Math.min(3600, appObj.duration),
+        windowTitles: appObj.windowTitles
+      };
+    }).sort((a, b) => b.duration - a.duration);
+
+    const windowList = Object.values(windowsMap).map(w => ({
+      displayTitle: w.displayTitle,
+      rawTitle: w.rawTitle,
+      appName: w.appName,
+      duration: Math.min(3600, w.duration)
+    })).sort((a, b) => b.duration - a.duration);
+
+    hourlySlots.push({
+      hour: h,
+      timeRange: formatHourRange(h),
+      totalDuration: slotTotalDuration,
+      appList,
+      windowList,
+      isCurrentHour
+    });
+  }
+
+  return {
+    hourlySlots,
+    totalDailySeconds,
+    hasActivity: true
+  };
 }
 
 function isWeekend(dateStr) {
@@ -324,6 +664,22 @@ function calculateDailyProgressPercentages(regularDurationSeconds, yellowDuratio
 }
 
 // ================= UTILITIES & HELPERS =================
+function updateFooterLabel() {
+  const footerLabelEl = document.getElementById('footer-label');
+  if (!footerLabelEl) return;
+  if (currentPeriod === 'today') {
+    footerLabelEl.textContent = 'Total Active Time (Today)';
+  } else if (currentPeriod === 'yesterday') {
+    footerLabelEl.textContent = 'Total Active Time (Yesterday)';
+  } else if (currentPeriod === 'last7days') {
+    footerLabelEl.textContent = 'Total Active Time (Last 7 Days)';
+  } else if (currentPeriod === 'last30days' || currentPeriod === 'current_month') {
+    footerLabelEl.textContent = 'Total Active Time (Last 30 Days)';
+  } else {
+    footerLabelEl.textContent = 'Total Active Time';
+  }
+}
+
 function updateDateDisplay() {
   if (!dateEl) return;
   const now = new Date();
@@ -587,57 +943,40 @@ function renderAppView(rawData) {
     iconsMap = rawData.icons || {};
   }
 
-  // Format is { user_id, date, entries, ... } or raw array
   const logs = Array.isArray(logsData) ? logsData : (logsData?.entries || []);
+  const isToday = (currentPeriod === 'today');
+  const dayDateStr = rawData?.date || '';
+  const startTimeStr = rawData?.startTime || null;
+  const endTimeStr = rawData?.endTime || null;
 
-  // Group logs by application name and individual activities
-  const grouped = {};
-  logs.forEach(entry => {
-    if (entry.status === 'active' && entry.duration > 0) {
-      const appName = entry.app_name || 'Unknown';
-      const windowTitle = entry.window_title || 'Unknown Activity';
-      const duration = entry.duration;
+  const { hourlySlots, totalDailySeconds, hasActivity } = computeHourlyActivity(
+    logs,
+    dayDateStr,
+    isToday,
+    new Date(),
+    startTimeStr,
+    endTimeStr
+  );
 
-      if (!grouped[appName]) {
-        grouped[appName] = {
-          application: appName,
-          totalDuration: 0,
-          activitiesMap: {}
-        };
-      }
-      grouped[appName].totalDuration += duration;
-      grouped[appName].activitiesMap[windowTitle] = (grouped[appName].activitiesMap[windowTitle] || 0) + duration;
-    }
-  });
-
-  const sortedApps = Object.keys(grouped)
-    .map(name => {
-      const appGroup = grouped[name];
-      const activities = Object.keys(appGroup.activitiesMap).map(title => ({
-        title,
-        duration: appGroup.activitiesMap[title]
-      })).sort((a, b) => b.duration - a.duration);
-
-      return {
-        name,
-        duration: appGroup.totalDuration,
-        activities
-      };
-    })
-    .sort((a, b) => b.duration - a.duration);
-
-  if (sortedApps.length === 0) {
+  if (!hasActivity || hourlySlots.length === 0) {
     if (emptyMsg) {
-      emptyMsg.textContent = currentPeriod === 'today' ? 'No activity recorded today.' : 'No activity recorded yesterday.';
+      emptyMsg.textContent = isToday ? 'No activity recorded today.' : 'No activity recorded yesterday.';
     }
     showState(emptyState);
-    totalTimeEl.textContent = '0m';
+    if (totalTimeEl) {
+      totalTimeEl.textContent = '0m';
+    }
 
     // Clear any rendered rows
+    for (const h in renderedHourRows) {
+      if (renderedHourRows[h]) renderedHourRows[h].remove();
+    }
+    renderedHourRows = {};
     for (const name in renderedRows) {
-      renderedRows[name].remove();
+      if (renderedRows[name]) renderedRows[name].remove();
     }
     renderedRows = {};
+    expandedHours = new Set();
     expandedAppName = null;
     return;
   }
@@ -645,14 +984,14 @@ function renderAppView(rawData) {
   // Hide all states and show activity list
   showState(activityList);
 
-  const maxDuration = sortedApps[0].duration;
+  // Render and reconcile hourly rows
+  reconcileHourlyRows(hourlySlots, iconsMap);
 
-  // Render and reconcile rows
-  reconcileRows(sortedApps, maxDuration, iconsMap);
-
-  // Calculate and show total active duration
-  const totalSeconds = sortedApps.reduce((acc, app) => acc + app.duration, 0);
-  totalTimeEl.textContent = formatDuration(totalSeconds);
+  // Calculate and show total active duration from existing activity logs
+  if (totalTimeEl) {
+    totalTimeEl.textContent = formatDuration(totalDailySeconds);
+  }
+  updateFooterLabel();
 }
 
 function renderHistoryView(rawData) {
@@ -682,6 +1021,7 @@ function renderHistoryView(rawData) {
     if (targetTotalTimeEl) {
       targetTotalTimeEl.textContent = formatDuration(totalSeconds);
     }
+    updateFooterLabel();
     return;
   }
 
@@ -768,19 +1108,10 @@ function renderHistoryView(rawData) {
     progressBar.style.width = '0%';
     regTrack.appendChild(progressBar);
 
-    let regTimeLabel = null;
-    if (yellowDuration > 0 && regularDuration > 0) {
-      regTimeLabel = document.createElement('span');
-      regTimeLabel.className = `history-bar-floating-time time-${color}`;
-      regTimeLabel.textContent = formatShortHours(regularDuration / 3600);
-      regTimeLabel.style.left = '0%';
-      regTrack.appendChild(regTimeLabel);
-    }
     trackWrapper.appendChild(regTrack);
 
     // Track 2: Yellow progress bar (Special Hours) stacked vertically below Track 1 if yellowDuration > 0
     let yellowBar = null;
-    let yelTimeLabel = null;
     if (yellowDuration > 0) {
       const yelTrack = document.createElement('div');
       yelTrack.className = 'history-progress-container history-track-yellow';
@@ -789,23 +1120,28 @@ function renderHistoryView(rawData) {
       yellowBar.dataset.color = 'yellow';
       yellowBar.style.width = '0%';
       yelTrack.appendChild(yellowBar);
-
-      yelTimeLabel = document.createElement('span');
-      yelTimeLabel.className = 'history-bar-floating-time time-yellow';
-      yelTimeLabel.textContent = formatShortHours(yellowDuration / 3600);
-      yelTimeLabel.style.left = '0%';
-      yelTrack.appendChild(yelTimeLabel);
-
       trackWrapper.appendChild(yelTrack);
     }
 
     barRow.appendChild(trackWrapper);
 
-    // Right column: Total Active Time Duration
-    const durationEl = document.createElement('div');
-    durationEl.className = 'history-duration' + (totalDuration === 0 ? ' zero' : '');
-    durationEl.textContent = formattedDuration;
-    barRow.appendChild(durationEl);
+    // Right column: Separate durations for each progress bar (no total sum)
+    const durationCol = document.createElement('div');
+    durationCol.className = 'history-duration-col' + (yellowDuration > 0 ? ' has-two-bars' : '');
+
+    const regDurationEl = document.createElement('div');
+    regDurationEl.className = 'history-duration history-duration-regular' + (regularDuration === 0 ? ' zero' : '');
+    regDurationEl.textContent = regularDuration > 0 ? formatShortHours(regularDuration / 3600) : '0m';
+    durationCol.appendChild(regDurationEl);
+
+    if (yellowDuration > 0) {
+      const yelDurationEl = document.createElement('div');
+      yelDurationEl.className = 'history-duration history-duration-yellow';
+      yelDurationEl.textContent = formatShortHours(yellowDuration / 3600);
+      durationCol.appendChild(yelDurationEl);
+    }
+
+    barRow.appendChild(durationCol);
 
     dateInfo.appendChild(barRow);
 
@@ -821,28 +1157,6 @@ function renderHistoryView(rawData) {
       if (yellowBar) {
         yellowBar.style.width = `${yellowPercentage}%`;
       }
-
-      if (regTimeLabel) {
-        if (regularPercentage > 78) {
-          regTimeLabel.style.left = 'auto';
-          regTimeLabel.style.right = `${Math.max(4, 100 - regularPercentage + 2)}%`;
-        } else {
-          regTimeLabel.style.left = `calc(${regularPercentage}% + 6px)`;
-          regTimeLabel.style.right = 'auto';
-        }
-        regTimeLabel.classList.add('visible');
-      }
-
-      if (yelTimeLabel) {
-        if (yellowPercentage > 78) {
-          yelTimeLabel.style.left = 'auto';
-          yelTimeLabel.style.right = `${Math.max(4, 100 - yellowPercentage + 2)}%`;
-        } else {
-          yelTimeLabel.style.left = `calc(${yellowPercentage}% + 6px)`;
-          yelTimeLabel.style.right = 'auto';
-        }
-        yelTimeLabel.classList.add('visible');
-      }
     }, 50);
   });
 
@@ -853,6 +1167,7 @@ function renderHistoryView(rawData) {
   if (targetTotalTimeEl) {
     targetTotalTimeEl.textContent = formatDuration(totalSeconds);
   }
+  updateFooterLabel();
 }
 
 function showState(visibleElement) {
@@ -872,6 +1187,438 @@ function showState(visibleElement) {
 }
 
 // ================= DOM RECONCILIATION =================
+function reconcileHourlyRows(hourlySlots, iconsMap) {
+  if (!activityList) return;
+
+  const currentHours = new Set(hourlySlots.map(slot => String(slot.hour)));
+
+  // 1. Remove stale rows
+  for (const hStr in renderedHourRows) {
+    if (!currentHours.has(hStr)) {
+      if (renderedHourRows[hStr]) renderedHourRows[hStr].remove();
+      delete renderedHourRows[hStr];
+    }
+  }
+
+  // 2. Add or update hourly rows
+  hourlySlots.forEach((slot, index) => {
+    const { hour, timeRange, totalDuration, appList, windowList } = slot;
+    const hStr = String(hour);
+    const formattedDuration = formatDuration(totalDuration);
+    const isExpanded = expandedHours.has(hour);
+    const apps = Array.isArray(appList) ? appList : [];
+    const windows = Array.isArray(windowList) ? windowList : [];
+
+    let groupEl = renderedHourRows[hStr];
+
+    if (!groupEl) {
+      groupEl = document.createElement('div');
+      groupEl.className = 'hourly-group';
+      groupEl.dataset.hour = hStr;
+      groupEl.style.animation = 'rowFadeIn 250ms ease forwards';
+      groupEl.style.animationDelay = `${Math.min(index * 30, 300)}ms`;
+
+      const rowEl = document.createElement('div');
+      rowEl.className = 'hourly-row' + (isExpanded ? ' expanded' : '');
+      rowEl.tabIndex = 0;
+      rowEl.setAttribute('role', 'button');
+      rowEl.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      rowEl.setAttribute('aria-label', `Toggle ${timeRange} activity`);
+
+      // Chevron
+      const chevronContainer = document.createElement('div');
+      chevronContainer.className = 'hourly-chevron-container';
+      chevronContainer.innerHTML = `
+        <svg class="hourly-chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/>
+        </svg>
+      `;
+      rowEl.appendChild(chevronContainer);
+
+      // Hour range
+      const timeRangeEl = document.createElement('div');
+      timeRangeEl.className = 'hourly-time-range';
+      timeRangeEl.textContent = timeRange;
+      timeRangeEl.title = timeRange;
+      timeRangeEl.tabIndex = 0;
+      timeRangeEl.setAttribute('role', 'text');
+      timeRangeEl.setAttribute('aria-label', timeRange);
+      rowEl.appendChild(timeRangeEl);
+
+      // Center Column (Segmented Bar + App Pills Stack)
+      const centerCol = document.createElement('div');
+      centerCol.className = 'hourly-center-col';
+
+      const progressContainer = document.createElement('div');
+      progressContainer.className = 'hourly-progress-container';
+
+      // Keep hidden .hourly-progress-bar for backward compatibility
+      const progressBar = document.createElement('div');
+      progressBar.className = 'hourly-progress-bar';
+      progressBar.style.display = 'none';
+      progressContainer.appendChild(progressBar);
+
+      // Render segmented bar for applications in this hour
+      apps.forEach(app => {
+        const segEl = document.createElement('div');
+        segEl.className = 'hourly-segment';
+        segEl.style.width = '0%';
+        segEl.style.backgroundColor = getAppColor(app.name);
+        segEl.title = `${app.name}: ${formatDuration(app.duration)}`;
+        progressContainer.appendChild(segEl);
+      });
+      centerCol.appendChild(progressContainer);
+
+      // Render mini app pills directly below progress bar
+      const pillsContainer = document.createElement('div');
+      pillsContainer.className = 'hourly-app-pills';
+
+      const maxPills = 3;
+      const topApps = apps.slice(0, maxPills);
+      const remainingApps = apps.slice(maxPills);
+
+      topApps.forEach(app => {
+        const pillItem = document.createElement('div');
+        pillItem.className = 'hourly-pill-item';
+        pillItem.title = `${app.name}: ${formatDuration(app.duration)}`;
+
+        const pillIcon = document.createElement('span');
+        pillIcon.className = 'hourly-pill-icon';
+        const lowerName = app.name.toLowerCase();
+        if (iconsMap && iconsMap[lowerName]) {
+          const img = document.createElement('img');
+          img.className = 'app-img-icon';
+          img.src = iconsMap[lowerName];
+          pillIcon.appendChild(img);
+        } else {
+          pillIcon.innerHTML = getWindowIconSvg(app.name, app.name);
+        }
+        pillItem.appendChild(pillIcon);
+
+        const pillTime = document.createElement('span');
+        pillTime.className = 'hourly-pill-time';
+        pillTime.textContent = formatDuration(app.duration);
+        pillItem.appendChild(pillTime);
+
+        pillsContainer.appendChild(pillItem);
+      });
+
+      if (remainingApps.length > 0) {
+        const moreCount = remainingApps.length;
+        const moreDur = remainingApps.reduce((sum, a) => sum + a.duration, 0);
+        const morePill = document.createElement('div');
+        morePill.className = 'hourly-pill-more';
+        morePill.textContent = `+${moreCount} app${moreCount > 1 ? 's' : ''} ${formatDuration(moreDur)}`;
+        pillsContainer.appendChild(morePill);
+      }
+      centerCol.appendChild(pillsContainer);
+      rowEl.appendChild(centerCol);
+
+      // Total Duration
+      const durationEl = document.createElement('div');
+      durationEl.className = 'hourly-duration' + (totalDuration === 0 ? ' zero' : '');
+      durationEl.textContent = formattedDuration;
+      rowEl.appendChild(durationEl);
+
+      // Details Wrapper
+      const detailsWrapper = document.createElement('div');
+      detailsWrapper.className = 'hourly-details-wrapper' + (isExpanded ? ' expanded' : '');
+
+      const detailsContent = document.createElement('div');
+      detailsContent.className = 'hourly-details-content';
+      detailsWrapper.appendChild(detailsContent);
+
+      groupEl.appendChild(rowEl);
+      groupEl.appendChild(detailsWrapper);
+
+      // Render the website / window table inside expanded row
+      renderHourlyWindows(detailsContent, windows, totalDuration, iconsMap);
+
+      const toggleHandler = () => {
+        toggleHourExpansion(hour, groupEl);
+      };
+
+      rowEl.addEventListener('click', toggleHandler);
+      rowEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleHandler();
+        }
+      });
+
+      activityList.appendChild(groupEl);
+      renderedHourRows[hStr] = groupEl;
+
+      // Animate segments
+      setTimeout(() => {
+        const segEls = progressContainer.querySelectorAll('.hourly-segment');
+        segEls.forEach((segEl, i) => {
+          if (apps[i]) {
+            const segPct = Math.min(100, (apps[i].duration / 3600) * 100);
+            segEl.style.width = `${segPct}%`;
+          }
+        });
+      }, 50);
+
+    } else {
+      if (activityList.children[index] !== groupEl) {
+        activityList.insertBefore(groupEl, activityList.children[index]);
+      }
+
+      const durationEl = groupEl.querySelector('.hourly-duration');
+      if (durationEl) {
+        durationEl.textContent = formattedDuration;
+        durationEl.className = 'hourly-duration' + (totalDuration === 0 ? ' zero' : '');
+      }
+
+      // Update segmented bar
+      const centerCol = groupEl.querySelector('.hourly-center-col');
+      if (centerCol) {
+        const progressContainer = centerCol.querySelector('.hourly-progress-container');
+        if (progressContainer) {
+          progressContainer.innerHTML = '';
+          const progressBar = document.createElement('div');
+          progressBar.className = 'hourly-progress-bar';
+          progressBar.style.display = 'none';
+          progressContainer.appendChild(progressBar);
+
+          apps.forEach(app => {
+            const segEl = document.createElement('div');
+            segEl.className = 'hourly-segment';
+            const segPct = Math.min(100, (app.duration / 3600) * 100);
+            segEl.style.width = `${segPct}%`;
+            segEl.style.backgroundColor = getAppColor(app.name);
+            segEl.title = `${app.name}: ${formatDuration(app.duration)}`;
+            progressContainer.appendChild(segEl);
+          });
+        }
+
+        const pillsContainer = centerCol.querySelector('.hourly-app-pills');
+        if (pillsContainer) {
+          pillsContainer.innerHTML = '';
+          const maxPills = 3;
+          const topApps = apps.slice(0, maxPills);
+          const remainingApps = apps.slice(maxPills);
+
+          topApps.forEach(app => {
+            const pillItem = document.createElement('div');
+            pillItem.className = 'hourly-pill-item';
+            pillItem.title = `${app.name}: ${formatDuration(app.duration)}`;
+
+            const pillIcon = document.createElement('span');
+            pillIcon.className = 'hourly-pill-icon';
+            const lowerName = app.name.toLowerCase();
+            if (iconsMap && iconsMap[lowerName]) {
+              const img = document.createElement('img');
+              img.className = 'app-img-icon';
+              img.src = iconsMap[lowerName];
+              pillIcon.appendChild(img);
+            } else {
+              pillIcon.innerHTML = getWindowIconSvg(app.name, app.name);
+            }
+            pillItem.appendChild(pillIcon);
+
+            const pillTime = document.createElement('span');
+            pillTime.className = 'hourly-pill-time';
+            pillTime.textContent = formatDuration(app.duration);
+            pillItem.appendChild(pillTime);
+
+            pillsContainer.appendChild(pillItem);
+          });
+
+          if (remainingApps.length > 0) {
+            const moreCount = remainingApps.length;
+            const moreDur = remainingApps.reduce((sum, a) => sum + a.duration, 0);
+            const morePill = document.createElement('div');
+            morePill.className = 'hourly-pill-more';
+            morePill.textContent = `+${moreCount} app${moreCount > 1 ? 's' : ''} ${formatDuration(moreDur)}`;
+            pillsContainer.appendChild(morePill);
+          }
+        }
+      }
+
+      const detailsContent = groupEl.querySelector('.hourly-details-content');
+      if (detailsContent) {
+        renderHourlyWindows(detailsContent, windows, totalDuration, iconsMap);
+      }
+    }
+  });
+}
+
+function toggleHourExpansion(hour, groupEl) {
+  const wrapper = groupEl.querySelector('.hourly-details-wrapper');
+  const row = groupEl.querySelector('.hourly-row');
+  if (!wrapper || !row) return;
+  const isExpanded = wrapper.classList.contains('expanded');
+
+  if (isExpanded) {
+    wrapper.classList.remove('expanded');
+    row.classList.remove('expanded');
+    row.setAttribute('aria-expanded', 'false');
+    expandedHours.delete(hour);
+  } else {
+    wrapper.classList.add('expanded');
+    row.classList.add('expanded');
+    row.setAttribute('aria-expanded', 'true');
+    expandedHours.add(hour);
+  }
+}
+
+/**
+ * Renders website / window activity table directly inside expanded hourly row.
+ * Includes WINDOW / WEBSITE and ACTIVE TIME headers, favicon/icon, progress bar, and duration.
+ */
+function renderHourlyWindows(containerEl, windowList, hourlyTotalDuration, iconsMap) {
+  containerEl.innerHTML = '';
+
+  const tableCard = document.createElement('div');
+  tableCard.className = 'hourly-table-card';
+
+  // Table Header
+  const headerEl = document.createElement('div');
+  headerEl.className = 'hourly-table-header';
+  headerEl.innerHTML = `
+    <span class="table-col-name">WINDOW / WEBSITE</span>
+    <span class="table-col-time">ACTIVE TIME</span>
+  `;
+  tableCard.appendChild(headerEl);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'hourly-table-body';
+
+  const windows = Array.isArray(windowList) ? windowList : [];
+
+  if (windows.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'hourly-empty-message';
+    emptyEl.textContent = 'No activity recorded for this hour';
+    bodyEl.appendChild(emptyEl);
+    tableCard.appendChild(bodyEl);
+    containerEl.appendChild(tableCard);
+    return;
+  }
+
+  // Find max duration in this hour for relative progress scaling
+  const maxWinDuration = windows[0]?.duration || 1;
+
+  windows.forEach((win, idx) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'hourly-window-row';
+
+    // Left Column: Website / Window icon + Title
+    const titleCol = document.createElement('div');
+    titleCol.className = 'window-title-col';
+    titleCol.title = win.rawTitle || win.displayTitle;
+
+    const iconEl = document.createElement('span');
+    iconEl.className = 'window-icon';
+    iconEl.innerHTML = getWindowIconSvg(win.displayTitle, win.appName);
+    titleCol.appendChild(iconEl);
+
+    const titleTextEl = document.createElement('span');
+    titleTextEl.className = 'window-title-text';
+    titleTextEl.textContent = win.displayTitle;
+    titleTextEl.tabIndex = 0;
+    titleTextEl.setAttribute('role', 'text');
+    titleTextEl.setAttribute('aria-label', win.rawTitle || win.displayTitle);
+    titleCol.appendChild(titleTextEl);
+
+    rowEl.appendChild(titleCol);
+
+    // Center Column: Light blue progress bar
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'window-progress-container';
+
+    const progressFill = document.createElement('div');
+    progressFill.className = 'window-progress-fill';
+    const pct = maxWinDuration > 0
+      ? Math.max(3, Math.min(100, Math.round((win.duration / maxWinDuration) * 72)))
+      : 0;
+    progressFill.style.width = '0%';
+    progressContainer.appendChild(progressFill);
+    rowEl.appendChild(progressContainer);
+
+    // Right Column: Duration
+    const durationEl = document.createElement('div');
+    durationEl.className = 'window-duration';
+    durationEl.textContent = formatDuration(win.duration);
+    rowEl.appendChild(durationEl);
+
+    bodyEl.appendChild(rowEl);
+
+    setTimeout(() => {
+      progressFill.style.width = `${pct}%`;
+    }, 40 + idx * 20);
+  });
+
+  tableCard.appendChild(bodyEl);
+  containerEl.appendChild(tableCard);
+}
+
+// Preserved for backward-compatibility with tests
+function renderHourlyApps(containerEl, appList, hourlyTotalDuration, iconsMap) {
+  containerEl.innerHTML = '';
+
+  if (!appList || appList.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'hourly-empty-message';
+    emptyEl.textContent = 'No activity recorded';
+    containerEl.appendChild(emptyEl);
+    return;
+  }
+
+  appList.forEach(app => {
+    const appRow = document.createElement('div');
+    appRow.className = 'hourly-app-row';
+
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'hourly-app-icon-container';
+    const lowerName = app.name.toLowerCase();
+    if (iconsMap && iconsMap[lowerName]) {
+      const img = document.createElement('img');
+      img.className = 'app-img-icon';
+      img.src = iconsMap[lowerName];
+      iconContainer.appendChild(img);
+    } else {
+      iconContainer.innerHTML = getAppIconSvg(app.name);
+    }
+    appRow.appendChild(iconContainer);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'hourly-app-name';
+    nameEl.textContent = app.name;
+    nameEl.title = app.name;
+    nameEl.tabIndex = 0;
+    nameEl.setAttribute('role', 'text');
+    nameEl.setAttribute('aria-label', app.name);
+    appRow.appendChild(nameEl);
+
+    const progContainer = document.createElement('div');
+    progContainer.className = 'hourly-app-progress-container';
+    const progBar = document.createElement('div');
+    progBar.className = 'hourly-app-progress-bar';
+    progBar.style.backgroundColor = getAppColor(app.name);
+    const pct = hourlyTotalDuration > 0
+      ? Math.min(100, Math.round((app.duration / hourlyTotalDuration) * 100))
+      : 0;
+    progBar.style.width = '0%';
+    progContainer.appendChild(progBar);
+    appRow.appendChild(progContainer);
+
+    const durationEl = document.createElement('div');
+    durationEl.className = 'hourly-app-duration';
+    durationEl.textContent = formatDuration(app.duration);
+    appRow.appendChild(durationEl);
+
+    containerEl.appendChild(appRow);
+
+    setTimeout(() => {
+      progBar.style.width = `${pct}%`;
+    }, 40);
+  });
+}
+
+// Legacy app-wise reconciler preserved for compatibility
 function reconcileRows(sortedApps, maxDuration, iconsMap) {
   const currentAppNames = new Set(sortedApps.map(app => app.name));
   
@@ -1061,22 +1808,136 @@ function reconcileRows(sortedApps, maxDuration, iconsMap) {
 
 // ================= THEME AND VISUALS =================
 function getAppColor(appName) {
-  const name = appName.toLowerCase();
-  if (name.includes('chrome')) return '#2dd4bf'; // Teal
-  if (name.includes('code') || name.includes('vscode')) return '#3b82f6'; // Blue
-  if (name.includes('word') || name.includes('winword')) return '#1d4ed8'; // Microsoft Word Blue
+  const name = (appName || '').toLowerCase();
+  if (name.includes('code') || name.includes('vscode') || name.includes('antigravity')) return '#38bdf8'; // Sky Blue
+  if (name.includes('chrome')) return '#fb923c'; // Warm Orange
+  if (name.includes('teams')) return '#a855f7'; // Teams Purple
+  if (name.includes('edge') || name.includes('msedge')) return '#34d399'; // Mint Green
+  if (name.includes('word') || name.includes('winword')) return '#2563eb'; // Word Blue
   if (name.includes('excel')) return '#10b981'; // Excel Green
-  if (name.includes('slack')) return '#a855f7'; // Slack Purple
+  if (name.includes('slack')) return '#ec4899'; // Slack Magenta
   if (name.includes('spotify')) return '#22c55e'; // Spotify Green
   if (name.includes('notepad')) return '#eab308'; // Notepad Yellow
-  if (name.includes('edge') || name.includes('msedge')) return '#06b6d4'; // Edge Cyan
   if (name.includes('firefox')) return '#f97316'; // Firefox Orange
   if (name.includes('terminal') || name.includes('cmd') || name.includes('powershell')) return '#10b981'; // Terminal Green
-  return '#9ca3af'; // Fallback Gray
+  return '#64748b'; // Fallback Slate Gray
+}
+
+function getWindowIconSvg(title = '', appName = '') {
+  const t = (title || '').toLowerCase();
+  const a = (appName || '').toLowerCase();
+
+  // 1. Google Docs
+  if (t.includes('docs.google.com') || t.includes('google docs')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="2" width="18" height="20" rx="3" fill="#4285F4"/>
+        <path d="M7 8h10M7 12h10M7 16h6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    `;
+  }
+
+  // 2. YouTube
+  if (t.includes('youtube.com') || t.includes('youtube')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="4" width="20" height="16" rx="4" fill="#FF0000"/>
+        <polygon points="10,8 16,12 10,16" fill="#FFFFFF"/>
+      </svg>
+    `;
+  }
+
+  // 3. Notion
+  if (t.includes('notion.so') || t.includes('notion')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="2" width="20" height="20" rx="4" fill="#18181B" stroke="rgba(255,255,255,0.2)"/>
+        <path d="M7 6v12l4-2V6L7 6zm5 0v9l5-9v12h-3V9l-2 4.5V6h0z" fill="#FFFFFF"/>
+      </svg>
+    `;
+  }
+
+  // 4. Gmail
+  if (t.includes('mail.google.com') || t.includes('gmail')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 6v12a2 2 0 0 0 2 2h2V10l4 3 4-3v10h2a2 2 0 0 0 2-2V6a2 2 0 0 0-3.2-1.6L12 9 7.2 4.4A2 2 0 0 0 4 6z" fill="#EA4335"/>
+        <path d="M4 6.5l8 6 8-6V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v.5z" fill="#C5221F"/>
+        <path d="M8 20h8V10l-4 3-4-3v10z" fill="#4285F4"/>
+      </svg>
+    `;
+  }
+
+  // 5. Stack Overflow
+  if (t.includes('stackoverflow.com') || t.includes('stack overflow')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="19" width="18" height="2" rx="1" fill="#F48024"/>
+        <path d="M4 14.5l16 0" stroke="#F48024" stroke-width="2" stroke-linecap="round"/>
+        <path d="M5.5 10l14.5 3" stroke="#F48024" stroke-width="2" stroke-linecap="round"/>
+        <path d="M8 6l13 6" stroke="#F48024" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    `;
+  }
+
+  // 6. GitHub
+  if (t.includes('github.com') || t.includes('github')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" fill="#FFFFFF"/>
+      </svg>
+    `;
+  }
+
+  // 7. Microsoft Teams
+  if (t.includes('teams') || a.includes('teams')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="3" width="18" height="18" rx="4" fill="#5059C9"/>
+        <path d="M12 7v10M8 10h8" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    `;
+  }
+
+  // 8. If app has specific icon from getAppIconSvg
+  if (a.includes('chrome') && !t.includes('.')) {
+    return getAppIconSvg('chrome');
+  }
+  if (a.includes('code') || a.includes('vscode') || t.includes('.js') || t.includes('.ts') || t.includes('.json')) {
+    return getAppIconSvg('code');
+  }
+  if (a.includes('word')) {
+    return getAppIconSvg('word');
+  }
+  if (a.includes('excel')) {
+    return getAppIconSvg('excel');
+  }
+  if (a.includes('slack')) {
+    return getAppIconSvg('slack');
+  }
+  if (a.includes('edge')) {
+    return getAppIconSvg('edge');
+  }
+  if (a.includes('terminal') || a.includes('powershell') || a.includes('cmd')) {
+    return getAppIconSvg('terminal');
+  }
+
+  // Fallback web / window icon
+  if (t.includes('.com') || t.includes('.org') || t.includes('.net') || t.includes('.io') || t.includes('http')) {
+    return `
+      <svg class="window-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" stroke="#38bdf8" stroke-width="1.8"/>
+        <ellipse cx="12" cy="12" rx="4" ry="10" stroke="#38bdf8" stroke-width="1.8"/>
+        <line x1="2" y1="12" x2="22" y2="12" stroke="#38bdf8" stroke-width="1.8"/>
+      </svg>
+    `;
+  }
+
+  return getAppIconSvg(appName || title);
 }
 
 function getAppIconSvg(appName) {
-  const name = appName.toLowerCase();
+  const name = (appName || '').toLowerCase();
   
   if (name.includes('chrome')) {
     return `
@@ -1091,7 +1952,7 @@ function getAppIconSvg(appName) {
     `;
   }
   
-  if (name.includes('code') || name.includes('vscode')) {
+  if (name.includes('code') || name.includes('vscode') || name.includes('antigravity')) {
     return `
       <svg class="app-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M1.3 7.8L6.4 12 .5 16.5c-.3.2-.5-.1-.4-.4l3-9.5c0-.4.7-.6.7-.2l6.6 5.6-6.6 5.6c-.2.2-.5.1-.6-.1l-2.6-9.7c0-.2.2-.4.4-.4z" fill="#23A9F2"/>
@@ -1100,6 +1961,15 @@ function getAppIconSvg(appName) {
         <path d="M17.5 2.1l5.8 4.2c.4.3.4.9 0 1.2l-5.8 4.2V2.1z" fill="#1F9CF0"/>
         <path d="M17.5 12.3l5.8 4.2c.4.3.4.9 0 1.2l-5.8 4.2v-9.6z" fill="#1F9CF0"/>
         <path d="M7.4 12l10.1 7.8V4.2L7.4 12z" fill="#0066B3"/>
+      </svg>
+    `;
+  }
+
+  if (name.includes('teams')) {
+    return `
+      <svg class="app-svg-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="3" width="18" height="18" rx="4" fill="#5059C9"/>
+        <path d="M12 7v10M8 10h8" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
       </svg>
     `;
   }
@@ -1206,14 +2076,32 @@ if (typeof module !== 'undefined' && module.exports) {
     isWeekend,
     formatDuration,
     formatShortHours,
+    formatHour12,
+    formatHourRange,
+    parse12HourTimeToHours,
+    computeHourlyActivity,
+    formatWindowOrWebsiteTitle,
+    getWindowIconSvg,
+    getAppColor,
+    getAppIconSvg,
+    reconcileHourlyRows,
+    renderHourlyApps,
+    renderHourlyWindows,
+    toggleHourExpansion,
+    getExpandedHours: () => expandedHours,
+    setExpandedHours: (set) => { expandedHours = set; },
     escapeHtml,
     getDailyActiveTimeColor,
     getShowWeekends: () => showWeekends,
     setShowWeekends: (val) => { showWeekends = Boolean(val); },
     updateWeekendToggleVisibility,
     updateHistoryLegendVisibility,
+    updateFooterLabel,
     renderHistoryView,
-    renderActivities
+    renderAppView,
+    renderHourlyView: renderAppView,
+    renderActivities,
+    reconcileRows
   };
 }
 

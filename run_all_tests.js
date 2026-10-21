@@ -90,6 +90,12 @@ const TEST_SUITES = [
     file: 'test_daily_progress_target_suite.js',
     runner: 'node',
     description: 'Fixed 9h 30m (570m) progress target, loggedActiveMinutes / 570 * 100, visual capping at 100%'
+  },
+  {
+    name: '15. Dashboard Hour-Wise Activity & Dropdowns Suite',
+    file: 'test_hourly_activity_suite.js',
+    runner: 'node',
+    description: 'Hourly slots, exact interval calculation, proportional multi-hour splits, independent expand/collapse'
   }
 ];
 
