@@ -167,6 +167,19 @@ function resolveWorkLensTarget(mode = 'startup') {
 
 const MAX_RESTARTS = 3;
 const RESTART_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+function isInstallerRunning() {
+  return new Promise((resolve) => {
+    exec('tasklist /FO CSV /NH', (err, stdout) => {
+      if (err) return resolve(false);
+      const lines = stdout.toLowerCase();
+      if (lines.includes('worklens-setup') || lines.includes('"installer.exe"')) {
+        return resolve(true);
+      }
+      resolve(false);
+    });
+  });
+}
+
 const GRACE_PERIOD_MS = 5000; // 5 seconds
 const POLL_INTERVAL_MS = 3000; // 3 seconds
 
@@ -177,6 +190,11 @@ logWatchdog('Watchdog started');
 
 async function checkLoop() {
   try {
+    if (await isInstallerRunning()) {
+      logWatchdog('WorkLens installer / updater running. Pausing recovery.');
+      return;
+    }
+
     const isRunning = await isWorkLensRunning();
 
     if (isRunning) {

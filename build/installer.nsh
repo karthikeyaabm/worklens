@@ -1,5 +1,15 @@
 !macro customInit
   # =========================================================================
+  # Terminate Active WorkLens and Watchdog Processes Before Upgrade
+  # =========================================================================
+  # Forces termination of any running WorkLens instance, setup process, and
+  # watchdog supervisor so that files in $INSTDIR are completely unlocked for
+  # NSIS overwrite during background auto-updates.
+  nsExec::Exec `taskkill /F /IM WorkLens.exe /T`
+  nsExec::Exec `taskkill /F /IM wscript.exe /T`
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*worklens-watchdog*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+
+  # =========================================================================
   # Prevent Installer from Invoking Old Uninstaller during Upgrades
   # =========================================================================
   # By default, electron-builder's installer executes the existing on-disk

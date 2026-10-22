@@ -898,6 +898,16 @@ WorkLens Watchdog (Hidden PowerShell / VBS)
     *   On Windows login, the app launches with `--startup` to suppress unwarranted crash notifications.
     *   `--recovered` is exclusively reserved for mid-session crash and Task Manager termination recovery.
 
+### 6. Auto-Update & Installer Process Lifecycle Coordination
+*   **Zero-Collision NSIS Handover (`customInit` in `build/installer.nsh`):**
+    *   When an auto-update or manual setup runs, `customInit` executes `taskkill /F /IM WorkLens.exe /T` and terminates `wscript.exe` / `worklens-watchdog.ps1` before extraction begins. This guarantees zero file-lock errors on `$INSTDIR` binaries (`WorkLens.exe`, DLLs, resources) during in-place upgrades.
+*   **Clean Session Flush without Intercepting Exit (`main.js`):**
+    *   When `update-downloaded` triggers, WorkLens flushes all pending closed sessions synchronously, sets `isQuitting = true` and `finalSyncDone = true`, stops input/location hooks, and notifies watchdog with `{ intentionalShutdown: true, reason: 'auto-update' }`.
+    *   Because `finalSyncDone` is already `true`, the subsequent `before-quit` event does NOT call `event.preventDefault()`, allowing Electron to terminate instantaneously when `autoUpdater.quitAndInstall()` takes control.
+*   **Watchdog Installer Awareness (`Test-IsInstallerRunning`):**
+    *   Both PowerShell and Node.js watchdog monitors actively inspect the process table for active `WorkLens-Setup*.exe` or `installer.exe` processes.
+    *   If an installer is detected, the watchdog enters a 10-second pause and skips recovery restarts, preventing premature app respawns while NSIS is in the middle of extracting new files.
+
 ---
 
 ## 13. Configuration & Environment

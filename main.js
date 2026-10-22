@@ -2521,13 +2521,41 @@ if (gotTheLock) {
       log.info(`[AutoUpdate] Download progress: ${Math.round(progress.percent)}%`);
     });
 
-    autoUpdater.on('update-downloaded', (info) => {
+    autoUpdater.on('update-downloaded', async (info) => {
       log.info(`[AutoUpdate] Update downloaded: v${info.version}. Installing now...`);
       // Signal watchdog this is a controlled updater restart
       updateWatchdogState({ intentionalShutdown: true, reason: 'auto-update', timestamp: Date.now() });
-      // Closes the app and installs the new version immediately.
-      // currentRecord is already being flushed by the existing 'before-quit' handler.
-      autoUpdater.quitAndInstall();
+
+      // Mark flags so that before-quit does NOT intercept with event.preventDefault()
+      isQuitting = true;
+      finalSyncDone = true;
+
+      // Stop services gracefully before handing off execution to installer
+      stopInactivityCheck();
+      if (inactivityPopup && !inactivityPopup.isDestroyed()) {
+        inactivityPopup.destroy();
+      }
+      try {
+        uIOhook.stop();
+      } catch (_) {}
+      locationService.stopLocationService();
+      if (midnightTimer) {
+        clearTimeout(midnightTimer);
+        midnightTimer = null;
+      }
+      clearInterval(trackingInterval);
+
+      // Flush final session data
+      try {
+        closeCurrentSession(new Date());
+        const syncTimeout = new Promise(resolve => setTimeout(resolve, 2000));
+        await Promise.race([flushPendingClosedSessions(), syncTimeout]);
+      } catch (flushErr) {
+        log.error('[AutoUpdate] Error during pre-update session flush:', flushErr);
+      }
+
+      // Closes the app cleanly and launches the new installer
+      autoUpdater.quitAndInstall(false, true);
     });
 
     try {

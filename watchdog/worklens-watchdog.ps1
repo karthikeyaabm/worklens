@@ -213,6 +213,12 @@ function Clear-IntentionalShutdown {
     }
 }
 
+# 10. Check if an installer / updater process is running
+function Test-IsInstallerRunning {
+    $installers = Get-Process | Where-Object { $_.ProcessName -like '*WorkLens-Setup*' -or $_.ProcessName -eq 'installer' }
+    return ($installers -and $installers.Count -gt 0)
+}
+
 # ==========================================
 # MAIN WATCHDOG SUPERVISION LOOP
 # ==========================================
@@ -240,8 +246,10 @@ if ($initialRunning) {
 } else {
     Write-WatchdogLog "WorkLens process not detected" "INFO"
     
-    # Check if this is a fresh boot / login where WorkLens should start
-    if (-not (Test-IsIntentionalShutdown)) {
+    # Check if an installer / updater is running or fresh boot
+    if (Test-IsInstallerRunning) {
+        Write-WatchdogLog "WorkLens installer / updater running on startup. Awaiting installer completion." "INFO"
+    } elseif (-not (Test-IsIntentionalShutdown)) {
         Clear-IntentionalShutdown
         Write-WatchdogLog "Starting WorkLens on initial watchdog startup..." "INFO"
         $target = Get-WorkLensTarget -Mode "startup"
@@ -264,6 +272,13 @@ if ($initialRunning) {
 
 while ($true) {
     Start-Sleep -Seconds $POLL_INTERVAL_SECONDS
+
+    # Guard: Pause watchdog when installer or updater is executing
+    if (Test-IsInstallerRunning) {
+        Write-WatchdogLog "WorkLens installer / updater process detected running. Pausing watchdog recovery." "INFO"
+        Start-Sleep -Seconds 10
+        continue
+    }
 
     $isRunning = Test-IsWorkLensRunning
 
