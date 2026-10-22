@@ -771,6 +771,15 @@ const STANDARD_TARGET_HOURS = 8;
 const STANDARD_TARGET_MINUTES = STANDARD_TARGET_HOURS * 60; // 480 minutes
 const STANDARD_TARGET_SECONDS = STANDARD_TARGET_MINUTES * 60; // 28,800 seconds
 
+const REDMINE_CATEGORY_COLORS = {
+  'Big Late': '#FF1744',
+  'Early Out': '#FFD600',
+  'Leave': '#8B5CF6',
+  'Holiday': '#FF4081',
+  'Non Productive - ABM Function, Activity': '#2979FF',
+  'Working': '#00E676'
+};
+
 /**
  * Calculates progress percentages for daily progress bars based on the fixed 9h 30m (570 minutes) reference scale:
  * Both the green bar (actual tracked active time) and yellow bar (8-hour target / special hours)
@@ -1286,7 +1295,19 @@ function renderHistoryView(rawData) {
       }
     }
 
-    const { regularPercentage, yellowPercentage } = calculateDailyProgressPercentages(regularDuration, yellowDuration);
+    // Determine actual daily Redmine logged duration
+    let redmineDuration = 0;
+    if (day.redmineDuration !== undefined && Number(day.redmineDuration) > 0) {
+      redmineDuration = Number(day.redmineDuration);
+    } else if (day.redmineTotalSeconds !== undefined && Number(day.redmineTotalSeconds) > 0) {
+      redmineDuration = Number(day.redmineTotalSeconds);
+    } else if (day.redmineWorkingSeconds !== undefined && Number(day.redmineWorkingSeconds) > 0) {
+      redmineDuration = Number(day.redmineWorkingSeconds) + yellowDuration;
+    } else if (yellowDuration > 0) {
+      redmineDuration = yellowDuration;
+    }
+
+    const { regularPercentage, yellowPercentage } = calculateDailyProgressPercentages(regularDuration, redmineDuration);
     const formattedDuration = totalDuration > 0 ? formatDuration(totalDuration) : '0m';
 
     // Left column: Calendar icon
@@ -1336,6 +1357,7 @@ function renderHistoryView(rawData) {
     dateInfo.appendChild(dateHeader);
 
     // Progress bar row: stacked vertical column of tracks + right duration
+    // Preserves existing workstation System Activity calculations & status colors (<7h: Red, 7h-7h30m: Blue, >7h30m: Green)
     const color = getDailyActiveTimeColor(totalDuration);
 
     const barRow = document.createElement('div');
@@ -1344,9 +1366,9 @@ function renderHistoryView(rawData) {
     const trackWrapper = document.createElement('div');
     trackWrapper.className = 'history-track-wrapper';
 
-    // Track 1: Regular progress bar (workstation active time)
+    // Track 1: Regular progress bar (workstation active time) - strictly unmodified
     const regTrack = document.createElement('div');
-    regTrack.className = 'history-progress-container history-track-regular' + (yellowDuration === 0 ? ' history-track-full' : '');
+    regTrack.className = 'history-progress-container history-track-regular';
     const progressBar = document.createElement('div');
     progressBar.className = `history-progress-bar history-segment-regular color-${color} progress-${color}`;
     progressBar.dataset.color = color;
@@ -1355,36 +1377,91 @@ function renderHistoryView(rawData) {
 
     trackWrapper.appendChild(regTrack);
 
-    // Track 2: Yellow progress bar (Special Hours) stacked vertically below Track 1 if yellowDuration > 0
+    // Track 2: Redmine API Working Hours (Neon Green #00E676) / Category Segments - ALWAYS visible
+    const yelTrack = document.createElement('div');
+    yelTrack.className = 'history-progress-container history-track-yellow history-track-redmine';
+    yelTrack.style.display = 'flex';
+    yelTrack.style.overflow = 'hidden';
+    yelTrack.style.borderRadius = '2px';
+
     let yellowBar = null;
-    if (yellowDuration > 0) {
-      const yelTrack = document.createElement('div');
-      yelTrack.className = 'history-progress-container history-track-yellow';
+    const rawCategories = (Array.isArray(day.redmineCategories) && day.redmineCategories.length > 0)
+      ? day.redmineCategories
+      : null;
+
+    // Ensure Working (regular active hours) renders FIRST, extra/special hours render at the END
+    const categories = rawCategories ? [...rawCategories].sort((a, b) => {
+      if (a.name === 'Working' && b.name !== 'Working') return -1;
+      if (b.name === 'Working' && a.name !== 'Working') return 1;
+      return 0;
+    }) : null;
+
+    if (categories && categories.length > 1) {
+      categories.forEach((cat, cIdx) => {
+        const seg = document.createElement('div');
+        const segColor = cat.color || REDMINE_CATEGORY_COLORS[cat.name] || '#00E676';
+        const isYellow = cat.name !== 'Working';
+        seg.className = `history-progress-bar-yellow history-segment-working${isYellow ? ' history-segment-yellow' : ''} cat-${cIdx}`;
+        seg.dataset.color = (cat.name === 'Working' ? 'working' : 'yellow');
+        seg.dataset.category = cat.name;
+        seg.style.backgroundColor = segColor;
+        seg.style.height = '100%';
+        seg.style.flexShrink = '0';
+        const catSeconds = Number(cat.seconds) || (Number(cat.hours) * 3600) || 0;
+        const segPct = Math.min(100, Math.max(0, (catSeconds / DAILY_REFERENCE_SECONDS) * 100));
+        seg.style.width = '0%';
+        yelTrack.appendChild(seg);
+        if (!yellowBar) yellowBar = seg;
+        setTimeout(() => {
+          seg.style.width = `${segPct}%`;
+        }, 50);
+      });
+    } else {
+      let barColor = '#00E676'; // Neon Green default for Working
+      let catName = 'Working';
+      if (categories && categories.length === 1) {
+        barColor = categories[0].color || REDMINE_CATEGORY_COLORS[categories[0].name] || '#00E676';
+        catName = categories[0].name || 'Working';
+      } else if (Array.isArray(day.yellowCategories) && day.yellowCategories.length > 0) {
+        catName = day.yellowCategories[0].name || 'Working';
+        barColor = REDMINE_CATEGORY_COLORS[catName] || '#00E676';
+      }
+
+      const isYellowCat = (redmineDuration > 0 || yellowDuration > 0);
       yellowBar = document.createElement('div');
-      yellowBar.className = 'history-progress-bar-yellow history-segment-yellow';
-      yellowBar.dataset.color = 'yellow';
+      yellowBar.className = 'history-progress-bar-yellow history-segment-working' + (isYellowCat ? ' history-segment-yellow' : '') + (redmineDuration === 0 ? ' zero' : '');
+      yellowBar.dataset.color = (catName === 'Working' ? 'working' : 'yellow');
+      yellowBar.dataset.category = catName;
+      yellowBar.style.backgroundColor = barColor;
       yellowBar.style.width = '0%';
+      yellowBar.style.height = '100%';
+      yellowBar.style.borderRadius = '2px';
+      yellowBar.style.flexShrink = '0';
       yelTrack.appendChild(yellowBar);
-      trackWrapper.appendChild(yelTrack);
+
+      if (redmineDuration > 0) {
+        setTimeout(() => {
+          yellowBar.style.width = `${yellowPercentage}%`;
+        }, 50);
+      }
     }
 
+    trackWrapper.appendChild(yelTrack);
     barRow.appendChild(trackWrapper);
 
-    // Right column: Separate durations for each progress bar (no total sum)
+    // Right column: Separate durations for each progress bar (always 2 bars layout)
     const durationCol = document.createElement('div');
-    durationCol.className = 'history-duration-col' + (yellowDuration > 0 ? ' has-two-bars' : '');
+    durationCol.className = 'history-duration-col has-two-bars';
 
     const regDurationEl = document.createElement('div');
     regDurationEl.className = 'history-duration history-duration-regular' + (regularDuration === 0 ? ' zero' : '');
     regDurationEl.textContent = regularDuration > 0 ? formatShortHours(regularDuration / 3600) : '0m';
     durationCol.appendChild(regDurationEl);
 
-    if (yellowDuration > 0) {
-      const yelDurationEl = document.createElement('div');
-      yelDurationEl.className = 'history-duration history-duration-yellow';
-      yelDurationEl.textContent = formatShortHours(yellowDuration / 3600);
-      durationCol.appendChild(yelDurationEl);
-    }
+    const redmineDurationEl = document.createElement('div');
+    redmineDurationEl.className = 'history-duration history-duration-yellow history-duration-working' + (redmineDuration === 0 ? ' zero' : '');
+    redmineDurationEl.textContent = redmineDuration > 0 ? formatShortHours(redmineDuration / 3600) : '0h';
+    durationCol.appendChild(redmineDurationEl);
 
     barRow.appendChild(durationCol);
 
@@ -1399,9 +1476,6 @@ function renderHistoryView(rawData) {
 
     setTimeout(() => {
       progressBar.style.width = `${regularPercentage}%`;
-      if (yellowBar) {
-        yellowBar.style.width = `${yellowPercentage}%`;
-      }
     }, 50);
   });
 
@@ -2367,7 +2441,8 @@ if (typeof module !== 'undefined' && module.exports) {
     selectActivityView,
     updateViewToggleVisibility,
     updateViewToggleButtons,
-    clearRenderedActivityRows
+    clearRenderedActivityRows,
+    REDMINE_CATEGORY_COLORS
   };
 }
 

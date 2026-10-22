@@ -10,6 +10,15 @@ const YELLOW_CATEGORIES = new Set([
   'Non Productive - ABM Function'
 ]);
 
+const REDMINE_CATEGORY_COLORS = {
+  'Big Late': '#FF1744',
+  'Early Out': '#FFD600',
+  'Leave': '#8B5CF6',
+  'Holiday': '#FF4081',
+  'Non Productive - ABM Function, Activity': '#2979FF',
+  'Working': '#00E676'
+};
+
 /**
  * Standard project 90 (ABM Org Team) issue IDs for yellow categories.
  * In Redmine's /time_entries.json, issue.subject is omitted and entries only have issue.id.
@@ -119,6 +128,26 @@ function getEntryYellowCategory(entry) {
 }
 
 /**
+ * Classifies an entry into one of the 6 official dashboard categories:
+ * 1. Big Late (#FF1744)
+ * 2. Early Out (#FFD600)
+ * 3. Leave (#8B5CF6)
+ * 4. Holiday (#FF4081)
+ * 5. Non Productive - ABM Function, Activity (#2979FF)
+ * 6. Working (Redmine API logged hours) (#00E676)
+ */
+function getEntryCategory(entry) {
+  const yellowCat = getEntryYellowCategory(entry);
+  if (yellowCat) {
+    if (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function') {
+      return 'Non Productive - ABM Function, Activity';
+    }
+    return yellowCat;
+  }
+  return 'Working';
+}
+
+/**
  * Formats decimal hours into clean compact text:
  * - 1 -> "1h"
  * - 2 -> "2h"
@@ -152,9 +181,14 @@ function aggregateRedmineTimeEntries(timeEntries, validDateSet) {
     yellowHoursByDate: {},
     yellowCatsByDate: {},
     excludedHoursByDate: {},
+    workingHoursByDate: {},
+    allRedmineHoursByDate: {},
+    categoriesByDate: {},
     totalYellowHours: 0,
     totalRegularHours: 0,
     totalExcludedHours: 0,
+    totalWorkingHours: 0,
+    totalAllRedmineHours: 0,
     processedCount: 0,
     dedupedCount: 0,
     excludedCount: 0
@@ -166,6 +200,9 @@ function aggregateRedmineTimeEntries(timeEntries, validDateSet) {
       result.yellowHoursByDate[ds] = 0;
       result.yellowCatsByDate[ds] = {};
       result.excludedHoursByDate[ds] = 0;
+      result.workingHoursByDate[ds] = 0;
+      result.allRedmineHoursByDate[ds] = 0;
+      result.categoriesByDate[ds] = {};
     });
   }
 
@@ -201,6 +238,9 @@ function aggregateRedmineTimeEntries(timeEntries, validDateSet) {
       result.yellowHoursByDate[dStr] = 0;
       result.yellowCatsByDate[dStr] = {};
       result.excludedHoursByDate[dStr] = 0;
+      result.workingHoursByDate[dStr] = 0;
+      result.allRedmineHoursByDate[dStr] = 0;
+      result.categoriesByDate[dStr] = {};
     }
 
     const hours = Number(entry.hours) || 0;
@@ -213,13 +253,25 @@ function aggregateRedmineTimeEntries(timeEntries, validDateSet) {
       result.yellowHoursByDate[dStr] += hours;
       result.yellowCatsByDate[dStr][yellowCat] = (result.yellowCatsByDate[dStr][yellowCat] || 0) + hours;
       result.totalYellowHours += hours;
+
+      const normCat = (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function')
+        ? 'Non Productive - ABM Function, Activity'
+        : yellowCat;
+      result.categoriesByDate[dStr][normCat] = (result.categoriesByDate[dStr][normCat] || 0) + hours;
     } else {
-      // Unapproved Redmine entry: excluded from additional Redmine hours
+      // General Redmine time entries (Development, Project Management, Bugfix, etc.) -> Working
+      result.workingHoursByDate[dStr] += hours;
+      result.totalWorkingHours += hours;
+      result.categoriesByDate[dStr]['Working'] = (result.categoriesByDate[dStr]['Working'] || 0) + hours;
+
+      // Preserved for backwards compatibility with tests asserting excluded tracking
       result.excludedHoursByDate[dStr] += hours;
       result.totalExcludedHours += hours;
       result.excludedCount++;
-      // regularHoursByDate[dStr] remains 0.0 — unapproved entries contribute zero additional hours
     }
+
+    result.allRedmineHoursByDate[dStr] = (result.allRedmineHoursByDate[dStr] || 0) + hours;
+    result.totalAllRedmineHours += hours;
   }
 
   return result;
@@ -254,19 +306,22 @@ function buildCombinedHistoricalView({
     // 1. Existing WorkLens Active Time (seconds) - authoritative tracking source, remains unchanged
     const activeSeconds = dailyDurations[ds] || 0;
 
-    // 2. Only approved five categories contribute additional yellow hours
+    // 2. Redmine time entries aggregation
     const redmineYelHours = redmineAggregation ? (redmineAggregation.yellowHoursByDate[ds] || 0) : 0;
-    const yellowDurationSeconds = Math.round(redmineYelHours * 3600);
+    const redmineWorkHours = redmineAggregation ? (redmineAggregation.workingHoursByDate[ds] || 0) : 0;
+    const redmineTotalHours = redmineAggregation ? (redmineAggregation.allRedmineHoursByDate[ds] || (redmineYelHours + redmineWorkHours)) : 0;
 
-    // 3. Regular Redmine hours are excluded from dashboard totals
-    // regularDuration is strictly original WorkLens Active Time
-    // displayTotal = originalWorkLensActiveTime + yellowRedmineHours
+    const yellowDurationSeconds = Math.round(redmineYelHours * 3600);
+    const redmineWorkingSeconds = Math.round(redmineWorkHours * 3600);
+    const redmineTotalSeconds = Math.round(redmineTotalHours * 3600);
+
+    // 3. Regular duration is strictly original WorkLens Active Time
     const regularDurationSeconds = activeSeconds;
     const totalDisplaySeconds = regularDurationSeconds + yellowDurationSeconds;
 
     // Session time ranges
     const range = (dailyTimeRanges && dailyTimeRanges[ds]) || { earliestStart: null, latestEnd: null };
-    const hasData = Boolean(range.earliestStart || totalDisplaySeconds > 0);
+    const hasData = Boolean(range.earliestStart || totalDisplaySeconds > 0 || redmineTotalSeconds > 0);
     const startTime = range.earliestStart && formatTime12Fn ? formatTime12Fn(range.earliestStart) : '--';
     let endTime = '--';
     if (isToday) {
@@ -275,11 +330,33 @@ function buildCombinedHistoricalView({
       endTime = range.latestEnd && formatTime12Fn ? formatTime12Fn(range.latestEnd) : '--';
     }
 
-    // Yellow categories list for sub-row rendering
-    const catMap = (redmineAggregation && redmineAggregation.yellowCatsByDate[ds]) || {};
-    const yellowCategoriesList = Object.keys(catMap).map(catName => ({
+    // Categories breakdown list for UI rendering
+    const catMap = (redmineAggregation && redmineAggregation.categoriesByDate && redmineAggregation.categoriesByDate[ds]) || {};
+    const yelCatMap = (redmineAggregation && redmineAggregation.yellowCatsByDate && redmineAggregation.yellowCatsByDate[ds]) || {};
+    const mergedCats = { ...catMap, ...yelCatMap };
+
+    const redmineCategoriesList = Object.keys(mergedCats).map(catName => {
+      const normName = (catName === 'Non Productive - ABM Function, Activity' || catName === 'Non Productive - ABM Function')
+        ? 'Non Productive - ABM Function, Activity'
+        : catName;
+      const h = mergedCats[catName];
+      return {
+        name: normName,
+        rawName: catName,
+        hours: h,
+        seconds: Math.round(h * 3600),
+        color: REDMINE_CATEGORY_COLORS[normName] || REDMINE_CATEGORY_COLORS[catName] || '#00E676'
+      };
+    }).sort((a, b) => {
+      // Regular Working hours always appear first; extra hours appear at the end
+      if (a.name === 'Working' && b.name !== 'Working') return -1;
+      if (b.name === 'Working' && a.name !== 'Working') return 1;
+      return 0;
+    });
+
+    const yellowCategoriesList = Object.keys(yelCatMap).map(catName => ({
       name: catName,
-      hours: catMap[catName]
+      hours: yelCatMap[catName]
     }));
 
     const weekdayDisplay = d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
@@ -292,11 +369,17 @@ function buildCombinedHistoricalView({
       weekdayDisplay: weekdayDisplay,
       shortDate: shortDate,
       isToday: isToday,
-      duration: totalDisplaySeconds, // Combined daily total seconds = active + yellow
+      duration: totalDisplaySeconds, // Combined daily total seconds = active + yellow (backward compatible)
       activeSeconds: activeSeconds,
       regularDuration: regularDurationSeconds,
       yellowDuration: yellowDurationSeconds,
-      redmineRegularHours: 0, // Unapproved categories contribute zero additional hours
+      redmineWorkingHours: redmineWorkHours,
+      redmineWorkingSeconds: redmineWorkingSeconds,
+      redmineTotalHours: redmineTotalHours,
+      redmineTotalSeconds: redmineTotalSeconds,
+      redmineDuration: redmineTotalSeconds > 0 ? redmineTotalSeconds : yellowDurationSeconds,
+      redmineCategories: redmineCategoriesList,
+      redmineRegularHours: 0, // Unapproved categories contribute zero additional hours to System Activity
       redmineYellowHours: redmineYelHours,
       yellowCategories: yellowCategoriesList,
       startTime: startTime,
@@ -372,9 +455,11 @@ async function fetchRedmineTimeEntries(userId, fromDateStr, toDateStr, client) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     YELLOW_CATEGORIES,
+    REDMINE_CATEGORY_COLORS,
     KNOWN_YELLOW_ISSUE_IDS,
     parseSpentOnDateStr,
     getEntryYellowCategory,
+    getEntryCategory,
     formatShortHours,
     aggregateRedmineTimeEntries,
     buildCombinedHistoricalView,

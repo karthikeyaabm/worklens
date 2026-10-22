@@ -90,10 +90,22 @@
 
     <!-- History Legend for Last 7 / Last 30 Days -->
     <div id="history-legend" class="history-legend hidden" role="region" aria-label="Progress bar color legend">
-      <span class="legend-item"><span class="legend-dot dot-red">●</span> Red: under 7h</span>
-      <span class="legend-item"><span class="legend-dot dot-blue">●</span> Blue: 7h–7h 30m</span>
-      <span class="legend-item"><span class="legend-dot dot-green">●</span> Green: over 7h 30m</span>
-      <span class="legend-item"><span class="legend-dot dot-yellow">●</span> Yellow: Special Hours</span>
+      <div class="legend-row">
+        <span class="legend-group-title">System Activity:</span>
+        <span class="legend-item"><span class="legend-dot dot-red">●</span> &lt;7h</span>
+        <span class="legend-item"><span class="legend-dot dot-blue">●</span> 7h–7h 30m</span>
+        <span class="legend-item"><span class="legend-dot dot-green">●</span> &gt;7h 30m</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-group-title">Redmine Hours:</span>
+        <span class="legend-item"><span class="legend-dot dot-working">●</span> Working (Redmine Logged Hours)</span>
+        <span class="legend-item"><span class="legend-dot dot-big-late">●</span> Big Late</span>
+        <span class="legend-item"><span class="legend-dot dot-early-out">●</span> Early Out</span>
+        <span class="legend-item"><span class="legend-dot dot-leave">●</span> Leave</span>
+        <span class="legend-item"><span class="legend-dot dot-holiday">●</span> Holiday</span>
+        <span class="legend-item"><span class="legend-dot dot-non-productive">●</span> Non-Productive</span>
+        <span class="legend-item hidden-legacy-dot" style="display: none;"><span class="legend-dot dot-yellow">●</span> Yellow</span>
+      </div>
     </div>
 
     <!-- Footer -->

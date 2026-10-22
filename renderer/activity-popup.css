@@ -611,14 +611,22 @@ body {
   background: linear-gradient(90deg, #10b981, #34d399);
 }
 
-/* Yellow Segment for Redmine Special/Leave Categories */
+/* Working Progress Bar (Neon Green #00E676) & Redmine Category Segments */
 .history-segment-yellow,
-.history-progress-bar-yellow {
+.history-progress-bar-yellow,
+.history-segment-working,
+.history-progress-bar-working {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  background: #00E676;
+  box-shadow: 0 0 4px rgba(0, 230, 118, 0.35);
   transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
+}
+
+.history-progress-bar-yellow.zero,
+.history-segment-working.zero {
+  box-shadow: none !important;
 }
 
 /* Floating timing label positioned directly after the colored fill of each bar */
@@ -699,7 +707,11 @@ body {
 }
 
 .history-duration-yellow {
-  color: #fbbf24;
+  color: #00E676;
+}
+
+.history-duration-working {
+  color: #00E676;
 }
 
 .history-duration.zero {
@@ -710,26 +722,40 @@ body {
 /* History Legend for Last 7 / Last 30 Days */
 .history-legend {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 3px 2px;
-  font-size: 9px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 6px;
+  font-size: 8.5px;
   color: #9ca3af;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
   margin-top: 2px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legend-group-title {
+  font-weight: 700;
+  color: #d1d5db;
+  font-size: 8.5px;
+  margin-right: 2px;
 }
 
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   white-space: nowrap;
 }
 
 .legend-dot {
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
 }
 
@@ -747,6 +773,30 @@ body {
 
 .dot-yellow, .legend-dot.dot-yellow {
   color: #f59e0b;
+}
+
+.dot-working, .legend-dot.dot-working {
+  color: #00E676;
+}
+
+.dot-big-late, .legend-dot.dot-big-late {
+  color: #FF1744;
+}
+
+.dot-early-out, .legend-dot.dot-early-out {
+  color: #FFD600;
+}
+
+.dot-leave, .legend-dot.dot-leave {
+  color: #8B5CF6;
+}
+
+.dot-holiday, .legend-dot.dot-holiday {
+  color: #FF4081;
+}
+
+.dot-non-productive, .legend-dot.dot-non-productive {
+  color: #2979FF;
 }
 
 /* ================= ROW STYLING ================= */

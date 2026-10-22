@@ -102,6 +102,12 @@ const TEST_SUITES = [
     file: 'test_app_hours_toggle_suite.js',
     runner: 'node',
     description: 'Segmented view toggle, app-wise aggregation, share of total tracked time, in-place switching, date preservation'
+  },
+  {
+    name: '17. Dashboard Redmine Working Hours & Category Preservation Suite',
+    file: 'test_redmine_working_hours_dashboard_suite.js',
+    runner: 'node',
+    description: 'Redmine API Working hours Neon Green #00E676 progress bar, 6 category colors preservation, 9h 30m scaling'
   }
 ];
 
