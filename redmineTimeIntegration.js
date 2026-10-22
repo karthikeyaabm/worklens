@@ -6,6 +6,8 @@ const YELLOW_CATEGORIES = new Set([
   'Early Out',
   'Leave',
   'Holiday',
+  'ABM Function, Activity',
+  'ABM Function',
   'Non Productive - ABM Function, Activity',
   'Non Productive - ABM Function'
 ]);
@@ -15,7 +17,10 @@ const REDMINE_CATEGORY_COLORS = {
   'Early Out': '#FFD600',
   'Leave': '#8B5CF6',
   'Holiday': '#FF4081',
-  'Working': '#00E676'
+  'Working': '#00E676',
+  'ABM Function, Activity': '#2979FF',
+  'Non Productive - ABM Function, Activity': '#2979FF',
+  'Non Productive - ABM Function': '#2979FF'
 };
 
 /**
@@ -127,18 +132,19 @@ function getEntryYellowCategory(entry) {
 }
 
 /**
- * Classifies an entry into one of the 5 official dashboard categories:
+ * Classifies an entry into one of the official dashboard categories:
  * 1. Big Late (#FF1744)
  * 2. Early Out (#FFD600)
  * 3. Leave (#8B5CF6)
  * 4. Holiday (#FF4081)
- * 5. Working (Redmine API logged hours, including Non-Productive) (#00E676)
+ * 5. ABM Function, Activity (#2979FF)
+ * 6. Working (Redmine API logged productive hours) (#00E676)
  */
 function getEntryCategory(entry) {
   const yellowCat = getEntryYellowCategory(entry);
   if (yellowCat) {
-    if (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function') {
-      return 'Working';
+    if (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function' || yellowCat === 'ABM Function, Activity' || yellowCat === 'ABM Function') {
+      return 'ABM Function, Activity';
     }
     return yellowCat;
   }
@@ -252,13 +258,10 @@ function aggregateRedmineTimeEntries(timeEntries, validDateSet) {
       result.yellowCatsByDate[dStr][yellowCat] = (result.yellowCatsByDate[dStr][yellowCat] || 0) + hours;
       result.totalYellowHours += hours;
 
-      if (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function') {
-        result.workingHoursByDate[dStr] += hours;
-        result.totalWorkingHours += hours;
-        result.categoriesByDate[dStr]['Working'] = (result.categoriesByDate[dStr]['Working'] || 0) + hours;
-      } else {
-        result.categoriesByDate[dStr][yellowCat] = (result.categoriesByDate[dStr][yellowCat] || 0) + hours;
-      }
+      const canonicalCat = (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function' || yellowCat === 'ABM Function, Activity' || yellowCat === 'ABM Function')
+        ? 'ABM Function, Activity'
+        : yellowCat;
+      result.categoriesByDate[dStr][canonicalCat] = (result.categoriesByDate[dStr][canonicalCat] || 0) + hours;
     } else {
       // General Redmine time entries (Development, Project Management, Bugfix, etc.) -> Working
       result.workingHoursByDate[dStr] += hours;
@@ -335,15 +338,14 @@ function buildCombinedHistoricalView({
     const catMap = (redmineAggregation && redmineAggregation.categoriesByDate && redmineAggregation.categoriesByDate[ds]) || {};
     const yelCatMap = (redmineAggregation && redmineAggregation.yellowCatsByDate && redmineAggregation.yellowCatsByDate[ds]) || {};
 
-    // Fold 'Non Productive - ABM Function, Activity' into 'Working' without double-counting
+    // Separate categories breakdown list for UI rendering without double-counting
     const finalCats = {};
     const sourceMap = Object.keys(catMap).length > 0 ? catMap : yelCatMap;
     for (const [cName, hVal] of Object.entries(sourceMap)) {
-      if (cName === 'Non Productive - ABM Function, Activity' || cName === 'Non Productive - ABM Function') {
-        finalCats['Working'] = (finalCats['Working'] || 0) + hVal;
-      } else {
-        finalCats[cName] = (finalCats[cName] || 0) + hVal;
-      }
+      const canonicalName = (cName === 'Non Productive - ABM Function' || cName === 'Non Productive - ABM Function, Activity' || cName === 'ABM Function, Activity' || cName === 'ABM Function')
+        ? 'ABM Function, Activity'
+        : cName;
+      finalCats[canonicalName] = (finalCats[canonicalName] || 0) + hVal;
     }
 
     const calculatedWorkHours = Math.max(redmineWorkHours, (finalCats['Working'] || 0));

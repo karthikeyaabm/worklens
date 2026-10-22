@@ -752,6 +752,14 @@ body {
   margin-right: 2px;
 }
 
+.legend-divider {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.2);
+  margin: 0 4px;
+  font-size: 8.5px;
+  user-select: none;
+}
+
 .legend-item {
   display: inline-flex;
   align-items: center;
@@ -792,6 +800,10 @@ body {
   color: #FFD600;
 }
 
+.dot-half-day, .legend-dot.dot-half-day {
+  color: #FF9100;
+}
+
 .dot-leave, .legend-dot.dot-leave {
   color: #8B5CF6;
 }
@@ -800,7 +812,8 @@ body {
   color: #FF4081;
 }
 
-.dot-non-productive, .legend-dot.dot-non-productive {
+.dot-non-productive, .legend-dot.dot-non-productive,
+.dot-abm-function, .legend-dot.dot-abm-function {
   color: #2979FF;
 }
 

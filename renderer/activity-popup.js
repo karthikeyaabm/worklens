@@ -794,7 +794,10 @@ const REDMINE_CATEGORY_COLORS = {
   'Early Out': '#FFD600',
   'Leave': '#8B5CF6',
   'Holiday': '#FF4081',
-  'Working': '#00E676'
+  'Working': '#00E676',
+  'ABM Function, Activity': '#2979FF',
+  'Non Productive - ABM Function, Activity': '#2979FF',
+  'Non Productive - ABM Function': '#2979FF'
 };
 
 /**
@@ -1403,6 +1406,8 @@ function renderHistoryView(rawData) {
     progressBar.className = `history-progress-bar history-segment-regular color-${color} progress-${color}`;
     progressBar.dataset.color = color;
     progressBar.style.width = '0%';
+    progressBar.style.cursor = 'pointer';
+    progressBar.title = `System Activity: ${formatShortHours(regularDuration / 3600)}`;
     regTrack.appendChild(progressBar);
 
     trackWrapper.appendChild(regTrack);
@@ -1437,9 +1442,11 @@ function renderHistoryView(rawData) {
         seg.style.backgroundColor = segColor;
         seg.style.height = '100%';
         seg.style.flexShrink = '0';
+        seg.style.cursor = 'pointer';
         const catSeconds = Number(cat.seconds) || (Number(cat.hours) * 3600) || 0;
         const segPct = Math.min(100, Math.max(0, (catSeconds / DAILY_REFERENCE_SECONDS) * 100));
         seg.style.width = '0%';
+        seg.title = `${cat.name}: ${formatShortHours(catSeconds / 3600)}`;
         yelTrack.appendChild(seg);
         if (!yellowBar) yellowBar = seg;
         setTimeout(() => {
@@ -1467,6 +1474,8 @@ function renderHistoryView(rawData) {
       yellowBar.style.height = '100%';
       yellowBar.style.borderRadius = '2px';
       yellowBar.style.flexShrink = '0';
+      yellowBar.style.cursor = 'pointer';
+      yellowBar.title = `${catName}: ${formatShortHours(redmineDuration / 3600)}`;
       yelTrack.appendChild(yellowBar);
 
       if (redmineDuration > 0) {

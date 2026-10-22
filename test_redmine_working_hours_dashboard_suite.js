@@ -46,13 +46,13 @@ function runTest(name, fn) {
 // ---------------------------------------------------------------------------------
 console.log('--- 1. Category Colors Specification ---');
 
-runTest('All 5 official category colors must match specification exactly', () => {
+runTest('All official category colors must match specification exactly', () => {
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Big Late'], '#FF1744', 'Big Late must be #FF1744');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Early Out'], '#FFD600', 'Early Out must be #FFD600');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Leave'], '#8B5CF6', 'Leave must be #8B5CF6');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Holiday'], '#FF4081', 'Holiday must be #FF4081');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Working'], '#00E676', 'Working must be Neon Green #00E676');
-  assert.strictEqual(REDMINE_CATEGORY_COLORS['Non Productive - ABM Function, Activity'], undefined);
+  assert.strictEqual(REDMINE_CATEGORY_COLORS['ABM Function, Activity'], '#2979FF', 'ABM Function, Activity must be Blue #2979FF');
 });
 
 // ---------------------------------------------------------------------------------
@@ -67,14 +67,15 @@ runTest('Special categories are classified correctly', () => {
   assert.strictEqual(getEntryCategory({ activity: 'Holiday' }), 'Holiday');
 });
 
-runTest('General work entries and Non-Productive classify as Working', () => {
+runTest('General work entries classify as Working, Non-Productive classifies as its own category', () => {
   assert.strictEqual(getEntryCategory({ activity: 'Development' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Project Management' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Data Analysis' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Bugfix' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Testing' }), 'Working');
-  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function, Activity' }), 'Working');
-  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function' }), 'Working');
+  assert.strictEqual(getEntryCategory({ activity: 'ABM Function, Activity' }), 'ABM Function, Activity');
+  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function, Activity' }), 'ABM Function, Activity');
+  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function' }), 'ABM Function, Activity');
 });
 
 // ---------------------------------------------------------------------------------
@@ -132,12 +133,12 @@ runTest('buildCombinedHistoricalView preserves WorkLens active tracking and comp
   assert.strictEqual(day.redmineCategories[0].color, '#00E676');
 });
 
-runTest('Multi-category days place Working hours FIRST (including Non-Productive) and extra hours (Holiday) at the END', () => {
+runTest('Multi-category days place Working hours FIRST and extra hours (Holiday, Non-Productive) at the END', () => {
   const dateStr = '2026-10-16';
   const entries = [
     { id: 301, spent_on: dateStr, hours: 2.0, activity: 'Holiday' },
     { id: 302, spent_on: dateStr, hours: 4.0, activity: 'Development' }, // Working
-    { id: 303, spent_on: dateStr, hours: 2.0, activity: 'Non Productive - ABM Function, Activity' } // Folded into Working
+    { id: 303, spent_on: dateStr, hours: 2.0, activity: 'Non Productive - ABM Function, Activity' } // Separate category
   ];
   const agg = aggregateRedmineTimeEntries(entries, new Set([dateStr]));
   const view = buildCombinedHistoricalView({
@@ -152,15 +153,24 @@ runTest('Multi-category days place Working hours FIRST (including Non-Productive
   });
 
   const day = view.days[0];
-  // 4h Development + 2h Non Productive = 6h Working; 2h Holiday
-  assert.strictEqual(day.redmineCategories.length, 2);
+  // 4h Development (Working), 2h Non Productive (#FFEA00), 2h Holiday (#FF4081)
+  assert.strictEqual(day.redmineCategories.length, 3);
   // Working MUST be the very first category
   assert.strictEqual(day.redmineCategories[0].name, 'Working', 'Working must be the first category');
-  assert.strictEqual(day.redmineCategories[0].hours, 6.0, 'Working hours must include Non-Productive (4h + 2h = 6h)');
+  assert.strictEqual(day.redmineCategories[0].hours, 4.0, 'Working hours must be 4h Development');
   assert.strictEqual(day.redmineCategories[0].color, '#00E676');
+
+  // Find ABM Function, Activity category
+  const abmCat = day.redmineCategories.find(c => c.name === 'ABM Function, Activity');
+  assert.ok(abmCat, 'ABM Function, Activity category must exist in redmineCategories');
+  assert.strictEqual(abmCat.hours, 2.0, 'ABM Function, Activity hours must be 2.0');
+  assert.strictEqual(abmCat.color, '#2979FF', 'ABM Function, Activity color must be #2979FF (Blue)');
+
   // Extra hours must be after Working
-  assert.strictEqual(day.redmineCategories[1].name, 'Holiday', 'Holiday extra hours must be placed at the end');
-  assert.strictEqual(day.redmineCategories[1].hours, 2.0);
+  const holidayCat = day.redmineCategories.find(c => c.name === 'Holiday');
+  assert.ok(holidayCat, 'Holiday category must exist');
+  assert.strictEqual(holidayCat.hours, 2.0);
+  assert.strictEqual(holidayCat.color, '#FF4081');
 });
 
 // ---------------------------------------------------------------------------------
@@ -403,6 +413,88 @@ runTest('DOM Rendering: Proportional scaling against 9h 30m reference scale', ()
   // 10h = 36,000s -> capped at 100%
   const resOver = calculateDailyProgressPercentages(0, 36000);
   assert.strictEqual(resOver.yellowPercentage, 100, '10h Redmine hours must visually cap at 100%');
+});
+
+// ---------------------------------------------------------------------------------
+// 5. Dashboard History Legend Threshold Labels & Preservation
+// ---------------------------------------------------------------------------------
+runTest('History Legend: Contains Early Out: 6hr and Half Day: 4hr threshold labels', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, 'renderer', 'activity-popup.html'), 'utf8');
+
+  // Verify Thresholds section and labels
+  assert.ok(!html.includes('Thresholds:'), 'Legend should not include "Thresholds:" header');
+  assert.ok(html.includes('Early Out: 6hr'), 'Legend must include Early Out: 6hr threshold label');
+  assert.ok(html.includes('Half Day: 4hr'), 'Legend must include Half Day: 4hr threshold label');
+  assert.ok(html.includes('dot-early-out'), 'Early Out label must use dot-early-out');
+  assert.ok(html.includes('dot-half-day'), 'Half Day label must use dot-half-day');
+
+  // Verify preservation of existing legend items
+  assert.ok(html.includes('System Activity:'), 'System Activity header must be preserved');
+  assert.ok(html.includes('&lt;7h'), '<7h label must be preserved');
+  assert.ok(html.includes('7h–7h 30m'), '7h–7h 30m label must be preserved');
+  assert.ok(html.includes('&gt;7h 30m'), '>7h 30m label must be preserved');
+
+  assert.ok(html.includes('Redmine Hours:'), 'Redmine Hours header must be preserved');
+  assert.ok(html.includes('Working (Redmine Logged Hours)'), 'Working label must be preserved');
+  assert.ok(html.includes('Big Late'), 'Big Late label must be preserved');
+  assert.ok(html.includes('Leave'), 'Leave label must be preserved');
+  assert.ok(html.includes('Holiday'), 'Holiday label must be preserved');
+  assert.ok(html.includes('ABM Function, Activity'), 'ABM Function, Activity label must be present in legend');
+  assert.ok(html.includes('dot-non-productive') || html.includes('dot-abm-function'), 'ABM Function dot class must be present');
+});
+
+runTest('History Legend CSS: .dot-half-day, .dot-abm-function and .legend-divider styles defined', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'renderer', 'activity-popup.css'), 'utf8');
+
+  assert.ok(css.includes('.dot-half-day'), '.dot-half-day class must be defined in CSS');
+  assert.ok(css.includes('#FF9100'), '.dot-half-day color must be #FF9100');
+  assert.ok(css.includes('.dot-non-productive') || css.includes('.dot-abm-function'), '.dot-abm-function class must be defined in CSS');
+  assert.ok(css.includes('#2979FF'), '.dot-abm-function color must be #2979FF (Blue)');
+  assert.ok(css.includes('.legend-divider'), '.legend-divider class must be defined in CSS');
+  assert.ok(css.includes('.dot-early-out'), '.dot-early-out class must be present');
+});
+
+runTest('DOM Rendering: ABM Function, Activity separate segment in progressive bar with #2979FF and tooltip', () => {
+  const dom = setupMockDom();
+  try {
+    const rawData = {
+      days: [
+        {
+          dateStr: '2026-10-16',
+          weekdayDisplay: 'Fri, 16 Oct',
+          duration: 21600,
+          regularDuration: 14400, // 4h active
+          redmineDuration: 21600, // 6h total Redmine
+          redmineCategories: [
+            { name: 'Working', hours: 4.0, seconds: 14400, color: '#00E676' },
+            { name: 'ABM Function, Activity', hours: 2.0, seconds: 7200, color: '#2979FF' }
+          ],
+          hasData: true
+        }
+      ],
+      totalSeconds: 21600
+    };
+
+    renderHistoryView(rawData);
+
+    const historyList = dom.elements['history-list'];
+    const row = historyList.children[0];
+    const workingSeg = row.querySelector('.cat-0');
+    const abmSeg = row.querySelector('.cat-1');
+
+    assert.ok(workingSeg, 'Working segment must exist');
+    assert.strictEqual(workingSeg.style.backgroundColor, '#00E676', 'Working segment color is Neon Green');
+
+    assert.ok(abmSeg, 'ABM Function, Activity segment must exist');
+    assert.strictEqual(abmSeg.style.backgroundColor, '#2979FF', 'ABM Function, Activity segment color is Blue #2979FF');
+    assert.ok(abmSeg.title.includes('ABM Function, Activity: 2h'), 'ABM Function, Activity segment must have duration tooltip');
+  } finally {
+    teardownMockDom(dom);
+  }
 });
 
 console.log('\n================================================================================');
