@@ -20,7 +20,8 @@ console.log('--- Test Group 1: Exact Duration Color Threshold Rules ---');
 
 // Rules:
 // - RED: Less than 7 hours (< 420 minutes / < 25200 seconds)
-// - BLUE: 7 hours through exactly 7 hours 30 minutes inclusive (420–450 minutes / 25200–27000 seconds)
+// - BLUE: Exactly 7 hours (420m / 25200s) or exactly 7 hours 30 minutes (450m / 27000s)
+// - YELLOW: Greater than 7 hours but less than 7 hours 30 minutes (> 420m && < 450m / > 25200s && < 27000s)
 // - GREEN: More than 7 hours 30 minutes (> 450 minutes / > 27000 seconds)
 
 const testCases = [
@@ -30,7 +31,9 @@ const testCases = [
   { label: '6h 59m (25140 seconds)', duration: 6 * 3600 + 59 * 60, expected: 'red' },
   { label: '6h 59m 59s (25199 seconds)', duration: 25199, expected: 'red' },
   { label: '7h 00m (25200 seconds / exactly 420m)', duration: 7 * 3600, expected: 'blue' },
-  { label: '7h 15m (26100 seconds / 435m)', duration: 7 * 3600 + 15 * 60, expected: 'blue' },
+  { label: '7h 01m (25260 seconds / 421m)', duration: 7 * 3600 + 1 * 60, expected: 'yellow' },
+  { label: '7h 15m (26100 seconds / 435m)', duration: 7 * 3600 + 15 * 60, expected: 'yellow' },
+  { label: '7h 29m (26940 seconds / 449m)', duration: 7 * 3600 + 29 * 60, expected: 'yellow' },
   { label: '7h 30m (27000 seconds / exactly 450m)', duration: 7 * 3600 + 30 * 60, expected: 'blue' },
   { label: '7h 30m 01s (27001 seconds / > 450m)', duration: 27001, expected: 'green' },
   { label: '7h 31m (27060 seconds / 451m)', duration: 7 * 3600 + 31 * 60, expected: 'green' },
@@ -63,18 +66,20 @@ assert.ok(cssContent.includes('.history-progress-bar {'), 'Base .history-progres
 assert.ok(cssContent.includes('border-radius: 2px;'), 'Progress bar rounded corners must be preserved');
 assert.ok(cssContent.includes('transition: width 350ms'), 'Smooth width transition must be preserved');
 
-// Ensure all 3 color classes exist
+// Ensure all 4 color classes exist
 assert.ok(cssContent.includes('.history-progress-bar.color-red'), 'CSS must define .history-progress-bar.color-red');
 assert.ok(cssContent.includes('.history-progress-bar.color-blue'), 'CSS must define .history-progress-bar.color-blue');
+assert.ok(cssContent.includes('.history-progress-bar.color-yellow'), 'CSS must define .history-progress-bar.color-yellow');
 assert.ok(cssContent.includes('.history-progress-bar.color-green'), 'CSS must define .history-progress-bar.color-green');
 
 // Check gradient styles
 assert.ok(cssContent.includes('#ef4444'), 'Red gradient must use modern palette (#ef4444)');
 assert.ok(cssContent.includes('#3b82f6'), 'Blue gradient must use modern palette (#3b82f6)');
+assert.ok(cssContent.includes('#f59e0b'), 'Yellow gradient must use modern palette (#f59e0b)');
 assert.ok(cssContent.includes('#10b981'), 'Green gradient must use modern palette (#10b981)');
 
 console.log('PASS: [2.1] Progress bar dimensions, animations, and border-radius preserved');
-console.log('PASS: [2.2] Red, Blue, and Green color rules present in activity-popup.css');
+console.log('PASS: [2.2] Red, Blue, Yellow, and Green color rules present in activity-popup.css');
 
 // ---------------------------------------------------------------------------------
 // TEST GROUP 3: Last 7 Days & Last 30 Days Integration
@@ -123,7 +128,7 @@ const mock30Days = [];
 for (let i = 0; i < 30; i++) {
   let dur = 0;
   if (i % 3 === 0) dur = 28800; // 8h -> green
-  else if (i % 3 === 1) dur = 26100; // 7h 15m -> blue
+  else if (i % 3 === 1) dur = 26100; // 7h 15m -> yellow
   else dur = 25140; // 6h 59m -> red
 
   mock30Days.push({
@@ -135,7 +140,7 @@ for (let i = 0; i < 30; i++) {
 mock30Days.forEach(day => {
   const c = getDailyActiveTimeColor(day.duration);
   if (day.duration === 28800) assert.strictEqual(c, 'green');
-  if (day.duration === 26100) assert.strictEqual(c, 'blue');
+  if (day.duration === 26100) assert.strictEqual(c, 'yellow');
   if (day.duration === 25140) assert.strictEqual(c, 'red');
 });
 console.log('PASS: [3.4] Last 30 Days view resolves dynamic colors correctly across all 30 days');

@@ -1740,14 +1740,23 @@ function processHistorical30DaysData(apiEntries, timeEntriesOrUserId, userIdOrCu
   };
 }
 
-// Offline fallback precomputation using local queue
-function processHistoricalOfflineData(userId, currentOsUser) {
+let todayResolvedCache = {
+  data: null,
+  timestamp: 0,
+  trackingState: null
+};
+
+function invalidateTodayResolvedCache() {
+  todayResolvedCache.data = null;
+  todayResolvedCache.timestamp = 0;
+  todayResolvedCache.trackingState = null;
+}
+
+function getOfflineYesterday(userId, currentOsUser) {
   const today = new Date();
-  const todayStr = getLocalDateString(today);
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterday);
-  const isCurrentlyTracking = (trackingInterval !== null);
 
   const yesterdayLogs = getActivityLogsForDate(yesterdayStr, userId, currentOsUser);
 
@@ -1756,15 +1765,32 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   if (yesterdayLogs.length > 0) {
     let yMin = null;
     let yMax = null;
-    yesterdayLogs.forEach(c => {
+    for (let i = 0; i < yesterdayLogs.length; i++) {
+      const c = yesterdayLogs[i];
       const s = parseTimestampToDate(c.start_time);
       const e = parseTimestampToDate(c.end_time);
       if (s && (!yMin || s < yMin)) yMin = s;
       if (e && (!yMax || e > yMax)) yMax = e;
-    });
+    }
     yesterdayStartTime = formatTime12(yMin);
     yesterdayEndTime = formatTime12(yMax);
   }
+
+  return {
+    period: 'yesterday',
+    date: yesterdayStr,
+    logs: yesterdayLogs,
+    icons: appIconCache,
+    startTime: yesterdayStartTime,
+    endTime: yesterdayEndTime,
+    hasData: yesterdayLogs.length > 0
+  };
+}
+
+function getOfflineLast7Days(userId, currentOsUser) {
+  const today = new Date();
+  const todayStr = getLocalDateString(today);
+  const isCurrentlyTracking = (trackingInterval !== null);
 
   const last7DateObjects = [];
   for (let i = 0; i < 7; i++) {
@@ -1776,6 +1802,23 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   const last7Durations = getDateWiseActiveDurations(last7DateStrings, userId, currentOsUser);
   const last7TimeRanges = getDateWiseTimeRanges(last7DateStrings, userId, currentOsUser);
 
+  return redmineTimeIntegration.buildCombinedHistoricalView({
+    periodName: 'last7days',
+    dateObjects: last7DateObjects,
+    dailyDurations: last7Durations,
+    dailyTimeRanges: last7TimeRanges,
+    redmineAggregation: null,
+    todayStr,
+    isCurrentlyTracking,
+    formatTime12Fn: formatTime12
+  });
+}
+
+function getOfflineLast30Days(userId, currentOsUser) {
+  const today = new Date();
+  const todayStr = getLocalDateString(today);
+  const isCurrentlyTracking = (trackingInterval !== null);
+
   const last30DateObjects = [];
   for (let i = 0; i < 30; i++) {
     const d = new Date();
@@ -1786,18 +1829,7 @@ function processHistoricalOfflineData(userId, currentOsUser) {
   const last30Durations = getDateWiseActiveDurations(last30DateStrings, userId, currentOsUser);
   const last30TimeRanges = getDateWiseTimeRanges(last30DateStrings, userId, currentOsUser);
 
-  const last7View = redmineTimeIntegration.buildCombinedHistoricalView({
-    periodName: 'last7days',
-    dateObjects: last7DateObjects,
-    dailyDurations: last7Durations,
-    dailyTimeRanges: last7TimeRanges,
-    redmineAggregation: null,
-    todayStr,
-    isCurrentlyTracking,
-    formatTime12Fn: formatTime12
-  });
-
-  const last30View = redmineTimeIntegration.buildCombinedHistoricalView({
+  return redmineTimeIntegration.buildCombinedHistoricalView({
     periodName: 'last30days',
     dateObjects: last30DateObjects,
     dailyDurations: last30Durations,
@@ -1807,19 +1839,14 @@ function processHistoricalOfflineData(userId, currentOsUser) {
     isCurrentlyTracking,
     formatTime12Fn: formatTime12
   });
+}
 
+// Offline fallback precomputation using local queue
+function processHistoricalOfflineData(userId, currentOsUser) {
   return {
-    yesterday: {
-      period: 'yesterday',
-      date: yesterdayStr,
-      logs: yesterdayLogs,
-      icons: appIconCache,
-      startTime: yesterdayStartTime,
-      endTime: yesterdayEndTime,
-      hasData: yesterdayLogs.length > 0
-    },
-    last7days: last7View,
-    last30days: last30View
+    yesterday: getOfflineYesterday(userId, currentOsUser),
+    last7days: getOfflineLast7Days(userId, currentOsUser),
+    last30days: getOfflineLast30Days(userId, currentOsUser)
   };
 }
 
@@ -1971,6 +1998,14 @@ async function handleFetchActivity(period = 'today') {
 
   // 1. TODAY: ALWAYS IMMEDIATE (Zero network blocking!)
   if (normalizedPeriod === 'today') {
+    const nowMs = Date.now();
+    const isCurrentlyTracking = (trackingInterval !== null);
+
+    // Serve cached today data if fresh (< 3000ms) and tracking state unchanged
+    if (todayResolvedCache.data && (nowMs - todayResolvedCache.timestamp < 3000) && todayResolvedCache.trackingState === isCurrentlyTracking) {
+      return todayResolvedCache.data;
+    }
+
     let logs = [];
     if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.serverTodayLogs.length > 0) {
       const unsyncedToday = getUnsyncedTodayLogs(userId, currentOsUser);
@@ -1992,11 +2027,13 @@ async function handleFetchActivity(period = 'today') {
       // Merge unsynced and server records avoiding duplicates
       const seenIds = new Set();
       const mergedLogs = [];
-      for (const item of unsyncedMapped) {
+      for (let i = 0; i < unsyncedMapped.length; i++) {
+        const item = unsyncedMapped[i];
         if (item.id) seenIds.add(String(item.id));
         mergedLogs.push(item);
       }
-      for (const item of precomputedHistoricalCache.serverTodayLogs) {
+      for (let i = 0; i < precomputedHistoricalCache.serverTodayLogs.length; i++) {
+        const item = precomputedHistoricalCache.serverTodayLogs[i];
         const idKey = String(item.id || item.local_id || '');
         if (!idKey || !seenIds.has(idKey)) {
           if (idKey) seenIds.add(idKey);
@@ -2011,14 +2048,22 @@ async function handleFetchActivity(period = 'today') {
     // Trigger background loading of historical data asynchronously without awaiting
     loadHistoricalDataInBackground(userId, currentOsUser);
 
+    // Non-blocking icon scanning in background
     try {
       const appNames = [...new Set(logs.map(e => e.app_name).filter(Boolean))];
-      await scanAndCacheIcons(appNames);
+      if (appNames.length > 0) {
+        scanAndCacheIcons(appNames).then(() => {
+          if (activityWindow && !activityWindow.isDestroyed()) {
+            activityWindow.webContents.send('app-icons-updated', appIconCache);
+          }
+        }).catch(scanError => {
+          console.error('[ActivityPopup API] Non-blocking icon scan error:', scanError);
+        });
+      }
     } catch (scanError) {
       console.error('[ActivityPopup API] Error scanning icons for today:', scanError);
     }
 
-    const isCurrentlyTracking = (trackingInterval !== null);
     let todayStart = null;
     let todayEnd = null;
 
@@ -2028,18 +2073,16 @@ async function handleFetchActivity(period = 'today') {
       todayStart = persistedStart;
     }
 
-    // Source 2: All local chunks for today (both synced and unsynced)
-    const localTodayChunks = getAllTodayLogs(userId, currentOsUser);
-    if (localTodayChunks && localTodayChunks.length > 0) {
-      localTodayChunks.forEach(e => {
-        const s = parseTimestampToDate(e.start_time);
-        const end = parseTimestampToDate(e.end_time);
-        if (s && (!todayStart || s < todayStart)) todayStart = s;
-        if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
-      });
+    // Single pass over resolved logs for earliest start and latest end
+    for (let i = 0; i < logs.length; i++) {
+      const e = logs[i];
+      const s = parseTimestampToDate(e.start_time);
+      const end = parseTimestampToDate(e.end_time);
+      if (s && (!todayStart || s < todayStart)) todayStart = s;
+      if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
     }
 
-    // Source 3: Active in-memory session (currentRecord)
+    // Active in-memory session (currentRecord)
     if (currentRecord && currentRecord.startTime) {
       const curStart = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
       if (curStart && normalizeToLocalDateStr(curStart) === todayStr) {
@@ -2051,26 +2094,6 @@ async function handleFetchActivity(period = 'today') {
       }
     }
 
-    // Source 4: Precomputed server logs for today (if available)
-    if (precomputedHistoricalCache && precomputedHistoricalCache.serverTodayLogs && precomputedHistoricalCache.serverTodayLogs.length > 0) {
-      precomputedHistoricalCache.serverTodayLogs.forEach(e => {
-        const s = parseTimestampToDate(e.start_time);
-        const end = parseTimestampToDate(e.end_time);
-        if (s && (!todayStart || s < todayStart)) todayStart = s;
-        if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
-      });
-    }
-
-    // Source 5: Resolved logs array
-    if (logs && logs.length > 0) {
-      logs.forEach(e => {
-        const s = parseTimestampToDate(e.start_time);
-        const end = parseTimestampToDate(e.end_time);
-        if (s && (!todayStart || s < todayStart)) todayStart = s;
-        if (end && (!todayEnd || end > todayEnd)) todayEnd = end;
-      });
-    }
-
     // Keep persisted daily state in sync with earliest resolved start time
     if (todayStart) {
       recordDailyStartTime(todayStr, currentOsUser, userId, todayStart);
@@ -2079,7 +2102,7 @@ async function handleFetchActivity(period = 'today') {
     const todayStartTime = todayStart ? formatTime12(todayStart) : '--';
     const todayEndTime = isCurrentlyTracking ? 'Present' : (todayEnd ? formatTime12(todayEnd) : '--');
 
-    return {
+    const result = {
       period: 'today',
       date: todayStr,
       logs: logs,
@@ -2090,6 +2113,14 @@ async function handleFetchActivity(period = 'today') {
       isTrackingActive: isCurrentlyTracking,
       hasData: logs.length > 0 || todayStart !== null
     };
+
+    todayResolvedCache = {
+      data: result,
+      timestamp: nowMs,
+      trackingState: isCurrentlyTracking
+    };
+
+    return result;
   }
 
   // 2. YESTERDAY (Ultra-fast non-blocking resolution)
@@ -2098,8 +2129,7 @@ async function handleFetchActivity(period = 'today') {
       return precomputedHistoricalCache.yesterday;
     }
     loadHistoricalDataInBackground(userId, currentOsUser);
-    const offline = processHistoricalOfflineData(userId, currentOsUser);
-    return offline.yesterday;
+    return getOfflineYesterday(userId, currentOsUser);
   }
 
   // 3. LAST 7 DAYS (Ultra-fast non-blocking resolution)
@@ -2108,8 +2138,7 @@ async function handleFetchActivity(period = 'today') {
       return precomputedHistoricalCache.last7days;
     }
     loadHistoricalDataInBackground(userId, currentOsUser);
-    const offline = processHistoricalOfflineData(userId, currentOsUser);
-    return offline.last7days;
+    return getOfflineLast7Days(userId, currentOsUser);
   }
 
   // 4. LAST 30 DAYS (Ultra-fast non-blocking resolution)
@@ -2118,8 +2147,7 @@ async function handleFetchActivity(period = 'today') {
       return precomputedHistoricalCache.last30days;
     }
     loadHistoricalDataInBackground(userId, currentOsUser);
-    const offline = processHistoricalOfflineData(userId, currentOsUser);
-    return offline.last30days;
+    return getOfflineLast30Days(userId, currentOsUser);
   }
 
   return await handleFetchActivity('today');

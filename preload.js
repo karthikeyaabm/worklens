@@ -97,6 +97,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('historical-data-ready', listener);
   },
 
+  onAppIconsUpdated: (callback) => {
+    const listener = (event, iconsMap) => callback(iconsMap);
+    ipcRenderer.on('app-icons-updated', listener);
+    return () => ipcRenderer.removeListener('app-icons-updated', listener);
+  },
+
   sendPopupReady: () => {
     ipcRenderer.invoke('popup-ready');
   },

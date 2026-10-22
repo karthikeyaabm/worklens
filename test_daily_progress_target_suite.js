@@ -114,9 +114,9 @@ runTest('Red threshold: Under 7 hours (< 420m / < 25200s)', () => {
   assert.strictEqual(getDailyActiveTimeColor(25199), 'red'); // 6h 59m 59s -> Red
 });
 
-runTest('Blue threshold: 7h to 7h 30m inclusive (420m–450m / 25200s–27000s)', () => {
+runTest('Blue and Yellow thresholds: 7h00m (Blue), 7h15m (Yellow), 7h30m (Blue)', () => {
   assert.strictEqual(getDailyActiveTimeColor(25200), 'blue'); // exactly 7h 00m -> Blue
-  assert.strictEqual(getDailyActiveTimeColor(26100), 'blue'); // 7h 15m -> Blue
+  assert.strictEqual(getDailyActiveTimeColor(26100), 'yellow'); // 7h 15m -> Yellow
   assert.strictEqual(getDailyActiveTimeColor(27000), 'blue'); // exactly 7h 30m -> Blue
 });
 

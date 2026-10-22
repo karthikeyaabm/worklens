@@ -22,16 +22,38 @@ function getStorageFaultInjection() {
   return storageFaultInjection;
 }
 
+let cachedParsedChunks = null;
+let cachedFileMtimeMs = 0;
+let cachedFileSize = 0;
+let cachedDateIndex = new Map();
+
+function invalidateChunksCache() {
+  cachedParsedChunks = null;
+  cachedFileMtimeMs = 0;
+  cachedFileSize = 0;
+  cachedDateIndex = new Map();
+}
+
 function getQueueFilePath() {
-  if (!queueFilePath) {
-    queueFilePath = path.join(app.getPath('userData'), 'activity_queue.jsonl');
+  const currentPath = path.join(app.getPath('userData'), 'activity_queue.jsonl');
+  if (queueFilePath !== currentPath) {
+    queueFilePath = currentPath;
+    invalidateChunksCache();
   }
   return queueFilePath;
 }
 
+let cachedUserProfile = null;
+let cachedUserProfileMtime = 0;
+let cachedUserProfileSize = 0;
+
 function getUserProfileFilePath() {
-  if (!userProfileFilePath) {
-    userProfileFilePath = path.join(app.getPath('userData'), 'user_profile.json');
+  const current = path.join(app.getPath('userData'), 'user_profile.json');
+  if (userProfileFilePath !== current) {
+    userProfileFilePath = current;
+    cachedUserProfile = null;
+    cachedUserProfileMtime = 0;
+    cachedUserProfileSize = 0;
   }
   return userProfileFilePath;
 }
@@ -39,15 +61,26 @@ function getUserProfileFilePath() {
 function getStoredUserProfile() {
   const filePath = getUserProfileFilePath();
   if (!fs.existsSync(filePath)) {
+    cachedUserProfile = null;
     return null;
   }
   try {
+    const stat = fs.statSync(filePath);
+    if (cachedUserProfile && stat.mtimeMs === cachedUserProfileMtime && stat.size === cachedUserProfileSize) {
+      return cachedUserProfile;
+    }
     const raw = fs.readFileSync(filePath, 'utf8');
-    if (!raw.trim()) return null;
-    return JSON.parse(raw);
+    if (!raw.trim()) {
+      cachedUserProfile = null;
+      return null;
+    }
+    cachedUserProfile = JSON.parse(raw);
+    cachedUserProfileMtime = stat.mtimeMs;
+    cachedUserProfileSize = stat.size;
+    return cachedUserProfile;
   } catch (err) {
     console.error('[Storage] Failed to read user_profile.json:', err);
-    return null;
+    return cachedUserProfile;
   }
 }
 
@@ -65,6 +98,12 @@ function saveStoredUserProfile(osUsername, redmineUserId) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(filePath, JSON.stringify(profile, null, 2), 'utf8');
+    try {
+      const stat = fs.statSync(filePath);
+      cachedUserProfile = profile;
+      cachedUserProfileMtime = stat.mtimeMs;
+      cachedUserProfileSize = stat.size;
+    } catch (_) {}
     console.log(`[Storage] Saved user profile cache: ${osUsername} -> Redmine ID ${redmineUserId}`);
   } catch (err) {
     console.error('[Storage] Failed to write user_profile.json:', err);
@@ -82,10 +121,17 @@ function getCachedUserIdForOsUser(currentOsUsername) {
 }
 
 let dailyStateFilePath = null;
+let cachedDailyState = null;
+let cachedDailyStateMtime = 0;
+let cachedDailyStateSize = 0;
 
 function getDailyStateFilePath() {
-  if (!dailyStateFilePath) {
-    dailyStateFilePath = path.join(app.getPath('userData'), 'daily_tracking_state.json');
+  const current = path.join(app.getPath('userData'), 'daily_tracking_state.json');
+  if (dailyStateFilePath !== current) {
+    dailyStateFilePath = current;
+    cachedDailyState = null;
+    cachedDailyStateMtime = 0;
+    cachedDailyStateSize = 0;
   }
   return dailyStateFilePath;
 }
@@ -93,15 +139,26 @@ function getDailyStateFilePath() {
 function getStoredDailyState() {
   const filePath = getDailyStateFilePath();
   if (!fs.existsSync(filePath)) {
+    cachedDailyState = {};
     return {};
   }
   try {
+    const stat = fs.statSync(filePath);
+    if (cachedDailyState && stat.mtimeMs === cachedDailyStateMtime && stat.size === cachedDailyStateSize) {
+      return cachedDailyState;
+    }
     const raw = fs.readFileSync(filePath, 'utf8');
-    if (!raw.trim()) return {};
-    return JSON.parse(raw);
+    if (!raw.trim()) {
+      cachedDailyState = {};
+      return {};
+    }
+    cachedDailyState = JSON.parse(raw);
+    cachedDailyStateMtime = stat.mtimeMs;
+    cachedDailyStateSize = stat.size;
+    return cachedDailyState;
   } catch (err) {
     console.error('[Storage] Failed to read daily_tracking_state.json:', err);
-    return {};
+    return cachedDailyState || {};
   }
 }
 
@@ -160,6 +217,12 @@ function recordDailyStartTime(dateStr, osUsername, userId, timestamp) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf8');
+    try {
+      const stat = fs.statSync(filePath);
+      cachedDailyState = state;
+      cachedDailyStateMtime = stat.mtimeMs;
+      cachedDailyStateSize = stat.size;
+    } catch (_) {}
   } catch (err) {
     console.error('[Storage] Failed to write daily_tracking_state.json:', err);
     storageHealth.recordStorageFailure(err);
@@ -197,43 +260,128 @@ function ensureFormattedDateTime(val) {
   return formatDateTime(new Date());
 }
 
+function normalizeToLocalDateStr(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return getLocalDateString(val);
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    // Fast path: YYYY-MM-DD
+    if (trimmed.length >= 10 && trimmed.charCodeAt(4) === 45 && trimmed.charCodeAt(7) === 45) {
+      return trimmed.slice(0, 10);
+    }
+    const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymdMatch) {
+      return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+    }
+    const dmyMatch = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (dmyMatch) {
+      return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    }
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return getLocalDateString(parsed);
+    }
+  }
+  return null;
+}
+
+function rebuildDateIndex(chunks) {
+  const index = new Map();
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    const dStr = normalizeToLocalDateStr(c.start_time || c.activity_on);
+    if (dStr) {
+      let list = index.get(dStr);
+      if (!list) {
+        list = [];
+        index.set(dStr, list);
+      }
+      list.push(c);
+    }
+  }
+  cachedDateIndex = index;
+}
+
 function readChunks() {
   const filePath = getQueueFilePath();
-  const chunks = [];
+  let baseChunks = null;
 
   if (fs.existsSync(filePath)) {
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      const lines = content.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed) {
-          try {
-            chunks.push(JSON.parse(trimmed));
-          } catch (err) {
-            console.error('[Storage] Failed to parse JSONL line:', err);
+      const stat = fs.statSync(filePath);
+      if (cachedParsedChunks && stat.mtimeMs === cachedFileMtimeMs && stat.size === cachedFileSize) {
+        baseChunks = cachedParsedChunks;
+      } else {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const lines = content.split('\n');
+        const parsed = [];
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i].trim();
+          if (trimmed) {
+            try {
+              parsed.push(JSON.parse(trimmed));
+            } catch (err) {
+              console.error('[Storage] Failed to parse JSONL line:', err);
+            }
           }
         }
+        cachedParsedChunks = parsed;
+        cachedFileMtimeMs = stat.mtimeMs;
+        cachedFileSize = stat.size;
+        rebuildDateIndex(parsed);
+        baseChunks = parsed;
       }
     } catch (err) {
       console.error('[Storage] Failed to read chunks file:', err);
       storageHealth.recordStorageFailure(err);
+      baseChunks = cachedParsedChunks || [];
     }
+  } else {
+    cachedParsedChunks = [];
+    cachedFileMtimeMs = 0;
+    cachedFileSize = 0;
+    rebuildDateIndex([]);
+    baseChunks = [];
   }
 
   // Merge any unpersisted in-memory chunks (buffered during ENOSPC / disk-full events)
   if (unpersistedChunks.size > 0) {
+    const merged = baseChunks.slice();
     for (const [localId, unpersisted] of unpersistedChunks) {
-      const existingIdx = chunks.findIndex(c => c.local_id === localId);
+      const existingIdx = merged.findIndex(c => c.local_id === localId);
       if (existingIdx >= 0) {
-        chunks[existingIdx] = unpersisted;
+        merged[existingIdx] = unpersisted;
       } else {
-        chunks.push(unpersisted);
+        merged.push(unpersisted);
       }
     }
+    return merged;
   }
 
-  return chunks;
+  return baseChunks;
+}
+
+function getChunksForDate(dateStr) {
+  readChunks();
+  const list = cachedDateIndex.get(dateStr) || [];
+  if (unpersistedChunks.size > 0) {
+    const merged = list.slice();
+    for (const [localId, unpersisted] of unpersistedChunks) {
+      const d = normalizeToLocalDateStr(unpersisted.start_time || unpersisted.activity_on);
+      if (d === dateStr) {
+        const idx = merged.findIndex(c => c.local_id === localId);
+        if (idx >= 0) {
+          merged[idx] = unpersisted;
+        } else {
+          merged.push(unpersisted);
+        }
+      }
+    }
+    return merged;
+  }
+  return list;
 }
 
 function writeChunks(chunks) {
@@ -272,6 +420,17 @@ function writeChunks(chunks) {
     fs.writeFileSync(tempPath, content, 'utf8');
     fs.renameSync(tempPath, filePath);
 
+    // Update in-memory cache directly with filtered chunks & file stats
+    try {
+      const stat = fs.statSync(filePath);
+      cachedParsedChunks = filtered;
+      cachedFileMtimeMs = stat.mtimeMs;
+      cachedFileSize = stat.size;
+      rebuildDateIndex(filtered);
+    } catch (_) {
+      invalidateChunksCache();
+    }
+
     // Persistence succeeded: clear in-memory unpersisted buffer and record storage success
     unpersistedChunks.clear();
     storageHealth.recordStorageSuccess();
@@ -282,6 +441,9 @@ function writeChunks(chunks) {
         fs.unlinkSync(tempPath);
       }
     } catch (_) {}
+
+    // Invalidate cached parsed chunks since write failed
+    invalidateChunksCache();
 
     // Buffer unwritten chunks in-memory so tracking data is never lost during temporary disk full
     for (const c of chunks) {
@@ -475,8 +637,8 @@ function markSessionFailed(localId, errorMessage) {
 }
 
 function getUnsyncedTodayDuration(userId, osUsername = null) {
-  const chunks = readChunks();
   const todayStr = getLocalDateString();
+  const chunks = getChunksForDate(todayStr);
   const userIdInt = userId ? parseInt(userId, 10) : null;
 
   return chunks
@@ -485,7 +647,7 @@ function getUnsyncedTodayDuration(userId, osUsername = null) {
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
       if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
       if (c.status && c.status.toLowerCase() !== 'active') return false;
-      return c.start_time && c.start_time.startsWith(todayStr);
+      return true;
     })
     .reduce((sum, c) => sum + (c.duration || 0), 0);
 }
@@ -496,15 +658,15 @@ function saveChunkLocal(chunk, userId, osUsername = null) {
 }
 
 function getUnsyncedTodayLogs(userId, osUsername = null) {
-  const chunks = readChunks();
   const todayStr = getLocalDateString();
+  const chunks = getChunksForDate(todayStr);
   const userIdInt = userId ? parseInt(userId, 10) : null;
 
   return chunks.filter(c => {
     if (c.synced) return false;
     if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
     if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
-    return c.start_time && c.start_time.startsWith(todayStr);
+    return true;
   });
 }
 
@@ -548,38 +710,14 @@ function backfillUserIdForOsUsername(osUsername, userId) {
   return updatedCount;
 }
 
-function normalizeToLocalDateStr(val) {
-  if (!val) return null;
-  if (val instanceof Date) {
-    return getLocalDateString(val);
-  }
-  if (typeof val === 'string') {
-    const trimmed = val.trim();
-    const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (ymdMatch) {
-      return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
-    }
-    const dmyMatch = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})/);
-    if (dmyMatch) {
-      return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
-    }
-    const parsed = new Date(trimmed);
-    if (!isNaN(parsed.getTime())) {
-      return getLocalDateString(parsed);
-    }
-  }
-  return null;
-}
-
 function getActivityLogsForDate(dateStr, userId = null, osUsername = null) {
-  const chunks = readChunks();
+  const chunks = getChunksForDate(dateStr);
   const userIdInt = userId ? parseInt(userId, 10) : null;
 
   return chunks.filter(c => {
     if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
     if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
-    const chunkDate = normalizeToLocalDateStr(c.start_time || c.activity_on);
-    return chunkDate === dateStr;
+    return true;
   }).map(c => ({
     id: c.local_id,
     local_id: c.local_id,
@@ -606,22 +744,19 @@ function getAllTodayLogs(userId = null, osUsername = null) {
 }
 
 function getDateWiseActiveDurations(dateStrings, userId = null, osUsername = null) {
-  const chunks = readChunks();
+  readChunks();
   const userIdInt = userId ? parseInt(userId, 10) : null;
   const result = {};
 
   dateStrings.forEach(ds => {
     result[ds] = 0;
-  });
-
-  chunks.forEach(c => {
-    if (c.status && c.status.toLowerCase() !== 'active') return;
-    if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return;
-    if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return;
-
-    const chunkDate = normalizeToLocalDateStr(c.start_time || c.activity_on);
-    if (chunkDate && result[chunkDate] !== undefined) {
-      result[chunkDate] += (c.duration || 0);
+    const dayChunks = getChunksForDate(ds);
+    for (let i = 0; i < dayChunks.length; i++) {
+      const c = dayChunks[i];
+      if (c.status && c.status.toLowerCase() !== 'active') continue;
+      if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) continue;
+      if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) continue;
+      result[ds] += (c.duration || 0);
     }
   });
 
@@ -666,38 +801,43 @@ function formatTime12(date) {
 }
 
 function getDateWiseTimeRanges(dateStrings, userId = null, osUsername = null) {
-  const chunks = readChunks();
+  readChunks();
   const userIdInt = userId ? parseInt(userId, 10) : null;
   const result = {};
+  const state = getStoredDailyState(); // read ONCE, cached in-memory
 
   dateStrings.forEach(ds => {
     result[ds] = {
       earliestStart: null,
       latestEnd: null
     };
+
     // Include persisted earliest start time for this employee and date if available
-    const persisted = getPersistedDailyStartTime(ds, osUsername, userId);
-    if (persisted) {
-      result[ds].earliestStart = persisted;
+    const dayData = state[ds];
+    if (dayData) {
+      const userKey = (osUsername || (userId ? String(userId) : 'default')).toLowerCase();
+      const userRecord = dayData[userKey] || dayData['default'];
+      if (userRecord && userRecord.earliestStartTime) {
+        result[ds].earliestStart = parseTimestampToDate(userRecord.earliestStartTime);
+      }
     }
-  });
 
-  chunks.forEach(c => {
-    if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return;
-    if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return;
+    const dayChunks = getChunksForDate(ds);
+    for (let i = 0; i < dayChunks.length; i++) {
+      const c = dayChunks[i];
+      if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) continue;
+      if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) continue;
 
-    const chunkDate = normalizeToLocalDateStr(c.start_time || c.activity_on);
-    if (chunkDate && result[chunkDate] !== undefined) {
       const s = parseTimestampToDate(c.start_time);
       const e = parseTimestampToDate(c.end_time);
       if (s) {
-        if (!result[chunkDate].earliestStart || s < result[chunkDate].earliestStart) {
-          result[chunkDate].earliestStart = s;
+        if (!result[ds].earliestStart || s < result[ds].earliestStart) {
+          result[ds].earliestStart = s;
         }
       }
       if (e) {
-        if (!result[chunkDate].latestEnd || e > result[chunkDate].latestEnd) {
-          result[chunkDate].latestEnd = e;
+        if (!result[ds].latestEnd || e > result[ds].latestEnd) {
+          result[ds].latestEnd = e;
         }
       }
     }
@@ -733,10 +873,12 @@ module.exports = {
   normalizeToLocalDateStr,
   getActivityLogsForDate,
   getAllTodayLogs,
+  getChunksForDate,
   getDateWiseActiveDurations,
   getDateWiseTimeRanges,
   parseTimestampToDate,
   formatTime12,
+  invalidateChunksCache,
   // Storage Health & Fault Injection
   storageHealth,
   getStorageHealth: storageHealth.getStorageHealth,

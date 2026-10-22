@@ -46,13 +46,13 @@ function runTest(name, fn) {
 // ---------------------------------------------------------------------------------
 console.log('--- 1. Category Colors Specification ---');
 
-runTest('All 6 official category colors must match specification exactly', () => {
+runTest('All 5 official category colors must match specification exactly', () => {
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Big Late'], '#FF1744', 'Big Late must be #FF1744');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Early Out'], '#FFD600', 'Early Out must be #FFD600');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Leave'], '#8B5CF6', 'Leave must be #8B5CF6');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Holiday'], '#FF4081', 'Holiday must be #FF4081');
-  assert.strictEqual(REDMINE_CATEGORY_COLORS['Non Productive - ABM Function, Activity'], '#2979FF', 'Non-Productive must be #2979FF');
   assert.strictEqual(REDMINE_CATEGORY_COLORS['Working'], '#00E676', 'Working must be Neon Green #00E676');
+  assert.strictEqual(REDMINE_CATEGORY_COLORS['Non Productive - ABM Function, Activity'], undefined);
 });
 
 // ---------------------------------------------------------------------------------
@@ -65,15 +65,16 @@ runTest('Special categories are classified correctly', () => {
   assert.strictEqual(getEntryCategory({ activity: 'Big Late' }), 'Big Late');
   assert.strictEqual(getEntryCategory({ activity: 'Early Out' }), 'Early Out');
   assert.strictEqual(getEntryCategory({ activity: 'Holiday' }), 'Holiday');
-  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function, Activity' }), 'Non Productive - ABM Function, Activity');
 });
 
-runTest('General work entries (Development, Project Management, Bugfix) classify as Working', () => {
+runTest('General work entries and Non-Productive classify as Working', () => {
   assert.strictEqual(getEntryCategory({ activity: 'Development' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Project Management' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Data Analysis' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Bugfix' }), 'Working');
   assert.strictEqual(getEntryCategory({ activity: 'Testing' }), 'Working');
+  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function, Activity' }), 'Working');
+  assert.strictEqual(getEntryCategory({ activity: 'Non Productive - ABM Function' }), 'Working');
 });
 
 // ---------------------------------------------------------------------------------
@@ -131,12 +132,12 @@ runTest('buildCombinedHistoricalView preserves WorkLens active tracking and comp
   assert.strictEqual(day.redmineCategories[0].color, '#00E676');
 });
 
-runTest('Multi-category days place Working hours FIRST and extra hours (Leave, Holiday, Non-Productive) at the END', () => {
+runTest('Multi-category days place Working hours FIRST (including Non-Productive) and extra hours (Holiday) at the END', () => {
   const dateStr = '2026-10-16';
   const entries = [
     { id: 301, spent_on: dateStr, hours: 2.0, activity: 'Holiday' },
     { id: 302, spent_on: dateStr, hours: 4.0, activity: 'Development' }, // Working
-    { id: 303, spent_on: dateStr, hours: 2.0, activity: 'Non Productive - ABM Function, Activity' }
+    { id: 303, spent_on: dateStr, hours: 2.0, activity: 'Non Productive - ABM Function, Activity' } // Folded into Working
   ];
   const agg = aggregateRedmineTimeEntries(entries, new Set([dateStr]));
   const view = buildCombinedHistoricalView({
@@ -151,14 +152,15 @@ runTest('Multi-category days place Working hours FIRST and extra hours (Leave, H
   });
 
   const day = view.days[0];
-  assert.strictEqual(day.redmineCategories.length, 3);
+  // 4h Development + 2h Non Productive = 6h Working; 2h Holiday
+  assert.strictEqual(day.redmineCategories.length, 2);
   // Working MUST be the very first category
   assert.strictEqual(day.redmineCategories[0].name, 'Working', 'Working must be the first category');
+  assert.strictEqual(day.redmineCategories[0].hours, 6.0, 'Working hours must include Non-Productive (4h + 2h = 6h)');
   assert.strictEqual(day.redmineCategories[0].color, '#00E676');
   // Extra hours must be after Working
-  const remainingNames = [day.redmineCategories[1].name, day.redmineCategories[2].name];
-  assert.ok(remainingNames.includes('Holiday'), 'Holiday extra hours must be placed at the end');
-  assert.ok(remainingNames.includes('Non Productive - ABM Function, Activity'), 'Non-Productive extra hours must be placed at the end');
+  assert.strictEqual(day.redmineCategories[1].name, 'Holiday', 'Holiday extra hours must be placed at the end');
+  assert.strictEqual(day.redmineCategories[1].hours, 2.0);
 });
 
 // ---------------------------------------------------------------------------------

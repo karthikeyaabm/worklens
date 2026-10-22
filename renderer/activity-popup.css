@@ -606,6 +606,11 @@ body {
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
 }
 
+.history-progress-bar.color-yellow,
+.history-progress-bar.progress-yellow {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
 .history-progress-bar.color-green,
 .history-progress-bar.progress-green {
   background: linear-gradient(90deg, #10b981, #34d399);

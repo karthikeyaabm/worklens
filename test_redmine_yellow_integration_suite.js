@@ -369,9 +369,9 @@ runTest('Dynamic color thresholds apply to the combined daily total duration', (
   assert.strictEqual(getDailyActiveTimeColor(6 * 3600 + 30 * 60), 'red'); // 6h 30m
   assert.strictEqual(getDailyActiveTimeColor(25199), 'red'); // 6h 59m 59s
 
-  // 7h through 7h 30m (25200s to 27000s) -> BLUE
+  // 7h through 7h 30m: 7h00m & 7h30m -> BLUE, 7h01m-7h29m -> YELLOW
   assert.strictEqual(getDailyActiveTimeColor(25200), 'blue'); // 7h 00m
-  assert.strictEqual(getDailyActiveTimeColor(7 * 3600 + 15 * 60), 'blue'); // 7h 15m
+  assert.strictEqual(getDailyActiveTimeColor(7 * 3600 + 15 * 60), 'yellow'); // 7h 15m
   assert.strictEqual(getDailyActiveTimeColor(27000), 'blue'); // 7h 30m
 
   // > 7h 30m (> 27000s) -> GREEN
@@ -821,9 +821,9 @@ runTest('Spec Test 9: Red, blue, and green thresholds continue working', () => {
   assert.strictEqual(getDailyActiveTimeColor(0), 'red');
   assert.strictEqual(getDailyActiveTimeColor(25199), 'red'); // 6h 59m 59s
 
-  // BLUE: 7h through 7h 30m, inclusive (25200s - 27000s)
+  // BLUE: 7h00m & 7h30m, YELLOW: 7h01m-7h29m
   assert.strictEqual(getDailyActiveTimeColor(25200), 'blue'); // 7h 00m 00s
-  assert.strictEqual(getDailyActiveTimeColor(26100), 'blue'); // 7h 15m 00s
+  assert.strictEqual(getDailyActiveTimeColor(26100), 'yellow'); // 7h 15m 00s
   assert.strictEqual(getDailyActiveTimeColor(27000), 'blue'); // 7h 30m 00s
 
   // GREEN: > 7h 30m (> 27000s)

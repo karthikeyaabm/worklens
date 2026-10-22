@@ -108,6 +108,12 @@ const TEST_SUITES = [
     file: 'test_redmine_working_hours_dashboard_suite.js',
     runner: 'node',
     description: 'Redmine API Working hours Neon Green #00E676 progress bar, 6 category colors preservation, 9h 30m scaling'
+  },
+  {
+    name: '18. Dashboard Query Performance & Four-Period Optimization Suite',
+    file: 'test_dashboard_performance_suite.js',
+    runner: 'electron',
+    description: 'Ultra-fast Today/Yesterday/7d/30d resolution, in-memory date index, non-blocking hydration, deduplication'
   }
 ];
 

@@ -115,6 +115,20 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    if (typeof window.api.onAppIconsUpdated === 'function') {
+      window.api.onAppIconsUpdated((iconsMap) => {
+        if (!iconsMap) return;
+        // Update rendered app icons in place without re-rendering entire lists
+        for (const [appName, el] of Object.entries(renderedRows)) {
+          if (!el) continue;
+          const iconEl = el.querySelector('.app-icon');
+          if (iconEl && iconsMap[appName.toLowerCase()]) {
+            iconEl.src = iconsMap[appName.toLowerCase()];
+          }
+        }
+      });
+    }
+
     // Tell the main process that the renderer is fully loaded and ready
     window.api.sendPopupReady();
   }
@@ -749,13 +763,17 @@ function isWeekend(dateStr) {
 
 function getDailyActiveTimeColor(durationSeconds) {
   const duration = Number(durationSeconds) || 0;
+  const durationMinutes = duration / 60;
   // Thresholds:
   // - RED: Less than 7 hours (< 420 minutes / < 25200 seconds)
-  // - BLUE: 7 hours through exactly 7 hours 30 minutes (420–450 minutes, inclusive / 25200–27000 seconds)
+  // - YELLOW: Greater than 7 hours but less than 7 hours 30 minutes (> 420 minutes && < 450 minutes)
+  // - BLUE: Exactly 7 hours (420m / 25200s) or exactly 7 hours 30 minutes (450m / 27000s)
   // - GREEN: More than 7 hours 30 minutes (> 450 minutes / > 27000 seconds)
-  if (duration < 25200) {
+  if (durationMinutes < 420) {
     return 'red';
-  } else if (duration <= 27000) {
+  } else if (durationMinutes > 420 && durationMinutes < 450) {
+    return 'yellow';
+  } else if (durationMinutes <= 450) {
     return 'blue';
   } else {
     return 'green';
@@ -776,7 +794,6 @@ const REDMINE_CATEGORY_COLORS = {
   'Early Out': '#FFD600',
   'Leave': '#8B5CF6',
   'Holiday': '#FF4081',
-  'Non Productive - ABM Function, Activity': '#2979FF',
   'Working': '#00E676'
 };
 
@@ -1052,11 +1069,16 @@ function stopPolling() {
   }
 }
 
+let currentFetchSeq = 0;
+let inFlightFetchPromises = {};
+
 // ================= API FETCH & DATA PROCESSING =================
 async function fetchAndRender() {
   if (!window.api || typeof window.api.fetchActivityLogs !== 'function') return;
 
   const targetPeriod = currentPeriod;
+  const seq = ++currentFetchSeq;
+
   // Show loading state if no rows have been rendered for this view yet
   const hasRows = (targetPeriod === 'today' || targetPeriod === 'yesterday')
     ? (currentActivityView === 'hours' ? Object.keys(renderedHourRows).length > 0 : Object.keys(renderedRows).length > 0)
@@ -1070,13 +1092,20 @@ async function fetchAndRender() {
   }
 
   try {
-    const rawData = await window.api.fetchActivityLogs(targetPeriod);
+    let fetchPromise = inFlightFetchPromises[targetPeriod];
+    if (!fetchPromise) {
+      fetchPromise = window.api.fetchActivityLogs(targetPeriod);
+      inFlightFetchPromises[targetPeriod] = fetchPromise;
+    }
+
+    const rawData = await fetchPromise;
+    delete inFlightFetchPromises[targetPeriod];
 
     // Cache the resolved data for instant subsequent tab switches
     clientViewCache[targetPeriod] = rawData;
 
     // Guard against race conditions if user clicked another tab while awaiting
-    if (currentPeriod !== targetPeriod) return;
+    if (seq !== currentFetchSeq || currentPeriod !== targetPeriod) return;
 
     if (targetPeriod === 'last7days' || targetPeriod === 'last30days' || targetPeriod === 'current_month') {
       renderHistoryView(rawData);
@@ -1086,7 +1115,8 @@ async function fetchAndRender() {
     renderTodayYesterdayView(rawData);
 
   } catch (error) {
-    if (currentPeriod !== targetPeriod) return;
+    delete inFlightFetchPromises[targetPeriod];
+    if (seq !== currentFetchSeq || currentPeriod !== targetPeriod) return;
     console.error('Failed to load activity details:', error);
     // Only show full screen error state if we have no loaded data
     const hasData = Object.keys(renderedRows).length > 0 || Object.keys(renderedHourRows).length > 0 || (historyList && historyList.children.length > 0);
@@ -1357,7 +1387,7 @@ function renderHistoryView(rawData) {
     dateInfo.appendChild(dateHeader);
 
     // Progress bar row: stacked vertical column of tracks + right duration
-    // Preserves existing workstation System Activity calculations & status colors (<7h: Red, 7h-7h30m: Blue, >7h30m: Green)
+    // System Activity status colors (<7h: Red, 7h01m-7h29m: Yellow, 7h00m/7h30m: Blue, >7h30m: Green)
     const color = getDailyActiveTimeColor(totalDuration);
 
     const barRow = document.createElement('div');

@@ -15,7 +15,6 @@ const REDMINE_CATEGORY_COLORS = {
   'Early Out': '#FFD600',
   'Leave': '#8B5CF6',
   'Holiday': '#FF4081',
-  'Non Productive - ABM Function, Activity': '#2979FF',
   'Working': '#00E676'
 };
 
@@ -128,19 +127,18 @@ function getEntryYellowCategory(entry) {
 }
 
 /**
- * Classifies an entry into one of the 6 official dashboard categories:
+ * Classifies an entry into one of the 5 official dashboard categories:
  * 1. Big Late (#FF1744)
  * 2. Early Out (#FFD600)
  * 3. Leave (#8B5CF6)
  * 4. Holiday (#FF4081)
- * 5. Non Productive - ABM Function, Activity (#2979FF)
- * 6. Working (Redmine API logged hours) (#00E676)
+ * 5. Working (Redmine API logged hours, including Non-Productive) (#00E676)
  */
 function getEntryCategory(entry) {
   const yellowCat = getEntryYellowCategory(entry);
   if (yellowCat) {
     if (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function') {
-      return 'Non Productive - ABM Function, Activity';
+      return 'Working';
     }
     return yellowCat;
   }
@@ -254,10 +252,13 @@ function aggregateRedmineTimeEntries(timeEntries, validDateSet) {
       result.yellowCatsByDate[dStr][yellowCat] = (result.yellowCatsByDate[dStr][yellowCat] || 0) + hours;
       result.totalYellowHours += hours;
 
-      const normCat = (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function')
-        ? 'Non Productive - ABM Function, Activity'
-        : yellowCat;
-      result.categoriesByDate[dStr][normCat] = (result.categoriesByDate[dStr][normCat] || 0) + hours;
+      if (yellowCat === 'Non Productive - ABM Function, Activity' || yellowCat === 'Non Productive - ABM Function') {
+        result.workingHoursByDate[dStr] += hours;
+        result.totalWorkingHours += hours;
+        result.categoriesByDate[dStr]['Working'] = (result.categoriesByDate[dStr]['Working'] || 0) + hours;
+      } else {
+        result.categoriesByDate[dStr][yellowCat] = (result.categoriesByDate[dStr][yellowCat] || 0) + hours;
+      }
     } else {
       // General Redmine time entries (Development, Project Management, Bugfix, etc.) -> Working
       result.workingHoursByDate[dStr] += hours;
@@ -333,19 +334,29 @@ function buildCombinedHistoricalView({
     // Categories breakdown list for UI rendering
     const catMap = (redmineAggregation && redmineAggregation.categoriesByDate && redmineAggregation.categoriesByDate[ds]) || {};
     const yelCatMap = (redmineAggregation && redmineAggregation.yellowCatsByDate && redmineAggregation.yellowCatsByDate[ds]) || {};
-    const mergedCats = { ...catMap, ...yelCatMap };
 
-    const redmineCategoriesList = Object.keys(mergedCats).map(catName => {
-      const normName = (catName === 'Non Productive - ABM Function, Activity' || catName === 'Non Productive - ABM Function')
-        ? 'Non Productive - ABM Function, Activity'
-        : catName;
-      const h = mergedCats[catName];
+    // Fold 'Non Productive - ABM Function, Activity' into 'Working' without double-counting
+    const finalCats = {};
+    const sourceMap = Object.keys(catMap).length > 0 ? catMap : yelCatMap;
+    for (const [cName, hVal] of Object.entries(sourceMap)) {
+      if (cName === 'Non Productive - ABM Function, Activity' || cName === 'Non Productive - ABM Function') {
+        finalCats['Working'] = (finalCats['Working'] || 0) + hVal;
+      } else {
+        finalCats[cName] = (finalCats[cName] || 0) + hVal;
+      }
+    }
+
+    const calculatedWorkHours = Math.max(redmineWorkHours, (finalCats['Working'] || 0));
+    const effectiveWorkingSeconds = Math.round(calculatedWorkHours * 3600);
+
+    const redmineCategoriesList = Object.keys(finalCats).map(catName => {
+      const h = finalCats[catName];
       return {
-        name: normName,
+        name: catName,
         rawName: catName,
         hours: h,
         seconds: Math.round(h * 3600),
-        color: REDMINE_CATEGORY_COLORS[normName] || REDMINE_CATEGORY_COLORS[catName] || '#00E676'
+        color: REDMINE_CATEGORY_COLORS[catName] || '#00E676'
       };
     }).sort((a, b) => {
       // Regular Working hours always appear first; extra hours appear at the end
@@ -373,8 +384,8 @@ function buildCombinedHistoricalView({
       activeSeconds: activeSeconds,
       regularDuration: regularDurationSeconds,
       yellowDuration: yellowDurationSeconds,
-      redmineWorkingHours: redmineWorkHours,
-      redmineWorkingSeconds: redmineWorkingSeconds,
+      redmineWorkingHours: calculatedWorkHours,
+      redmineWorkingSeconds: effectiveWorkingSeconds,
       redmineTotalHours: redmineTotalHours,
       redmineTotalSeconds: redmineTotalSeconds,
       redmineDuration: redmineTotalSeconds > 0 ? redmineTotalSeconds : yellowDurationSeconds,
