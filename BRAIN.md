@@ -120,6 +120,7 @@ WorkLens/
 ├── test_progressive_loading.js # Progressive loading and latency benchmark suite
 ├── test_hourly_activity_suite.js # Comprehensive test suite for hour-wise activity layout, interval calculation & expandable dropdowns
 ├── test_app_hours_toggle_suite.js # Comprehensive test suite for App-Wise and Hours-Wise view toggle, aggregation, and tab sync
+├── test_midnight_session_split_suite.js # Comprehensive test suite for midnight session split, calendar boundaries & zero cross-day records
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -222,6 +223,13 @@ sequenceDiagram
     loop Every 2 Minutes (Sync Loop)
         Main->>Store: getEligibleClosedSessions()
         Store->>API: Batch POST logs (when online & resolved)
+    end
+
+    loop At Midnight (12:00:00 AM / Proactive Timer & Tick Detection)
+        Main->>Main: splitActiveSessionAtMidnight()
+        Main->>Store: Close Day 1 entry at 23:59:59 (duration = end - start)
+        Main->>Store: Open Day 2 continuing entry at 00:00:00 (state preserved)
+        Main->>Store: reconcileMidnightBoundaries()
     end
 
     OS->>Main: Suspend / System Quit Event
@@ -423,6 +431,30 @@ sequenceDiagram
     *   *Call Ends:* Does NOT immediately mark the user idle even if OS idle time exceeded 300s during the call. Restarts the 5-minute inactivity countdown from call conclusion (`callEndedAt`). Fresh keyboard/mouse input clears the baseline and restores standard OS idle tracking.
     *   *Background/Minimized Meeting:* When a meeting is active in the background and the system is otherwise idle (e.g., listening to a presentation on desktop), WorkLens maintains the session as `Active` under `Microsoft Teams` and suppresses the idle popup.
     *   *App Switching:* Switching away from Teams during an active call to work in Chrome or IDE immediately closes the Teams session cleanly with accurate duration and tracks the active work app normally.
+
+### 9. Automatic Midnight Session Splitting & Local Calendar Day Boundary Guarantee
+*   **Purpose:** Enforce strict 24-hour local calendar day boundaries for all activity records so that every entry belongs strictly to one day, starting at 12:00:00 AM (`00:00:00`) and ending at 11:59:59 PM (`23:59:59`). No activity entry is ever permitted to cross midnight into another date.
+*   **Files Involved:**
+    *   [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js) (`splitSessionAtMidnightBoundaries()`, `reconcileMidnightBoundaries()`, `saveOrUpdateActiveSessionLocal()`, `closeOrphanedSessions()`)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (`splitActiveSessionAtMidnight()`, `scheduleMidnightBoundaryCheck()`, `startOrContinueCurrentSession()`, `closeCurrentSession()`, `trackTick()`)
+    *   [test_midnight_session_split_suite.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/test_midnight_session_split_suite.js) (Dedicated 15-test suite covering all 15 edge cases)
+*   **Core Mechanics & Invariants:**
+    1.  **Exact Boundary Timestamps:**
+        *   Previous day entry ends at: `YYYY-MM-DDT23:59:59` (11:59:59 PM).
+        *   Next day entry starts at: `YYYY-MM-(DD+1)T00:00:00` (12:00:00 AM).
+        *   Durations follow exact integer second formula `Math.floor((endDate - startDate) / 1000)`. E.g., a session from 11:50 PM to 12:10 AM is split into 599s on Day 1 (11:50:00 to 11:59:59) and 600s on Day 2 (00:00:00 to 00:10:00).
+    2.  **State & Classification Preservation:**
+        *   Continuation entries inherit exact active/inactive status, application name, window title, activity type (e.g. `Suspicious Automation`, `Code Editing`), reason, and geolocation metadata.
+        *   Idle and inactive sessions remain strictly `inactive` across midnight (never converts idle time into active time).
+    3.  **Proactive Midnight Rotation:**
+        *   `scheduleMidnightBoundaryCheck()` schedules a precise `setTimeout` targeted at `nextMidnight` (00:00:00.000). On firing, it splits the live session, writes the closed entry to disk, opens the Day 2 continuation record, and re-arms for the subsequent midnight.
+    4.  **Reactive & Multi-Day Boundary Reconciliation:**
+        *   If the system slept or was suspended across midnight, or clock skew occurred, `startOrContinueCurrentSession()` and `trackTick()` compare `recordDayStr !== nowDayStr` and trigger `splitActiveSessionAtMidnight()`.
+        *   Multi-day spans (e.g., system sleeping over a long weekend across 3 days) loop through intermediate calendar days, producing closed entries (`00:00:00` to `23:59:59`) for each calendar day.
+    5.  **Crash Recovery & Startup Reconciliation:**
+        *   On application launch, `closeOrphanedSessions()` runs `reconcileMidnightBoundaries()`, scanning all persisted JSONL chunks and splitting any unclosed or spanning records left from a previous run before closing them.
+    6.  **Store-Level Defense-in-Depth:**
+        *   `saveOrUpdateActiveSessionLocal()` checks `startDay !== endDay`. If any caller attempts to persist a cross-day record, the store automatically splits it via `splitSessionAtMidnightBoundaries()`, persists both single-day chunks, records daily start times for both dates, and returns the active segment.
 
 ---
 
@@ -1108,10 +1140,12 @@ WorkLens includes a comprehensive testing framework covering all system-level mo
 | **Watchdog Auto-Recovery** | `scratch/test_watchdog_suite.js` | `node` | 8 | Watchdog state coordination, intentional shutdown detection, registry auto-start |
 | **Python Mouse Pattern Detection** | `test_mouse_pattern_suite.js` | `node` | 10 | Periodic clicks, mouse vibration, back-and-forth, random movement annotation |
 | **Dashboard Performance Suite** | `test_dashboard_performance_suite.js` | `node` | 8 | Date parsing speed, in-memory date index, 4-period accuracy, execution time benchmarks < 20ms, cache invalidation |
+| **Midnight Session Split Suite** | `test_midnight_session_split_suite.js` | `electron` | 15 | 12:00:00 AM / 11:59:59 PM boundaries, multi-day splits, sleep/wake, restart reconciliation, offline persistence, zero cross-day records |
 
 ### Running Tests
 *   **Run All Suites (Recommended):** `npm test` or `npm run test:all` (executes `node run_all_tests.js` with unified output).
 *   **Run Individual Suites:**
+    *   `npm run test:midnight` (or `electron test_midnight_session_split_suite.js`)
     *   `npm run test:perf` (or `node test_dashboard_performance_suite.js`)
     *   `npm run test:mouse-patterns` (or `node test_mouse_pattern_suite.js`)
     *   `npm run test:teams`

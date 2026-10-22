@@ -458,22 +458,180 @@ function writeChunks(chunks) {
   }
 }
 
-function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
+function splitSessionAtMidnightBoundaries(session) {
+  if (!session) return [];
+  const start = session.startTime || session.start_time;
+  const end = session.endTime || session.end_time;
+  if (!start || !end) return [session];
+
+  const startDate = (start instanceof Date) ? start : parseTimestampToDate(start);
+  const endDate = (end instanceof Date) ? end : parseTimestampToDate(end);
+  if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return [session];
+  }
+
+  // If start is after end, clamp end to start
+  if (endDate < startDate) {
+    return [{
+      ...session,
+      startTime: formatDateTime(startDate),
+      endTime: formatDateTime(startDate),
+      start_time: formatDateTime(startDate),
+      end_time: formatDateTime(startDate),
+      duration: 0
+    }];
+  }
+
+  const startDateStr = getLocalDateString(startDate);
+  const endDateStr = getLocalDateString(endDate);
+
+  if (startDateStr === endDateStr) {
+    return [session];
+  }
+
+  const segments = [];
+  let curStart = new Date(startDate.getTime());
+  let isFirst = true;
+
+  while (getLocalDateString(curStart) !== endDateStr && curStart < endDate) {
+    // End of this calendar day: 23:59:59
+    const dayEnd = new Date(curStart.getFullYear(), curStart.getMonth(), curStart.getDate(), 23, 59, 59, 0);
+    const segEnd = (dayEnd > endDate) ? endDate : dayEnd;
+    let segDuration = Math.floor((segEnd - curStart) / 1000);
+    if (segDuration < 0) segDuration = 0;
+    if (segDuration > MAX_SESSION_DURATION) segDuration = MAX_SESSION_DURATION;
+
+    const segLocalId = isFirst ? (session.local_id || crypto.randomUUID()) : crypto.randomUUID();
+    isFirst = false;
+
+    const startFormatted = formatDateTime(curStart);
+    const endFormatted = formatDateTime(segEnd);
+
+    segments.push({
+      ...session,
+      local_id: segLocalId,
+      startTime: startFormatted,
+      endTime: endFormatted,
+      start_time: startFormatted,
+      end_time: endFormatted,
+      activityOn: startFormatted,
+      activity_on: startFormatted,
+      duration: segDuration,
+      closed: true, // Past calendar day segment must always be closed
+      synced: session.synced !== undefined ? session.synced : false,
+      updated_at: new Date().toISOString()
+    });
+
+    // Move to start of next calendar day: 00:00:00
+    curStart = new Date(curStart.getFullYear(), curStart.getMonth(), curStart.getDate() + 1, 0, 0, 0, 0);
+  }
+
+  // Final day segment (from curStart to endDate)
+  if (curStart <= endDate) {
+    let finalDuration = Math.floor((endDate - curStart) / 1000);
+    if (finalDuration < 0) finalDuration = 0;
+    if (finalDuration > MAX_SESSION_DURATION) finalDuration = MAX_SESSION_DURATION;
+
+    const finalStartFormatted = formatDateTime(curStart);
+    const finalEndFormatted = formatDateTime(endDate);
+    const finalLocalId = isFirst ? (session.local_id || crypto.randomUUID()) : crypto.randomUUID();
+
+    segments.push({
+      ...session,
+      local_id: finalLocalId,
+      startTime: finalStartFormatted,
+      endTime: finalEndFormatted,
+      start_time: finalStartFormatted,
+      end_time: finalEndFormatted,
+      activityOn: finalStartFormatted,
+      activity_on: finalStartFormatted,
+      duration: finalDuration,
+      closed: session.closed !== undefined ? session.closed : false,
+      synced: session.synced !== undefined ? session.synced : false,
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  return segments;
+}
+
+function reconcileMidnightBoundaries() {
+  const chunks = readChunks();
+  let modified = false;
+  const newChunksList = [];
+  const todayStr = getLocalDateString(new Date());
+
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    const sDate = parseTimestampToDate(c.start_time || c.startTime);
+    const eDate = parseTimestampToDate(c.end_time || c.endTime);
+
+    if (!sDate) {
+      newChunksList.push(c);
+      continue;
+    }
+
+    const sDay = normalizeToLocalDateStr(c.start_time || c.startTime);
+    const eDay = eDate ? normalizeToLocalDateStr(c.end_time || c.endTime) : sDay;
+
+    // Check 1: Does this chunk cross a midnight boundary?
+    if (sDay && eDay && sDay !== eDay) {
+      modified = true;
+      const splitSegments = splitSessionAtMidnightBoundaries(c);
+      for (let j = 0; j < splitSegments.length; j++) {
+        newChunksList.push(splitSegments[j]);
+      }
+      continue;
+    }
+
+    // Check 2: Was this chunk left unclosed from a previous calendar day?
+    if (!c.closed && sDay && sDay < todayStr) {
+      modified = true;
+      let finalEnd = eDate;
+      if (!finalEnd || normalizeToLocalDateStr(finalEnd) !== sDay) {
+        finalEnd = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), 23, 59, 59, 0);
+      }
+      let duration = Math.floor((finalEnd - sDate) / 1000);
+      if (duration < 0) duration = 0;
+      if (duration > MAX_SESSION_DURATION) duration = MAX_SESSION_DURATION;
+
+      newChunksList.push({
+        ...c,
+        end_time: formatDateTime(finalEnd),
+        endTime: formatDateTime(finalEnd),
+        duration: duration,
+        closed: true,
+        updated_at: new Date().toISOString()
+      });
+      continue;
+    }
+
+    newChunksList.push(c);
+  }
+
+  if (modified) {
+    writeChunks(newChunksList);
+    console.log('[Storage] Reconciled and split cross-day sessions in local queue.');
+  }
+
+  return modified;
+}
+
+function saveOrUpdateSingleSessionLocal(session, userId, currentOsUser = null) {
   const chunks = readChunks();
   const index = chunks.findIndex(c => c.local_id === session.local_id);
 
   const start = session.startTime || session.start_time;
   const end = session.endTime || session.end_time;
   const actOn = session.activityOn || session.activity_on;
-  const currentOsUser = session.os_username || session.osUsername || osUsername || null;
 
   const startFormatted = ensureFormattedDateTime(start);
   const endFormatted = ensureFormattedDateTime(end);
   const actOnFormatted = ensureFormattedDateTime(actOn);
 
-  const startDateObj = new Date(start);
-  const endDateObj = new Date(end);
-  let duration = session.duration !== undefined ? session.duration : Math.floor((endDateObj - startDateObj) / 1000);
+  const startDateObj = (start instanceof Date) ? start : parseTimestampToDate(start);
+  const endDateObj = (end instanceof Date) ? end : parseTimestampToDate(end);
+  let duration = session.duration !== undefined ? session.duration : (startDateObj && endDateObj ? Math.floor((endDateObj - startDateObj) / 1000) : 0);
   if (duration < 0) duration = 0;
   if (duration > MAX_SESSION_DURATION) {
     duration = MAX_SESSION_DURATION;
@@ -534,7 +692,34 @@ function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
   }
 }
 
+function saveOrUpdateActiveSessionLocal(session, userId, osUsername = null) {
+  const start = session.startTime || session.start_time;
+  const end = session.endTime || session.end_time;
+  const currentOsUser = session.os_username || session.osUsername || osUsername || null;
+
+  const startDateObj = (start instanceof Date) ? start : parseTimestampToDate(start);
+  const endDateObj = (end instanceof Date) ? end : parseTimestampToDate(end);
+
+  if (startDateObj && endDateObj) {
+    const startDay = getLocalDateString(startDateObj);
+    const endDay = getLocalDateString(endDateObj);
+
+    if (startDay !== endDay) {
+      // Midnight boundary crossing detected! Split into discrete calendar day entries
+      const segments = splitSessionAtMidnightBoundaries(session);
+      let lastSaved = null;
+      for (let i = 0; i < segments.length; i++) {
+        lastSaved = saveOrUpdateSingleSessionLocal(segments[i], userId, currentOsUser);
+      }
+      return lastSaved;
+    }
+  }
+
+  return saveOrUpdateSingleSessionLocal(session, userId, currentOsUser);
+}
+
 function closeOrphanedSessions() {
+  reconcileMidnightBoundaries();
   const chunks = readChunks();
   let modified = false;
   const updated = chunks.map(c => {
@@ -886,6 +1071,9 @@ module.exports = {
   resetStorageHealth: storageHealth.resetStorageHealth,
   setStorageFaultInjection,
   getStorageFaultInjection,
+  // Midnight Session Split & Calendar Boundary Helpers
+  splitSessionAtMidnightBoundaries,
+  reconcileMidnightBoundaries,
   // Keep back compat mapping
   saveChunkLocal,
   markChunkSynced: markSessionSynced,

@@ -178,6 +178,8 @@ const quotes = require('./quotes');
 const {
   saveOrUpdateActiveSessionLocal,
   closeOrphanedSessions,
+  splitSessionAtMidnightBoundaries,
+  reconcileMidnightBoundaries,
   getEligibleClosedSessions,
   getPendingClosedSessions,
   markSessionSynced,
@@ -775,37 +777,191 @@ async function flushPendingClosedSessions() {
   }
 }
 
+let midnightTimer = null;
+
+function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession = null) {
+  const target = targetSession || currentRecord;
+  if (!target) {
+    reconcileMidnightBoundaries();
+    return;
+  }
+
+  const sDate = (target.startTime instanceof Date) ? target.startTime : parseTimestampToDate(target.startTime);
+  if (!sDate) return;
+
+  const currentOsUser = os.userInfo().username;
+  const loc = locationService.getCurrentLocation();
+  const bDate = (boundaryDate instanceof Date) ? boundaryDate : (boundaryDate ? parseTimestampToDate(boundaryDate) : new Date());
+
+  const startDayStr = getLocalDateString(sDate);
+  const boundaryDayStr = getLocalDateString(bDate);
+
+  if (startDayStr === boundaryDayStr) {
+    // Both are on the same day, no boundary split needed
+    return;
+  }
+
+  // 1. Close Day 1 entry at 23:59:59
+  const prevDayEnd = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), 23, 59, 59, 0);
+  let prevDuration = Math.floor((prevDayEnd - sDate) / 1000);
+  if (prevDuration < 0) prevDuration = 0;
+  if (prevDuration > MAX_SESSION_DURATION) prevDuration = MAX_SESSION_DURATION;
+
+  target.endTime = prevDayEnd;
+  target.duration = prevDuration;
+  target.closed = true;
+
+  if (!target.latitude && loc && loc.latitude) {
+    target.latitude = loc.latitude;
+    target.longitude = loc.longitude;
+    target.current_address = loc.current_address;
+  }
+
+  saveOrUpdateActiveSessionLocal(target, cachedUserId, currentOsUser);
+  console.log(`[Midnight Rotation] Closed previous day session: local_id=${target.local_id} app="${target.appName}" end=${formatDateTime(prevDayEnd)} duration=${prevDuration}s`);
+
+  // Handle any intermediate full calendar days if multiple midnights passed (e.g. system suspended for multiple days)
+  let curDayStart = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate() + 1, 0, 0, 0, 0);
+  while (getLocalDateString(curDayStart) !== boundaryDayStr && curDayStart < bDate) {
+    const intDayEnd = new Date(curDayStart.getFullYear(), curDayStart.getMonth(), curDayStart.getDate(), 23, 59, 59, 0);
+    let intDuration = Math.floor((intDayEnd - curDayStart) / 1000);
+    if (intDuration > MAX_SESSION_DURATION) intDuration = MAX_SESSION_DURATION;
+
+    const intermediateRecord = {
+      local_id: crypto.randomUUID(),
+      appName: target.appName,
+      windowTitle: target.windowTitle,
+      status: target.status,
+      startTime: curDayStart,
+      endTime: intDayEnd,
+      activityOn: curDayStart,
+      duration: intDuration,
+      reason: target.reason,
+      activityType: target.activityType,
+      os_username: currentOsUser,
+      latitude: loc && loc.latitude !== undefined && loc.latitude !== null ? loc.latitude : null,
+      longitude: loc && loc.longitude !== undefined && loc.longitude !== null ? loc.longitude : null,
+      current_address: loc && loc.current_address !== undefined && loc.current_address !== null ? loc.current_address : null,
+      closed: true
+    };
+    saveOrUpdateActiveSessionLocal(intermediateRecord, cachedUserId, currentOsUser);
+    curDayStart = new Date(curDayStart.getFullYear(), curDayStart.getMonth(), curDayStart.getDate() + 1, 0, 0, 0, 0);
+  }
+
+  // 2. Open continuing session for the new calendar day starting at 00:00:00
+  const nextDayStart = curDayStart;
+  const effectiveEnd = (bDate > nextDayStart) ? bDate : nextDayStart;
+  let newDuration = Math.floor((effectiveEnd - nextDayStart) / 1000);
+  if (newDuration < 0) newDuration = 0;
+  if (newDuration > MAX_SESSION_DURATION) newDuration = MAX_SESSION_DURATION;
+
+  const continuation = {
+    local_id: crypto.randomUUID(),
+    appName: target.appName,
+    windowTitle: target.windowTitle,
+    status: target.status,
+    startTime: nextDayStart,
+    endTime: effectiveEnd,
+    activityOn: nextDayStart,
+    duration: newDuration,
+    reason: target.reason,
+    activityType: target.activityType,
+    os_username: currentOsUser,
+    latitude: loc && loc.latitude !== undefined && loc.latitude !== null ? loc.latitude : null,
+    longitude: loc && loc.longitude !== undefined && loc.longitude !== null ? loc.longitude : null,
+    current_address: loc && loc.current_address !== undefined && loc.current_address !== null ? loc.current_address : null,
+    closed: false
+  };
+
+  const saved = saveOrUpdateActiveSessionLocal(continuation, cachedUserId, currentOsUser);
+  if (saved && saved.local_id) {
+    continuation.local_id = saved.local_id;
+  }
+
+  currentRecord = continuation;
+  console.log(`[Midnight Rotation] Opened continuing session for new calendar day: local_id=${continuation.local_id} app="${continuation.appName}" start=${formatDateTime(nextDayStart)}`);
+
+  // Invalidate UI caches so dashboard refreshes immediately
+  todayResolvedCache = null;
+  invalidateActivity30DaysCache(false);
+  reconcileMidnightBoundaries();
+}
+
+function scheduleMidnightBoundaryCheck() {
+  if (midnightTimer) {
+    clearTimeout(midnightTimer);
+    midnightTimer = null;
+  }
+  const now = new Date();
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  const msToMidnight = Math.max(100, nextMidnight.getTime() - now.getTime());
+
+  midnightTimer = setTimeout(() => {
+    try {
+      console.log('[Midnight Rotation] Midnight reached. Splitting active sessions at calendar boundary...');
+      splitActiveSessionAtMidnight(nextMidnight);
+    } catch (err) {
+      console.error('[Midnight Rotation] Error during midnight session split:', err);
+    } finally {
+      scheduleMidnightBoundaryCheck();
+    }
+  }, msToMidnight);
+
+  if (midnightTimer && midnightTimer.unref) {
+    midnightTimer.unref();
+  }
+}
+
 function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null, activityType = 'Unknown') {
   const cleanStatus = status.toLowerCase();
   const currentOsUser = os.userInfo().username;
 
   if (currentRecord) {
+    const recordStartDate = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
+    const recordDayStr = normalizeToLocalDateStr(recordStartDate);
+    const nowDayStr = getLocalDateString(now);
+    const isSameDay = recordDayStr === nowDayStr;
+
     const isSameApp = currentRecord.appName === appName;
     const isSameTitle = currentRecord.windowTitle === windowTitle;
     const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
-    const isSameDay = new Date(currentRecord.startTime).toDateString() === now.toDateString();
     const isSameReason = currentRecord.reason === reason;
-    const sessionDuration = Math.floor((now - currentRecord.startTime) / 1000);
+    const sessionDuration = Math.floor((now - recordStartDate) / 1000);
     const isDurationExceeded = sessionDuration >= MAX_SESSION_DURATION;
 
-    if (isSameApp && isSameTitle && isSameStatus && isSameDay && isSameReason && !isDurationExceeded) {
-      // Continue existing session - update activity_type from latest evaluation
-      currentRecord.endTime = now;
-      currentRecord.duration = Math.floor((now - currentRecord.startTime) / 1000);
-      currentRecord.activityType = activityType;
-      // Dynamic backfill: If session started before location resolved, backfill it now
-      if (!currentRecord.latitude) {
-        const loc = locationService.getCurrentLocation();
-        if (loc && loc.latitude) {
-          currentRecord.latitude = loc.latitude;
-          currentRecord.longitude = loc.longitude;
-          currentRecord.current_address = loc.current_address;
+    if (isSameDay) {
+      if (isSameApp && isSameTitle && isSameStatus && isSameReason && !isDurationExceeded) {
+        // Continue existing session - update activity_type from latest evaluation
+        currentRecord.endTime = now;
+        currentRecord.duration = Math.floor((now - recordStartDate) / 1000);
+        currentRecord.activityType = activityType;
+        // Dynamic backfill: If session started before location resolved, backfill it now
+        if (!currentRecord.latitude) {
+          const loc = locationService.getCurrentLocation();
+          if (loc && loc.latitude) {
+            currentRecord.latitude = loc.latitude;
+            currentRecord.longitude = loc.longitude;
+            currentRecord.current_address = loc.current_address;
+          }
         }
+        saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
+        return;
+      } else {
+        closeCurrentSession(now);
       }
-      saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
-      return;
     } else {
-      closeCurrentSession(now);
+      // Midnight crossed!
+      console.log(`[Midnight Rotation] Day boundary transition detected: ${recordDayStr} -> ${nowDayStr}`);
+      if (isSameApp && isSameTitle && isSameStatus && isSameReason && !isDurationExceeded) {
+        // Same activity continuing across midnight: perform boundary split
+        splitActiveSessionAtMidnight(now, currentRecord);
+        return;
+      } else {
+        // Activity changed right at or across midnight:
+        // Close previous day session cleanly at 23:59:59 of that day
+        const prevDayEnd = new Date(recordStartDate.getFullYear(), recordStartDate.getMonth(), recordStartDate.getDate(), 23, 59, 59, 0);
+        closeCurrentSession(prevDayEnd);
+      }
     }
   }
 
@@ -836,18 +992,34 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
 
 function closeCurrentSession(endTime = new Date()) {
   if (!currentRecord) return;
-  // Sanity Guard: Ensure valid end time and cap duration at 12 hours max
-  if (endTime < currentRecord.startTime) {
-    endTime = new Date(currentRecord.startTime);
+  const sDate = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
+  let resolvedEnd = (endTime instanceof Date) ? endTime : parseTimestampToDate(endTime);
+  if (!resolvedEnd || isNaN(resolvedEnd.getTime())) {
+    resolvedEnd = new Date();
   }
-  let duration = Math.floor((endTime - currentRecord.startTime) / 1000);
+
+  // Sanity Guard: Ensure valid end time
+  if (sDate && resolvedEnd < sDate) {
+    resolvedEnd = new Date(sDate);
+  }
+
+  // Midnight Boundary Protection: Cap session end at 23:59:59 of start day so no session spans across midnight
+  if (sDate) {
+    const sDay = normalizeToLocalDateStr(sDate);
+    const eDay = normalizeToLocalDateStr(resolvedEnd);
+    if (sDay && eDay && sDay !== eDay) {
+      resolvedEnd = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), 23, 59, 59, 0);
+    }
+  }
+
+  let duration = sDate ? Math.floor((resolvedEnd - sDate) / 1000) : 0;
   if (duration > MAX_SESSION_DURATION) {
     console.warn(`[Sanity Guard] Capping session duration from ${duration}s to ${MAX_SESSION_DURATION}s.`);
     duration = MAX_SESSION_DURATION;
-    endTime = new Date(currentRecord.startTime.getTime() + MAX_SESSION_DURATION * 1000);
+    resolvedEnd = new Date(sDate.getTime() + MAX_SESSION_DURATION * 1000);
   }
-  currentRecord.endTime = endTime;
-  currentRecord.duration = duration;
+  currentRecord.endTime = resolvedEnd;
+  currentRecord.duration = Math.max(0, duration);
   currentRecord.closed = true;
 
   if (!currentRecord.latitude) {
@@ -880,10 +1052,19 @@ async function trackTick() {
     if (lastTickTimestamp && (elapsedSinceLastTick > CLOCK_SKEW_THRESHOLD_MS || elapsedSinceLastTick < -5000)) {
       console.warn(`[Sanity Guard] System time jump/sleep detected! Elapsed: ${Math.round(elapsedSinceLastTick / 1000)}s.`);
       if (currentRecord) {
-        // Safely close the previous session at the last known valid tick time
-        const safeCloseTime = new Date(Math.min(lastTickTimestamp + 2000, nowMs));
+        // Safely close the previous session at the last known valid tick time, capped at 23:59:59 if crossing midnight
+        const sDate = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
+        let safeCloseTime = new Date(Math.min(lastTickTimestamp + 2000, nowMs));
+        if (sDate) {
+          const sDay = normalizeToLocalDateStr(sDate);
+          const closeDay = normalizeToLocalDateStr(safeCloseTime);
+          if (sDay && closeDay && sDay !== closeDay) {
+            safeCloseTime = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), 23, 59, 59, 0);
+          }
+        }
         closeCurrentSession(safeCloseTime);
       }
+      reconcileMidnightBoundaries();
     }
     lastTickTimestamp = nowMs;
 
@@ -2208,11 +2389,13 @@ function createTray() {
 if (gotTheLock) {
   // App Lifecycle
   app.whenReady().then(async () => {
-    // Close any orphaned sessions from previous runs
+    // Close any orphaned sessions from previous runs and reconcile midnight boundaries
     try {
       closeOrphanedSessions();
+      reconcileMidnightBoundaries();
+      scheduleMidnightBoundaryCheck();
     } catch (err) {
-      console.error('[Startup] Failed to close orphaned sessions:', err);
+      console.error('[Startup] Failed to close orphaned sessions / reconcile boundaries:', err);
     }
 
     // Register global keyboard and mouse hooks callbacks (starts stopped, controlled via service manager)
@@ -2418,6 +2601,12 @@ if (gotTheLock) {
     // Stop location service timers
     locationService.stopLocationService();
 
+    // Clear midnight boundary rotation timer
+    if (midnightTimer) {
+      clearTimeout(midnightTimer);
+      midnightTimer = null;
+    }
+
     if (!finalSyncDone) {
       event.preventDefault();
       finalSyncDone = true;
@@ -2445,4 +2634,17 @@ if (gotTheLock) {
   });
 } else {
   app.quit();
+}
+
+if (process.env.NODE_ENV === 'test') {
+  module.exports = {
+    startOrContinueCurrentSession,
+    closeCurrentSession,
+    splitActiveSessionAtMidnight,
+    getCurrentRecord: () => currentRecord,
+    setCurrentRecord: (rec) => { currentRecord = rec; },
+    scheduleMidnightBoundaryCheck,
+    clearMidnightTimer: () => { if (midnightTimer) clearTimeout(midnightTimer); midnightTimer = null; },
+    trackTick
+  };
 }

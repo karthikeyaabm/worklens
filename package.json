@@ -19,6 +19,7 @@
     "test:watchdog": "node scratch/test_watchdog_suite.js",
     "test:mouse-patterns": "node test_mouse_pattern_suite.js",
     "test:perf": "electron test_dashboard_performance_suite.js",
+    "test:midnight": "electron test_midnight_session_split_suite.js",
     "build": "electron-builder",
     "release": "electron-builder --publish always"
   },

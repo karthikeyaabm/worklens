@@ -114,6 +114,12 @@ const TEST_SUITES = [
     file: 'test_dashboard_performance_suite.js',
     runner: 'electron',
     description: 'Ultra-fast Today/Yesterday/7d/30d resolution, in-memory date index, non-blocking hydration, deduplication'
+  },
+  {
+    name: '19. Midnight Session Split & Local Day Boundary Suite',
+    file: 'test_midnight_session_split_suite.js',
+    runner: 'electron',
+    description: 'Automatic 12:00:00 AM / 11:59:59 PM session splitting, zero cross-day records, offline preservation'
   }
 ];
 
