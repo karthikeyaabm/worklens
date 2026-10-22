@@ -907,6 +907,9 @@ WorkLens Watchdog (Hidden PowerShell / VBS)
 *   **Watchdog Installer Awareness (`Test-IsInstallerRunning`):**
     *   Both PowerShell and Node.js watchdog monitors actively inspect the process table for active `WorkLens-Setup*.exe` or `installer.exe` processes.
     *   If an installer is detected, the watchdog enters a 10-second pause and skips recovery restarts, preventing premature app respawns while NSIS is in the middle of extracting new files.
+*   **Legacy ASAR Shadow Purge (`customInit` & `customInstall`):**
+    *   When transitioning builds from ASAR-packaged (`app.asar`) to unpacked directory mode (`resources/app/`), Electron's native loader prioritizes `resources/app.asar` if it exists.
+    *   NSIS explicitly executes `Delete "$INSTDIR\resources\app.asar"` and `RMDir /r "$INSTDIR\resources\app.asar.unpacked"` during both `customInit` and `customInstall`, preventing stale older versions from remaining active and triggering infinite update-detection loops.
 
 ---
 

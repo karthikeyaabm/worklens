@@ -10,6 +10,15 @@
   nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | Where-Object { $$_.CommandLine -like '*worklens-watchdog*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
 
   # =========================================================================
+  # Delete Legacy app.asar from v1.2.1
+  # =========================================================================
+  # In v1.2.1, code was packaged in app.asar. In newer builds with unpacked
+  # directory mode, Electron prioritizes app.asar over the app directory if
+  # app.asar exists. Deleting it ensures the newly unpacked version runs.
+  Delete "$INSTDIR\resources\app.asar"
+  RMDir /r "$INSTDIR\resources\app.asar.unpacked"
+
+  # =========================================================================
   # Prevent Installer from Invoking Old Uninstaller during Upgrades
   # =========================================================================
   # By default, electron-builder's installer executes the existing on-disk
@@ -23,6 +32,10 @@
 !macroend
 
 !macro customInstall
+  # Ensure legacy app.asar is removed so the unpacked application is loaded
+  Delete "$INSTDIR\resources\app.asar"
+  RMDir /r "$INSTDIR\resources\app.asar.unpacked"
+
   # Clean up legacy invalid asar-based startup registry entry, or set to valid resources/watchdog path
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.WorkLens"
 
