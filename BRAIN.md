@@ -1095,6 +1095,16 @@ WorkLens features an isolated behavioral annotation layer that analyzes global m
 
 ---
 
+### 21.1 Window Lifecycle & System Tray Resilience
+
+WorkLens employs defensive window lifecycle guards in `main.js` to prevent native C++ Chromium `TypeError: Object has been destroyed` exceptions:
+*   **Safe Re-creation in `showAndFocusWindow()`:** When tray double-click, tray menu "Open WorkLens", or `second-instance` IPC triggers, the code checks `!mainWindow || mainWindow.isDestroyed()`. If the native window was destroyed (e.g. via OS display changes, sleep/wake, or process termination), it transparently re-invokes `createWindow()` instead of invoking `.isMinimized()` or `.show()` on a destroyed reference.
+*   **Duplicate Window Guard in `createWindow()`:** If `mainWindow` is already alive (`mainWindow && !mainWindow.isDestroyed()`), `createWindow()` focuses the existing instance and returns early to prevent multiple widget instances.
+*   **Nullification on `closed`:** Both `mainWindow` and `activityWindow` attach `'closed'` event handlers resetting their variables to `null` (`mainWindow.on('closed', () => { mainWindow = null; })`).
+*   **Popup & IPC Guarding:** `positionActivityWindow()`, `toggleActivityPopup()`, and `ipcMain.handle('hide-main-window')` verify `!window.isDestroyed()` before calling bounds, visibility, or close methods.
+
+---
+
 ## 22. Testing
 
 ### Manual Testing

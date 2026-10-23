@@ -263,7 +263,10 @@ let finalSyncDone = false;
 const gotTheLock = app.requestSingleInstanceLock();
 
 function showAndFocusWindow() {
-  if (mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
@@ -1222,7 +1225,7 @@ async function trackTick() {
 }
 
 function createActivityWindow() {
-  if (activityWindow) return activityWindow;
+  if (activityWindow && !activityWindow.isDestroyed()) return activityWindow;
 
   activityWindow = new BrowserWindow({
     width: 690,
@@ -1252,15 +1255,21 @@ function createActivityWindow() {
     if (!isQuitting) {
       event.preventDefault();
       activityWindow.hide();
-      activityWindow.webContents.send('popup-status-changed', 'closed');
+      if (!activityWindow.isDestroyed()) {
+        activityWindow.webContents.send('popup-status-changed', 'closed');
+      }
     }
+  });
+
+  activityWindow.on('closed', () => {
+    activityWindow = null;
   });
 
   return activityWindow;
 }
 
 function positionActivityWindow() {
-  if (!mainWindow || !activityWindow) return;
+  if (!mainWindow || mainWindow.isDestroyed() || !activityWindow || activityWindow.isDestroyed()) return;
 
   const [wx, wy] = mainWindow.getPosition();
   const primaryDisplay = screen.getDisplayNearestPoint({ x: wx, y: wy });
@@ -1345,9 +1354,9 @@ function positionActivityWindow() {
 }
 
 function toggleActivityPopup() {
-  if (!mainWindow) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
 
-  if (!activityWindow) {
+  if (!activityWindow || activityWindow.isDestroyed()) {
     showPopupOnReady = true;
     createActivityWindow();
     return;
@@ -1364,6 +1373,11 @@ function toggleActivityPopup() {
 }
 
 function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    showAndFocusWindow();
+    return mainWindow;
+  }
+
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
 
@@ -1412,11 +1426,15 @@ function createWindow() {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
-      if (activityWindow && activityWindow.isVisible()) {
+      if (activityWindow && !activityWindow.isDestroyed() && activityWindow.isVisible()) {
         activityWindow.hide();
         activityWindow.webContents.send('popup-status-changed', 'closed');
       }
     }
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 }
 
@@ -1548,7 +1566,7 @@ function showInactivityPopup() {
 
 // IPC Handlers
 ipcMain.handle('hide-main-window', () => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.close();
   }
 });
