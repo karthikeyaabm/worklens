@@ -862,9 +862,9 @@ function updateFooterLabel() {
   } else if (currentPeriod === 'yesterday') {
     footerLabelEl.textContent = 'Total Active Time (Yesterday)';
   } else if (currentPeriod === 'last7days') {
-    footerLabelEl.textContent = 'Total Active Time (Last 7 Days)';
+    footerLabelEl.textContent = 'Total Time (Last 7 Days)';
   } else if (currentPeriod === 'last30days' || currentPeriod === 'current_month') {
-    footerLabelEl.textContent = 'Total Active Time (Last 30 Days)';
+    footerLabelEl.textContent = 'Total Time (Last 30 Days)';
   } else {
     footerLabelEl.textContent = 'Total Active Time';
   }
@@ -1293,11 +1293,22 @@ function renderHistoryView(rawData) {
       targetEmptyMsg.textContent = 'No activity recorded.';
     }
     showState(targetEmptyState);
-    const totalSeconds = rawData?.totalSeconds !== undefined
-      ? rawData.totalSeconds
-      : allDays.reduce((sum, d) => sum + d.duration, 0);
     if (targetTotalTimeEl) {
-      targetTotalTimeEl.textContent = formatDuration(totalSeconds);
+      targetTotalTimeEl.innerHTML = `
+        <div class="history-dual-totals">
+          <div class="history-total-item" title="System Active Time (excluding Special Hours)">
+            <span class="history-total-dot dot-system">●</span>
+            <span class="history-total-label">System:</span>
+            <span class="history-total-val history-total-val-system">0m</span>
+          </div>
+          <span class="history-total-divider">|</span>
+          <div class="history-total-item" title="Redmine Total Hours">
+            <span class="history-total-dot dot-redmine">●</span>
+            <span class="history-total-label">Redmine:</span>
+            <span class="history-total-val history-total-val-redmine">0h</span>
+          </div>
+        </div>
+      `.trim();
     }
     updateFooterLabel();
     return;
@@ -1518,12 +1529,44 @@ function renderHistoryView(rawData) {
     }, 50);
   });
 
-  const totalSeconds = rawData?.totalSeconds !== undefined
-    ? rawData.totalSeconds
-    : allDays.reduce((sum, d) => sum + d.duration, 0);
+  const targetDays = days;
+  const systemTotalSeconds = targetDays.reduce((sum, d) => {
+    if (d.regularDuration !== undefined) return sum + (Number(d.regularDuration) || 0);
+    if (d.activeSeconds !== undefined) return sum + (Number(d.activeSeconds) || 0);
+    return sum + (Number(d.duration) || 0);
+  }, 0);
+
+  const redmineTotalSeconds = targetDays.reduce((sum, d) => {
+    let rSec = 0;
+    if (d.redmineTotalSeconds !== undefined && Number(d.redmineTotalSeconds) > 0) {
+      rSec = Number(d.redmineTotalSeconds);
+    } else if (d.redmineDuration !== undefined && Number(d.redmineDuration) > 0) {
+      rSec = Number(d.redmineDuration);
+    } else if (d.redmineWorkingSeconds !== undefined && Number(d.redmineWorkingSeconds) > 0) {
+      const yel = Number(d.yellowDuration) || 0;
+      rSec = Number(d.redmineWorkingSeconds) + yel;
+    } else if (d.yellowDuration !== undefined && Number(d.yellowDuration) > 0) {
+      rSec = Number(d.yellowDuration);
+    }
+    return sum + rSec;
+  }, 0);
 
   if (targetTotalTimeEl) {
-    targetTotalTimeEl.textContent = formatDuration(totalSeconds);
+    targetTotalTimeEl.innerHTML = `
+      <div class="history-dual-totals">
+        <div class="history-total-item" title="System Active Time (excluding Special Hours)">
+          <span class="history-total-dot dot-system">●</span>
+          <span class="history-total-label">System:</span>
+          <span class="history-total-val history-total-val-system">${formatDuration(systemTotalSeconds)}</span>
+        </div>
+        <span class="history-total-divider">|</span>
+        <div class="history-total-item" title="Redmine Total Hours">
+          <span class="history-total-dot dot-redmine">●</span>
+          <span class="history-total-label">Redmine:</span>
+          <span class="history-total-val history-total-val-redmine">${formatDuration(redmineTotalSeconds)}</span>
+        </div>
+      </div>
+    `.trim();
   }
   updateFooterLabel();
 }

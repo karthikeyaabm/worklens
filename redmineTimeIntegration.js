@@ -402,12 +402,21 @@ function buildCombinedHistoricalView({
     };
   });
 
-  const totalSeconds = daysList.reduce((sum, d) => sum + d.duration, 0);
+  // System total time (strictly regular workstation active time without special hours)
+  const totalSystemSeconds = daysList.reduce((sum, d) => sum + (d.regularDuration !== undefined ? d.regularDuration : (d.activeSeconds || 0)), 0);
+
+  // Redmine total time (sum of all Redmine logged hours across the period)
+  const totalRedmineSeconds = daysList.reduce((sum, d) => sum + (d.redmineDuration || d.redmineTotalSeconds || 0), 0);
+
+  // Pure system active time (without special hours added)
+  const totalSeconds = totalSystemSeconds;
 
   return {
     period: periodName,
     days: daysList,
     totalSeconds: totalSeconds,
+    totalSystemSeconds: totalSystemSeconds,
+    totalRedmineSeconds: totalRedmineSeconds,
     dateRange: `${daysList[daysList.length - 1].shortDate} — ${daysList[0].shortDate}`
   };
 }

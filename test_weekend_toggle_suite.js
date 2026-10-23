@@ -245,6 +245,25 @@ console.log('PASS: [5.2] Toggle is visible on Last 7 Days and Last 30 Days views
 console.log('PASS: [5.3] Shared checkbox state preserved when switching between historical tabs');
 
 // ---------------------------------------------------------------------------------
+// TEST GROUP 6: Dynamic Weekend Subtraction from Visible Total Time
+// ---------------------------------------------------------------------------------
+console.log('\n--- Test Group 6: Dynamic Weekend Subtraction from Visible Total Time ---');
+
+// In mockLast7Days, Sunday 2026-10-11 has 7200s (2h), Weekdays have 28800 + 27000 + 25200 + 0 + 28800 = 109800s (30h 30m)
+const weekdays7 = filterDays(mockRawData7.days, false);
+const allDays7 = filterDays(mockRawData7.days, true);
+
+const weekdaysTotal = weekdays7.reduce((sum, d) => sum + (d.regularDuration !== undefined ? d.regularDuration : d.duration), 0);
+const allDaysTotal = allDays7.reduce((sum, d) => sum + (d.regularDuration !== undefined ? d.regularDuration : d.duration), 0);
+
+assert.strictEqual(weekdaysTotal, 109800, 'When unchecked, weekend time (7200s) must be subtracted from total time');
+assert.strictEqual(allDaysTotal, 117000, 'When checked, total time must include weekend time (109800 + 7200 = 117000s)');
+assert.strictEqual(allDaysTotal - weekdaysTotal, 7200, 'Difference between toggled states must exactly equal weekend duration (2h)');
+
+console.log('PASS: [6.1] Unchecking weekend toggle subtracts weekend hours from total active time');
+console.log('PASS: [6.2] Checking weekend toggle includes weekend hours in total active time');
+
+// ---------------------------------------------------------------------------------
 // SUMMARY
 // ---------------------------------------------------------------------------------
 console.log('\n================================================================================');

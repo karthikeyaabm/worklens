@@ -1065,6 +1065,66 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Dual totals in footer for Last 7 Days / Last 30 Days */
+.history-dual-totals {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.history-total-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.history-total-dot {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.history-total-dot.dot-system {
+  color: #38bdf8;
+  text-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
+}
+
+.history-total-dot.dot-redmine {
+  color: #00E676;
+  text-shadow: 0 0 6px rgba(0, 230, 118, 0.4);
+}
+
+.history-total-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9CA3AF;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.history-total-val {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-total-val-system {
+  color: #38bdf8;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.history-total-val-redmine {
+  color: #00E676;
+  text-shadow: 0 0 10px rgba(0, 230, 118, 0.25);
+}
+
+.history-total-divider {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 13px;
+  font-weight: 300;
+  user-select: none;
+}
+
 /* ================= ANIMATIONS ================= */
 @keyframes popupOpen {
   from {

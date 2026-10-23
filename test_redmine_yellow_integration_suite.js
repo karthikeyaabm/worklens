@@ -1037,10 +1037,76 @@ function teardownMockDom(domState) {
 }
 
 // ---------------------------------------------------------------------------------
+// TEST 15: Dual Footer Totals - Special Hours Excluded from System Total Time
+// ---------------------------------------------------------------------------------
+console.log('\n--- Test 15: Dual Footer Totals in History Views (System vs Redmine) ---');
+
+runTest('15.1 buildCombinedHistoricalView outputs totalSystemSeconds without special hours and totalRedmineSeconds separately', () => {
+  const dateStr = '2026-10-16';
+  const agg = {
+    yellowHoursByDate: { [dateStr]: 2.0 },
+    yellowCatsByDate: { [dateStr]: { 'Leave': 2.0 } },
+    workingHoursByDate: { [dateStr]: 5.0 },
+    allRedmineHoursByDate: { [dateStr]: 7.0 },
+    categoriesByDate: { [dateStr]: { 'Working': 5.0, 'Leave': 2.0 } }
+  };
+
+  const view = buildCombinedHistoricalView({
+    periodName: 'last7days',
+    dateObjects: [new Date(2026, 9, 16)],
+    dailyDurations: { [dateStr]: 6.0 * 3600 }, // 6h system active tracking
+    dailyTimeRanges: {},
+    redmineAggregation: agg,
+    todayStr: '2026-10-18',
+    isCurrentlyTracking: false,
+    formatTime12Fn: null
+  });
+
+  // System time must be strictly 6h (21600s), special hours (2h Leave) must NOT be added
+  assert.strictEqual(view.totalSystemSeconds, 21600, 'totalSystemSeconds must strictly be 6h workstation time');
+  assert.strictEqual(view.totalSeconds, 21600, 'totalSeconds must match totalSystemSeconds without special hours');
+  assert.strictEqual(view.totalRedmineSeconds, 25200, 'totalRedmineSeconds must be 7h (5h working + 2h leave)');
+});
+
+runTest('15.2 renderHistoryView footer renders separate System and Redmine total times', () => {
+  const domState = setupMockDom();
+  try {
+    const rawData = {
+      period: 'last7days',
+      days: [
+        {
+          dateStr: '2026-10-16',
+          displayDate: '16 Oct 2026',
+          weekdayDisplay: 'Fri, 16 Oct',
+          duration: 28800, // combined 8h
+          regularDuration: 21600, // 6h system active time
+          yellowDuration: 7200, // 2h special hours
+          redmineTotalSeconds: 7200,
+          redmineDuration: 7200,
+          hasData: true
+        }
+      ]
+    };
+
+    popupModule.renderHistoryView(rawData);
+
+    const totalTimeEl = domState.elements['total-time'];
+    assert.ok(totalTimeEl, 'total-time element must exist');
+    assert.ok(totalTimeEl.innerHTML.includes('history-dual-totals'), 'Must render dual totals container in history view');
+    assert.ok(totalTimeEl.innerHTML.includes('history-total-val-system'), 'Must render system total value element');
+    assert.ok(totalTimeEl.innerHTML.includes('history-total-val-redmine'), 'Must render redmine total value element');
+    assert.ok(totalTimeEl.innerHTML.includes('6h'), 'System total must display 6h (special hours not added)');
+    assert.ok(totalTimeEl.innerHTML.includes('2h'), 'Redmine total must display 2h');
+  } finally {
+    teardownMockDom(domState);
+  }
+});
+
+// ---------------------------------------------------------------------------------
 // SUMMARY
 // ---------------------------------------------------------------------------------
 console.log('\n================================================================================');
-console.log(` ALL 14 REDMINE TIME INTEGRATION & YELLOW PROGRESS BAR TESTS PASSED (${passed}/${total})`);
+console.log(` ALL REDMINE TIME INTEGRATION & DUAL TOTALS TESTS PASSED (${passed}/${total})`);
 console.log('================================================================================\n');
 
 process.exit(0);
