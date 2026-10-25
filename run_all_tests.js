@@ -120,6 +120,12 @@ const TEST_SUITES = [
     file: 'test_midnight_session_split_suite.js',
     runner: 'electron',
     description: 'Automatic 12:00:00 AM / 11:59:59 PM session splitting, zero cross-day records, offline preservation'
+  },
+  {
+    name: '20. Future-Date Cascade Prevention & Midnight Recovery Suite',
+    file: 'test_future_date_midnight_recovery_suite.js',
+    runner: 'electron',
+    description: 'Boundary safety, future-date rejection, duration sanity quarantine, idempotent split, retry integrity'
   }
 ];
 
