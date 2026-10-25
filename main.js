@@ -184,6 +184,7 @@ const {
   getPendingClosedSessions,
   markSessionSynced,
   markSessionFailed,
+  quarantineSession,
   getUnsyncedTodayDuration,
   getUnsyncedTodayLogs,
   getUserIdFromLocalQueue,
@@ -729,18 +730,26 @@ async function flushPendingClosedSessions() {
         continue;
       }
 
-      // Sanity Guard: Invalidate sessions exceeding 12h or corrupt/future dates
+      // Sanity Guard: Quarantine sessions exceeding 12h or corrupt/future dates
       if (session.duration > MAX_SESSION_DURATION) {
-        console.warn(`[Sanity Guard] Dropping session ${session.local_id}: duration ${session.duration}s exceeds 12h limit.`);
-        markSessionSynced(session.local_id);
+        console.warn(`[Sanity Guard] Quarantining session ${session.local_id}: duration ${session.duration}s exceeds 12h limit.`);
+        quarantineSession(session.local_id, `Duration ${session.duration}s exceeds 12h limit`);
         continue;
       }
 
-      const sessionDate = new Date(session.end_time || session.start_time);
+      const sessionStartDate = parseTimestampToDate(session.start_time);
+      const sessionEndDate = parseTimestampToDate(session.end_time || session.start_time);
+      const nowMs = Date.now();
       const currentYear = new Date().getFullYear();
-      if (isNaN(sessionDate.getTime()) || sessionDate.getFullYear() > currentYear + 1 || sessionDate.getFullYear() < 2024) {
-        console.warn(`[Sanity Guard] Dropping session ${session.local_id}: year ${sessionDate.getFullYear()} is invalid.`);
-        markSessionSynced(session.local_id);
+
+      if (!sessionStartDate || isNaN(sessionStartDate.getTime()) ||
+          !sessionEndDate || isNaN(sessionEndDate.getTime()) ||
+          sessionStartDate.getTime() > nowMs + 60000 ||
+          sessionEndDate.getTime() < sessionStartDate.getTime() ||
+          sessionStartDate.getFullYear() > currentYear + 1 || sessionStartDate.getFullYear() < 2024 ||
+          sessionEndDate.getFullYear() > currentYear + 1 || sessionEndDate.getFullYear() < 2024) {
+        console.warn(`[Sanity Guard] Quarantining session ${session.local_id}: invalid or future timestamps (start=${session.start_time}, end=${session.end_time}).`);
+        quarantineSession(session.local_id, `Invalid or future timestamps: start=${session.start_time}, end=${session.end_time}`);
         continue;
       }
 
@@ -792,9 +801,22 @@ function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession =
   const sDate = (target.startTime instanceof Date) ? target.startTime : parseTimestampToDate(target.startTime);
   if (!sDate) return;
 
+  const actualNow = new Date();
   const currentOsUser = os.userInfo().username;
   const loc = locationService.getCurrentLocation();
-  const bDate = (boundaryDate instanceof Date) ? boundaryDate : (boundaryDate ? parseTimestampToDate(boundaryDate) : new Date());
+  const bDate = (boundaryDate instanceof Date) ? boundaryDate : (boundaryDate ? parseTimestampToDate(boundaryDate) : actualNow);
+
+  // Guard 1: If session start is in the future relative to actual current time, DO NOT SPLIT
+  if (sDate.getTime() > actualNow.getTime()) {
+    console.warn(`[Midnight Rotation] Refusing to split future-dated session: local_id=${target.local_id} sDate=${formatDateTime(sDate)} > now=${formatDateTime(actualNow)}`);
+    target.closed = true;
+    target.quarantined = true;
+    target.reason = (target.reason ? target.reason + '; ' : '') + 'Quarantined: future-dated session start';
+    target.duration = 0;
+    saveOrUpdateActiveSessionLocal(target, cachedUserId, currentOsUser);
+    if (currentRecord === target) currentRecord = null;
+    return;
+  }
 
   const startDayStr = getLocalDateString(sDate);
   const boundaryDayStr = getLocalDateString(bDate);
@@ -804,11 +826,22 @@ function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession =
     return;
   }
 
-  // 1. Close Day 1 entry at 23:59:59
+  // Guard 2: Boundary date must be strictly after start date
+  if (bDate.getTime() <= sDate.getTime()) {
+    console.warn(`[Midnight Rotation] Invalid boundary split: boundary ${formatDateTime(bDate)} is <= start ${formatDateTime(sDate)}`);
+    return;
+  }
+
+  // 1. Close Day 1 entry at 23:59:59 of start day
   const prevDayEnd = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), 23, 59, 59, 0);
   let prevDuration = Math.floor((prevDayEnd - sDate) / 1000);
   if (prevDuration < 0) prevDuration = 0;
-  if (prevDuration > MAX_SESSION_DURATION) prevDuration = MAX_SESSION_DURATION;
+  if (prevDuration > MAX_SESSION_DURATION) {
+    console.warn(`[Midnight Rotation] Day 1 segment duration ${prevDuration}s exceeds 12h threshold. Quarantining as anomalous.`);
+    target.quarantined = true;
+    target.quarantine_reason = `Session duration ${prevDuration}s exceeds 12h limit`;
+    prevDuration = MAX_SESSION_DURATION;
+  }
 
   target.endTime = prevDayEnd;
   target.duration = prevDuration;
@@ -823,37 +856,18 @@ function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession =
   saveOrUpdateActiveSessionLocal(target, cachedUserId, currentOsUser);
   console.log(`[Midnight Rotation] Closed previous day session: local_id=${target.local_id} app="${target.appName}" end=${formatDateTime(prevDayEnd)} duration=${prevDuration}s`);
 
-  // Handle any intermediate full calendar days if multiple midnights passed (e.g. system suspended for multiple days)
-  let curDayStart = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate() + 1, 0, 0, 0, 0);
-  while (getLocalDateString(curDayStart) !== boundaryDayStr && curDayStart < bDate) {
-    const intDayEnd = new Date(curDayStart.getFullYear(), curDayStart.getMonth(), curDayStart.getDate(), 23, 59, 59, 0);
-    let intDuration = Math.floor((intDayEnd - curDayStart) / 1000);
-    if (intDuration > MAX_SESSION_DURATION) intDuration = MAX_SESSION_DURATION;
+  // 2. Open continuing session for the new calendar day starting at 00:00:00 of the next day
+  const nextDayStart = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate() + 1, 0, 0, 0, 0);
 
-    const intermediateRecord = {
-      local_id: crypto.randomUUID(),
-      appName: target.appName,
-      windowTitle: target.windowTitle,
-      status: target.status,
-      startTime: curDayStart,
-      endTime: intDayEnd,
-      activityOn: curDayStart,
-      duration: intDuration,
-      reason: target.reason,
-      activityType: target.activityType,
-      os_username: currentOsUser,
-      latitude: loc && loc.latitude !== undefined && loc.latitude !== null ? loc.latitude : null,
-      longitude: loc && loc.longitude !== undefined && loc.longitude !== null ? loc.longitude : null,
-      current_address: loc && loc.current_address !== undefined && loc.current_address !== null ? loc.current_address : null,
-      closed: true
-    };
-    saveOrUpdateActiveSessionLocal(intermediateRecord, cachedUserId, currentOsUser);
-    curDayStart = new Date(curDayStart.getFullYear(), curDayStart.getMonth(), curDayStart.getDate() + 1, 0, 0, 0, 0);
+  // CRITICAL GUARD: Never create a continuation session whose start is in the future relative to actual now!
+  if (nextDayStart.getTime() > actualNow.getTime()) {
+    console.warn(`[Midnight Rotation] Next calendar day ${formatDateTime(nextDayStart)} has not arrived yet (now: ${formatDateTime(actualNow)}). Not opening future continuation.`);
+    if (currentRecord === target) currentRecord = null;
+    return;
   }
 
-  // 2. Open continuing session for the new calendar day starting at 00:00:00
-  const nextDayStart = curDayStart;
-  const effectiveEnd = (bDate > nextDayStart) ? bDate : nextDayStart;
+  // Clamping effectiveEnd: cannot exceed actualNow
+  const effectiveEnd = (bDate > nextDayStart && bDate.getTime() <= actualNow.getTime()) ? bDate : (actualNow > nextDayStart ? actualNow : nextDayStart);
   let newDuration = Math.floor((effectiveEnd - nextDayStart) / 1000);
   if (newDuration < 0) newDuration = 0;
   if (newDuration > MAX_SESSION_DURATION) newDuration = MAX_SESSION_DURATION;
@@ -881,7 +895,9 @@ function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession =
     continuation.local_id = saved.local_id;
   }
 
-  currentRecord = continuation;
+  if (currentRecord === target || !currentRecord) {
+    currentRecord = continuation;
+  }
   console.log(`[Midnight Rotation] Opened continuing session for new calendar day: local_id=${continuation.local_id} app="${continuation.appName}" start=${formatDateTime(nextDayStart)}`);
 
   // Invalidate UI caches so dashboard refreshes immediately
@@ -897,18 +913,37 @@ function scheduleMidnightBoundaryCheck() {
   }
   const now = new Date();
   const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-  const msToMidnight = Math.max(100, nextMidnight.getTime() - now.getTime());
+  const msToMidnight = nextMidnight.getTime() - now.getTime();
+
+  // If already at or past midnight, do boundary split immediately
+  if (msToMidnight <= 0) {
+    try {
+      splitActiveSessionAtMidnight();
+    } catch (err) {
+      console.error('[Midnight Rotation] Error during midnight session split:', err);
+    }
+    scheduleMidnightBoundaryCheck();
+    return;
+  }
+
+  // Add 500ms safety buffer so setTimeout NEVER fires early on the previous day
+  const delayMs = msToMidnight + 500;
 
   midnightTimer = setTimeout(() => {
     try {
-      console.log('[Midnight Rotation] Midnight reached. Splitting active sessions at calendar boundary...');
-      splitActiveSessionAtMidnight(nextMidnight);
+      const execTime = new Date();
+      if (execTime.getTime() >= nextMidnight.getTime()) {
+        console.log('[Midnight Rotation] Midnight reached. Splitting active sessions at calendar boundary...');
+        splitActiveSessionAtMidnight(execTime);
+      } else {
+        console.warn('[Midnight Rotation] Timer fired slightly early; rescheduling for true midnight.');
+      }
     } catch (err) {
       console.error('[Midnight Rotation] Error during midnight session split:', err);
     } finally {
       scheduleMidnightBoundaryCheck();
     }
-  }, msToMidnight);
+  }, delayMs);
 
   if (midnightTimer && midnightTimer.unref) {
     midnightTimer.unref();
@@ -925,14 +960,23 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
     const nowDayStr = getLocalDateString(now);
     const isSameDay = recordDayStr === nowDayStr;
 
-    const isSameApp = currentRecord.appName === appName;
-    const isSameTitle = currentRecord.windowTitle === windowTitle;
-    const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
-    const isSameReason = currentRecord.reason === reason;
-    const sessionDuration = Math.floor((now - recordStartDate) / 1000);
-    const isDurationExceeded = sessionDuration >= MAX_SESSION_DURATION;
+    // RECOVERY PATH: Guard against future-dated session start timestamps
+    if (recordStartDate && recordStartDate.getTime() > now.getTime()) {
+      console.warn(`[Sanity Guard] Future-dated session detected! local_id=${currentRecord.local_id} app="${currentRecord.appName}" startTime=${formatDateTime(recordStartDate)} is ahead of current time ${formatDateTime(now)}. Quarantining invalid future record.`);
+      currentRecord.closed = true;
+      currentRecord.quarantined = true;
+      currentRecord.reason = (currentRecord.reason ? currentRecord.reason + '; ' : '') + 'Quarantined: future-dated session start';
+      currentRecord.duration = 0;
+      saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, currentOsUser);
+      currentRecord = null;
+    } else if (isSameDay) {
+      const isSameApp = currentRecord.appName === appName;
+      const isSameTitle = currentRecord.windowTitle === windowTitle;
+      const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
+      const isSameReason = currentRecord.reason === reason;
+      const sessionDuration = Math.floor((now - recordStartDate) / 1000);
+      const isDurationExceeded = sessionDuration >= MAX_SESSION_DURATION;
 
-    if (isSameDay) {
       if (isSameApp && isSameTitle && isSameStatus && isSameReason && !isDurationExceeded) {
         // Continue existing session - update activity_type from latest evaluation
         currentRecord.endTime = now;
@@ -953,8 +997,15 @@ function startOrContinueCurrentSession(appName, windowTitle, status, now = new D
         closeCurrentSession(now);
       }
     } else {
-      // Midnight crossed!
+      // Midnight crossed! Session genuinely started on a previous calendar day
       console.log(`[Midnight Rotation] Day boundary transition detected: ${recordDayStr} -> ${nowDayStr}`);
+      const isSameApp = currentRecord.appName === appName;
+      const isSameTitle = currentRecord.windowTitle === windowTitle;
+      const isSameStatus = currentRecord.status.toLowerCase() === cleanStatus;
+      const isSameReason = currentRecord.reason === reason;
+      const sessionDuration = Math.floor((now - recordStartDate) / 1000);
+      const isDurationExceeded = sessionDuration >= MAX_SESSION_DURATION;
+
       if (isSameApp && isSameTitle && isSameStatus && isSameReason && !isDurationExceeded) {
         // Same activity continuing across midnight: perform boundary split
         splitActiveSessionAtMidnight(now, currentRecord);
@@ -2691,6 +2742,7 @@ if (process.env.NODE_ENV === 'test') {
     setCurrentRecord: (rec) => { currentRecord = rec; },
     scheduleMidnightBoundaryCheck,
     clearMidnightTimer: () => { if (midnightTimer) clearTimeout(midnightTimer); midnightTimer = null; },
-    trackTick
+    trackTick,
+    flushPendingClosedSessions
   };
 }

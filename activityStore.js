@@ -744,6 +744,27 @@ function closeOrphanedSessions() {
   }
 }
 
+function quarantineSession(localId, reason) {
+  const chunks = readChunks();
+  let found = false;
+  const updated = chunks.map(c => {
+    if (c.local_id === localId) {
+      found = true;
+      return {
+        ...c,
+        quarantined: true,
+        quarantine_reason: reason || 'Anomalous session quarantined',
+        updated_at: new Date().toISOString()
+      };
+    }
+    return c;
+  });
+  if (found) {
+    writeChunks(updated);
+    console.warn(`[Storage] Quarantined session local_id=${localId}: ${reason}`);
+  }
+}
+
 function getEligibleClosedSessions() {
   const chunks = readChunks();
   const now = Date.now();
@@ -751,13 +772,25 @@ function getEligibleClosedSessions() {
   return chunks.filter(c => {
     if (!c.closed) return false;
     if (c.synced) return false;
+    if (c.quarantined) return false;
 
     // Sanity Guard: Filter out corrupt/future year dates or excessive durations
     if (c.duration && c.duration > MAX_SESSION_DURATION) return false;
-    const startYear = c.start_time ? new Date(c.start_time).getFullYear() : null;
-    const endYear = c.end_time ? new Date(c.end_time).getFullYear() : null;
-    if ((startYear && (startYear > currentYear + 1 || startYear < 2024)) ||
-        (endYear && (endYear > currentYear + 1 || endYear < 2024))) {
+
+    const sDate = c.start_time ? parseTimestampToDate(c.start_time) : null;
+    const eDate = c.end_time ? parseTimestampToDate(c.end_time) : null;
+
+    if (!sDate || isNaN(sDate.getTime())) return false;
+    if (!eDate || isNaN(eDate.getTime())) return false;
+
+    // Reject future-dated sessions relative to current local time (+60s tolerance for clock jitter)
+    if (sDate.getTime() > now + 60000) return false;
+    if (eDate.getTime() < sDate.getTime()) return false;
+
+    const startYear = sDate.getFullYear();
+    const endYear = eDate.getFullYear();
+    if (startYear > currentYear + 1 || startYear < 2024 ||
+        endYear > currentYear + 1 || endYear < 2024) {
       return false;
     }
 
@@ -1038,6 +1071,7 @@ module.exports = {
   getPendingClosedSessions,
   markSessionSynced,
   markSessionFailed,
+  quarantineSession,
   getUnsyncedTodayDuration,
   getUnsyncedTodayLogs,
   getQueueFilePath,

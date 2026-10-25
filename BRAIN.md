@@ -121,6 +121,7 @@ WorkLens/
 ├── test_hourly_activity_suite.js # Comprehensive test suite for hour-wise activity layout, interval calculation & expandable dropdowns
 ├── test_app_hours_toggle_suite.js # Comprehensive test suite for App-Wise and Hours-Wise view toggle, aggregation, and tab sync
 ├── test_midnight_session_split_suite.js # Comprehensive test suite for midnight session split, calendar boundaries & zero cross-day records
+├── test_future_date_midnight_recovery_suite.js # Comprehensive test suite for boundary safety, future-date rejection, duration sanity quarantine, and recovery
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -404,8 +405,11 @@ sequenceDiagram
     *   [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js)
 *   **Implemented Guards:**
     *   **Time-Jump / Clock Skew Guard (`CLOCK_SKEW_THRESHOLD_MS = 15000`):** If the elapsed time between two 2-second tracking ticks exceeds 15 seconds (system suspended, laptop lid closed, or clock jumped forward) or is negative (< -5s, clock jumped backward), the active session is safely closed at the last valid tick timestamp rather than stretching over the sleep duration.
-    *   **Max Session Duration Cap (`MAX_SESSION_DURATION = 43200`):** Caps any individual continuous session at a strict maximum of 12 hours (43,200 seconds). Prevents abnormal sessions (such as 88 hours or 210,384 hours) from ever being recorded.
-    *   **Future Year & Corrupt Date Filter:** In `flushPendingClosedSessions()` and `getEligibleClosedSessions()`, any session whose start/end year is in the future (`> currentYear + 1`) or precedes `2024`, or whose duration exceeds 12 hours, is rejected from syncing to Redmine and purged.
+    *   **Max Session Duration Cap & Anomaly Quarantine (`MAX_SESSION_DURATION = 43200`):** Caps any individual continuous session at a strict maximum of 12 hours (43,200 seconds). Any session attempting to stretch beyond 12 hours or exhibiting artificial full-day spans is quarantined via `quarantineSession()` with diagnostic metadata rather than silently fabricating active time.
+    *   **Future Date Rejection & Cascade Prevention:** In `startOrContinueCurrentSession()`, if `recordStartDate > now`, the anomalous session is immediately quarantined (`duration = 0`, `quarantined = true`, `closed = true`) and `currentRecord` is safely reset to null without overwriting historical records or cascading into forward-day splits.
+    *   **Boundary-Safe Midnight Splitting (`splitActiveSessionAtMidnight`):** Validates that `actualNow = new Date()` has genuinely crossed into the new calendar day (`sDate.getTime() <= actualNow.getTime()`) and prevents opening continuation sessions on future dates (`nextDayStart.getTime() <= actualNow.getTime()`). Idempotent when timer callbacks and tracking ticks execute near the same boundary.
+    *   **Midnight Timer Scheduling Buffer:** `scheduleMidnightBoundaryCheck()` appends a +500ms safety buffer (`delayMs = msToMidnight + 500`) and validates `execTime >= nextMidnight` to guarantee that timer callbacks never trigger on the previous day.
+    *   **Strict Future-Date & Corrupt Timestamp Sync Filter:** In `getEligibleClosedSessions()` and `flushPendingClosedSessions()`, any session whose start time is in the future relative to current local time (`sDate.getTime() > now + 60000`), whose end time precedes start time, whose duration exceeds 12h, or whose year is invalid is strictly quarantined (`quarantineSession()`) and excluded from Redmine upload without being deleted from local audit logs.
     *   **System Shutdown & Session-End Handlers:** Binds `powerMonitor.on('shutdown')` and Electron `app.on('session-end')` to guarantee graceful session closure before Windows terminates the process on logoff or shutdown.
     *   `artificialIdleRecovery`: Resume/unlock followed immediately by window switching without input events.
 *   **Loophole Prevention & Graceful Recovery:**
