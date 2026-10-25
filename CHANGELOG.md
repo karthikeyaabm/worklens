@@ -4,6 +4,20 @@ All notable changes to the WorkLens Desktop Timelog application are documented b
 
 ---
 
+## [1.2.8] - 2026-10-25
+### Added
+- **Future-Date Anomaly Rejection & Cascade Prevention**: In `main.js`, quarantined any session whose start time is ahead of local system time (`recordStartDate > now`) with `quarantineSession()` (`duration = 0`, `quarantined = true`, `closed = true`) and safely reset `currentRecord`, completely stopping artificial future-day splitting cascades.
+- **Boundary-Safe Midnight Session Splitting**: Added strict calendar day boundary verification (`actualNow = new Date()`, `sDate <= actualNow`, `nextDayStart <= actualNow`) and a +500ms safety buffer in `scheduleMidnightBoundaryCheck()`, guaranteeing that timer callbacks never trigger prematurely on the previous day.
+- **Future-Date Redmine Sync Quarantine**: Excluded forward-dated and corrupt timestamp records from Redmine upload in `getEligibleClosedSessions()` and `flushPendingClosedSessions()` while safely retaining them in local JSONL logs for auditing. Verified with Suite 20 (`test_future_date_midnight_recovery_suite.js`).
+- **History Dashboard Dual Totals (System vs Redmine)**: Separated Last 7 Days and Last 30 Days footer totals into dedicated cyan/blue (`#38bdf8`) System tracking and neon green (`#00E676`) Redmine time entry indicators, strictly excluding Redmine special hours (Leave, Holiday, Big Late, Early Out, ABM Function) from workstation active time.
+- **Dynamic Weekend Toggle Sync**: Unchecking "Show Weekends (Sat & Sun)" immediately recalculates footer totals strictly across visible weekdays, subtracting any weekend hours.
+- **Window Lifecycle & System Tray Resilience**: Defensive protection against Chromium `TypeError: Object has been destroyed` exceptions when re-opening or focusing windows from the Windows System Tray menu or double-click via `showAndFocusWindow()`.
+
+### Changed
+- Bumped application release version to `1.2.8` across `package.json` and `package-lock.json`.
+
+---
+
 ## [1.3.4] - 2026-10-08
 ### Added
 - **Storage Health & Local Persistence Supervisor**: Created `storageHealth.js` to monitor local activity persistence health and distinguish local storage breakdown (such as C: drive 100% full) from expected offline/network operations.

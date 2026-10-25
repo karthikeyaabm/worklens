@@ -1287,6 +1287,12 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Backend Aggregation Alignment:** `buildCombinedHistoricalView` in `redmineTimeIntegration.js` returns `totalSystemSeconds` (pure active workstation time) and `totalRedmineSeconds` (sum of all Redmine entries), aligning `totalSeconds` with pure system time.
     *   **Dynamic Weekend Toggle Subtraction:** Unchecking "Show Weekends (Sat & Sun)" immediately recalculates footer totals strictly across visible weekdays (`days`), subtracting any weekend hours. Checking the toggle recalculates and includes weekend activity dynamically in both System and Redmine totals.
     *   **View Isolation:** Today and Yesterday tabs continue displaying isolated daily active time in standard format. Verified via `test_redmine_yellow_integration_suite.js` (40 passing tests), `test_weekend_toggle_suite.js` (21 passing tests), and all 19 test suites in `run_all_tests.js`.
+*   **v1.2.8 - Release Version Alignment & Future-Date Quarantine Hardening:**
+    *   **Version Bump:** Bumped application release version to `1.2.8` across `package.json`, `package-lock.json`, and dynamic IPC `get-app-version`.
+    *   **Future-Date Anomaly Rejection & Quarantine (`quarantineSession`):** In `main.js`, quarantined any session whose start time is ahead of local system time (`recordStartDate > now`) with `duration = 0`, `quarantined = true`, `closed = true` and reset `currentRecord`, terminating artificial forward-day splitting cascades.
+    *   **Boundary-Safe Midnight Session Splitting:** Added strict calendar day boundary checks (`actualNow = new Date()`, `sDate <= actualNow`, `nextDayStart <= actualNow`) and a +500ms safety buffer in `scheduleMidnightBoundaryCheck()`, guaranteeing that timer callbacks never trigger prematurely on the previous day.
+    *   **Corrupt Timestamp Redmine Sync Exclusion:** Quarantined forward-dated records from Redmine upload in `getEligibleClosedSessions()` and `flushPendingClosedSessions()` while safely retaining them in local JSONL logs for auditing. Verified with Suite 20 (`test_future_date_midnight_recovery_suite.js`).
+    *   **Window Lifecycle & System Tray Resilience:** Defensive protection against Chromium `TypeError: Object has been destroyed` exceptions when re-opening or focusing windows from the Windows System Tray menu or double-click via `showAndFocusWindow()`.
 
 ---
 
@@ -1306,7 +1312,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 ```
 1. Set up connection parameters in the .env file.
 2. Run "npm install" to install dependencies.
-3. Run "npm test" to run all 13 test suites and verify system health.
+3. Run "npm test" to run all 20 test suites and verify system health.
 4. Run "npm start" to launch the widget in development.
 5. Main Process Entry Point: main.js
 6. Watchdog Supervisor: watchdog/worklens-watchdog.ps1
