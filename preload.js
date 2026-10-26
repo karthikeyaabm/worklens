@@ -72,6 +72,15 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('fetch-activity-history', period);
   },
 
+  // Reportees Dashboard APIs
+  getTeamHistory: async (options = {}) => {
+    return await ipcRenderer.invoke('get-team-history', options);
+  },
+
+  getReporteesCount: async () => {
+    return await ipcRenderer.invoke('get-reportees-count');
+  },
+
   // Activity Popup Listeners/Signals
   onPopupStatusChanged: (callback) => {
     const listener = (event, status) => callback(status);

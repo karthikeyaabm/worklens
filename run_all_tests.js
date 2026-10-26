@@ -126,6 +126,12 @@ const TEST_SUITES = [
     file: 'test_future_date_midnight_recovery_suite.js',
     runner: 'electron',
     description: 'Boundary safety, future-date rejection, duration sanity quarantine, idempotent split, retry integrity'
+  },
+  {
+    name: '21. Reportees Dashboard & Team History Integration Suite',
+    file: 'test_reportees_dashboard_suite.js',
+    runner: 'node',
+    description: 'Dynamic navigation tab, total_reportees visibility, summary metrics, individual reportee progress bars and activity tables'
   }
 ];
 

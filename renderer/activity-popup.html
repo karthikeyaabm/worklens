@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WorkLens | Active Time Details</title>
+  <title>WorkLens | Active Time & Reportees Details</title>
   <link rel="stylesheet" href="activity-popup.css">
 </head>
 <body>
@@ -13,115 +13,244 @@
     
     <!-- Window Header -->
     <header class="popup-header">
-      <div class="header-title">
-        <span class="lightning-icon">⚡</span>
-        <h1>ACTIVE TIME</h1>
+      <div class="header-title" id="header-nav">
+        <button type="button" id="tab-nav-active-time" class="header-nav-btn active" title="Active Time">
+          <span class="lightning-icon">⚡</span>
+          <h1>ACTIVE TIME</h1>
+        </button>
+        <button type="button" id="tab-nav-reportees" class="header-nav-btn reportees-pill-btn hidden" title="Reportees">
+          <svg class="header-reportees-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 16v-1a4 4 0 00-2.07-3.483A5.002 5.002 0 0118 15v1h-2zM4.07 11.517A4 4 0 002 15v1h2v-1c0-.98.35-1.88 1.07-2.483z" />
+          </svg>
+          <span id="nav-reportees-label">Reportees</span>
+        </button>
       </div>
       <button id="close-btn" class="close-button" title="Close popup">&times;</button>
     </header>
     
-    <!-- Period Selector Navigation -->
-    <div class="period-selector-container">
-      <nav class="period-selector" id="period-selector" role="tablist" aria-label="Active time period">
-        <button type="button" class="period-tab active" data-period="today" role="tab" aria-selected="true" id="tab-today">Today</button>
-        <button type="button" class="period-tab" data-period="yesterday" role="tab" aria-selected="false" id="tab-yesterday">Yesterday</button>
-        <button type="button" class="period-tab" data-period="last7days" role="tab" aria-selected="false" id="tab-last7days">Last 7 Days</button>
-        <button type="button" class="period-tab" data-period="last30days" role="tab" aria-selected="false" id="tab-last30days">Last 30 Days</button>
-      </nav>
-    </div>
+    <!-- ================= ACTIVE TIME VIEW ================= -->
+    <div id="active-time-view" class="view-panel">
+      <!-- Period Selector Navigation -->
+      <div class="period-selector-container">
+        <nav class="period-selector" id="period-selector" role="tablist" aria-label="Active time period">
+          <button type="button" class="period-tab active" data-period="today" role="tab" aria-selected="true" id="tab-today">Today</button>
+          <button type="button" class="period-tab" data-period="yesterday" role="tab" aria-selected="false" id="tab-yesterday">Yesterday</button>
+          <button type="button" class="period-tab" data-period="last7days" role="tab" aria-selected="false" id="tab-last7days">Last 7 Days</button>
+          <button type="button" class="period-tab" data-period="last30days" role="tab" aria-selected="false" id="tab-last30days">Last 30 Days</button>
+        </nav>
+      </div>
 
-    <!-- Subtitle Date & View Controls -->
-    <div class="date-controls-row">
-      <div class="date-subtitle" id="current-date">Today's Date</div>
-      <div id="view-toggle-container" class="view-toggle-container">
-        <div class="view-toggle-group" role="group" aria-label="Activity view mode">
-          <button type="button" class="view-toggle-btn active" data-view="app" id="view-toggle-app" aria-pressed="true">App Wise</button>
-          <button type="button" class="view-toggle-btn" data-view="hours" id="view-toggle-hours" aria-pressed="false">Hours Wise</button>
+      <!-- Subtitle Date & View Controls -->
+      <div class="date-controls-row">
+        <div class="date-subtitle" id="current-date">Today's Date</div>
+        <div id="view-toggle-container" class="view-toggle-container">
+          <div class="view-toggle-group" role="group" aria-label="Activity view mode">
+            <button type="button" class="view-toggle-btn active" data-view="app" id="view-toggle-app" aria-pressed="true">App Wise</button>
+            <button type="button" class="view-toggle-btn" data-view="hours" id="view-toggle-hours" aria-pressed="false">Hours Wise</button>
+          </div>
+        </div>
+        <div id="weekend-toggle-container" class="weekend-toggle-container hidden">
+          <label class="weekend-toggle-label" for="toggle-weekends">
+            <input type="checkbox" id="toggle-weekends" class="weekend-toggle-input">
+            <span class="weekend-toggle-custom" aria-hidden="true">
+              <svg class="check-icon" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="toggle-text">Show Weekends (Sat & Sun)</span>
+          </label>
         </div>
       </div>
-      <div id="weekend-toggle-container" class="weekend-toggle-container hidden">
-        <label class="weekend-toggle-label" for="toggle-weekends">
-          <input type="checkbox" id="toggle-weekends" class="weekend-toggle-input">
-          <span class="weekend-toggle-custom" aria-hidden="true">
-            <svg class="check-icon" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- Column Headers -->
+      <div class="list-header" id="list-header">
+        <span class="col-app" id="col-header-name">TIME SLOT</span>
+        <span class="col-time" id="col-header-time">ACTIVE TIME</span>
+      </div>
+
+      <!-- Main Content Area -->
+      <main class="popup-content">
+        <!-- Loading State -->
+        <div id="loading-state" class="state-container">
+          <div class="spinner"></div>
+          <p id="loading-text">Loading activity...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="state-container hidden">
+          <p class="error-msg">Unable to load activity.</p>
+          <button id="retry-btn" class="retry-button">Retry</button>
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="state-container hidden">
+          <p class="empty-msg" id="empty-msg">No activity recorded today.</p>
+        </div>
+
+        <!-- Dynamic Activity List (App-wise breakdown for Today / Yesterday) -->
+        <div id="activity-list" class="activity-list hidden">
+          <!-- Application rows will be injected dynamically -->
+        </div>
+
+        <!-- Dynamic History List (Date-wise breakdown for Last 7 Days / Current Month) -->
+        <div id="history-list" class="history-list hidden">
+          <!-- Date rows will be injected dynamically -->
+        </div>
+      </main>
+
+      <!-- History Legend for Last 7 / Last 30 Days -->
+      <div id="history-legend" class="history-legend hidden" role="region" aria-label="Progress bar color legend">
+        <div class="legend-row">
+          <span class="legend-group-title">System Activity:</span>
+          <span class="legend-item"><span class="legend-dot dot-red">●</span> &lt;7h</span>
+          <span class="legend-item"><span class="legend-dot dot-yellow">●</span> 7h–7h 30m</span>
+          <span class="legend-item"><span class="legend-dot dot-green">●</span> &gt;7h 30m</span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item"><span class="legend-dot dot-early-out">●</span> Early Out: 6hr</span>
+          <span class="legend-item"><span class="legend-dot dot-half-day">●</span> Half Day: 4hr</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-group-title">Redmine Hours:</span>
+          <span class="legend-item"><span class="legend-dot dot-working">●</span> Working (Redmine Logged Hours)</span>
+          <span class="legend-item"><span class="legend-dot dot-big-late">●</span> Big Late</span>
+          <span class="legend-item"><span class="legend-dot dot-early-out">●</span> Early Out</span>
+          <span class="legend-item"><span class="legend-dot dot-leave">●</span> Leave</span>
+          <span class="legend-item"><span class="legend-dot dot-holiday">●</span> Holiday</span>
+          <span class="legend-item"><span class="legend-dot dot-non-productive dot-abm-function">●</span> ABM Function, Activity</span>
+          <span class="legend-item hidden-legacy-dot" style="display: none;"><span class="legend-dot dot-yellow">●</span> Yellow</span>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="popup-footer">
+        <div class="footer-left">
+          <svg class="footer-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+            <path d="M12 6V12L15 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <span id="footer-label">Total Active Time (Today)</span>
+        </div>
+        <div id="total-time" class="footer-value">0h 00m</div>
+      </footer>
+    </div>
+
+    <!-- ================= REPORTEES DASHBOARD VIEW ================= -->
+    <div id="reportees-view" class="view-panel hidden">
+      <!-- Date Range Bar / Subheader -->
+      <div class="reportees-date-bar">
+        <div class="reportees-date-left">
+          <svg class="date-bar-calendar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
+            <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <span id="reportees-date-range-text" class="reportees-date-range-text">-- — --</span>
+          <span id="reportees-period-pill" class="reportees-period-pill">(30 days)</span>
+        </div>
+        <div class="reportees-date-right">
+          <!-- Search Box -->
+          <div class="reportees-search-wrapper">
+            <svg class="reportees-search-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 14L11.1 11.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-          </span>
-          <span class="toggle-text">Show Weekends (Sat & Sun)</span>
-        </label>
+            <input type="text" id="reportees-search-input" class="reportees-search-input" placeholder="Search reportees or projects..." autocomplete="off" />
+          </div>
+          <!-- Date Range Selector Dropdown -->
+          <div class="reportees-dropdown-wrapper">
+            <button type="button" id="reportees-range-selector-btn" class="reportees-range-selector-btn" title="Select date range">
+              <svg class="dropdown-calendar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
+                <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
+                <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+              <span id="reportees-dropdown-selected-label">27 Sep 2026 - 26 Oct 2026</span>
+              <svg class="dropdown-chevron-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <div id="reportees-range-menu" class="reportees-range-menu hidden">
+              <div class="range-menu-item" data-days="7">Last 7 Days (7 days)</div>
+              <div class="range-menu-item" data-days="15">Last 15 Days (15 days)</div>
+              <div class="range-menu-item active" data-days="30">Last 30 Days (30 days)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Summary Cards -->
+      <div class="reportees-summary-cards">
+        <!-- Card 1: Total Reportees -->
+        <div class="summary-card">
+          <div class="summary-icon-box card-icon-users">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 3s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+            </svg>
+          </div>
+          <div class="summary-info">
+            <div class="summary-label">TOTAL REPORTEES</div>
+            <div id="summary-total-reportees" class="summary-value">0</div>
+          </div>
+        </div>
+
+        <!-- Card 2: Team Total Hours -->
+        <div class="summary-card">
+          <div class="summary-icon-box card-icon-clock">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+              <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <div class="summary-info">
+            <div class="summary-label">TEAM TOTAL HOURS</div>
+            <div id="summary-team-hours" class="summary-value">0h</div>
+          </div>
+        </div>
+
+        <!-- Card 3: Period -->
+        <div class="summary-card">
+          <div class="summary-icon-box card-icon-calendar">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" />
+              <path d="M3 10H21" stroke="currentColor" stroke-width="2" />
+              <path d="M8 2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M16 2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="summary-info">
+            <div class="summary-label">PERIOD</div>
+            <div id="summary-period-days" class="summary-value">30 days</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reportees Scrollable Content Area -->
+      <div class="reportees-content-area" id="reportees-scroll-container">
+        <!-- Reportees Loading State -->
+        <div id="reportees-loading" class="state-container hidden">
+          <div class="spinner"></div>
+          <p>Loading reportees data...</p>
+        </div>
+
+        <!-- Reportees Error State -->
+        <div id="reportees-error" class="state-container hidden">
+          <p id="reportees-error-msg" class="error-msg">Unable to load reportees data.</p>
+          <button id="reportees-retry-btn" class="retry-button">Retry</button>
+        </div>
+
+        <!-- Reportees Empty State -->
+        <div id="reportees-empty" class="state-container hidden">
+          <p id="reportees-empty-msg" class="empty-msg">No reportees found.</p>
+        </div>
+
+        <!-- Reportees Cards List -->
+        <div id="reportees-list" class="reportees-list">
+          <!-- Injected dynamically -->
+        </div>
       </div>
     </div>
-
-    <!-- Column Headers -->
-    <div class="list-header" id="list-header">
-      <span class="col-app" id="col-header-name">TIME SLOT</span>
-      <span class="col-time" id="col-header-time">ACTIVE TIME</span>
-    </div>
-
-    <!-- Main Content Area -->
-    <main class="popup-content">
-      <!-- Loading State -->
-      <div id="loading-state" class="state-container">
-        <div class="spinner"></div>
-        <p id="loading-text">Loading activity...</p>
-      </div>
-
-      <!-- Error State -->
-      <div id="error-state" class="state-container hidden">
-        <p class="error-msg">Unable to load activity.</p>
-        <button id="retry-btn" class="retry-button">Retry</button>
-      </div>
-
-      <!-- Empty State -->
-      <div id="empty-state" class="state-container hidden">
-        <p class="empty-msg" id="empty-msg">No activity recorded today.</p>
-      </div>
-
-      <!-- Dynamic Activity List (App-wise breakdown for Today / Yesterday) -->
-      <div id="activity-list" class="activity-list hidden">
-        <!-- Application rows will be injected dynamically -->
-      </div>
-
-      <!-- Dynamic History List (Date-wise breakdown for Last 7 Days / Current Month) -->
-      <div id="history-list" class="history-list hidden">
-        <!-- Date rows will be injected dynamically -->
-      </div>
-    </main>
-
-    <!-- History Legend for Last 7 / Last 30 Days -->
-    <div id="history-legend" class="history-legend hidden" role="region" aria-label="Progress bar color legend">
-      <div class="legend-row">
-        <span class="legend-group-title">System Activity:</span>
-        <span class="legend-item"><span class="legend-dot dot-red">●</span> &lt;7h</span>
-        <span class="legend-item"><span class="legend-dot dot-yellow">●</span> 7h–7h 30m</span>
-        <span class="legend-item"><span class="legend-dot dot-green">●</span> &gt;7h 30m</span>
-        <span class="legend-divider">|</span>
-        <span class="legend-item"><span class="legend-dot dot-early-out">●</span> Early Out: 6hr</span>
-        <span class="legend-item"><span class="legend-dot dot-half-day">●</span> Half Day: 4hr</span>
-      </div>
-      <div class="legend-row">
-        <span class="legend-group-title">Redmine Hours:</span>
-        <span class="legend-item"><span class="legend-dot dot-working">●</span> Working (Redmine Logged Hours)</span>
-        <span class="legend-item"><span class="legend-dot dot-big-late">●</span> Big Late</span>
-        <span class="legend-item"><span class="legend-dot dot-early-out">●</span> Early Out</span>
-        <span class="legend-item"><span class="legend-dot dot-leave">●</span> Leave</span>
-        <span class="legend-item"><span class="legend-dot dot-holiday">●</span> Holiday</span>
-        <span class="legend-item"><span class="legend-dot dot-non-productive dot-abm-function">●</span> ABM Function, Activity</span>
-        <span class="legend-item hidden-legacy-dot" style="display: none;"><span class="legend-dot dot-yellow">●</span> Yellow</span>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="popup-footer">
-      <div class="footer-left">
-        <svg class="footer-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
-          <path d="M12 6V12L15 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        </svg>
-        <span id="footer-label">Total Active Time (Today)</span>
-      </div>
-      <div id="total-time" class="footer-value">0h 00m</div>
-    </footer>
   </div>
 
   <script src="activity-popup.js"></script>

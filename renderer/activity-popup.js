@@ -23,6 +23,31 @@ const viewToggleContainer = getEl('view-toggle-container');
 const viewToggleAppBtn = getEl('view-toggle-app');
 const viewToggleHoursBtn = getEl('view-toggle-hours');
 
+// Header Navigation & View Panel Elements
+const tabNavActiveTime = getEl('tab-nav-active-time');
+const tabNavReportees = getEl('tab-nav-reportees');
+const navReporteesLabel = getEl('nav-reportees-label');
+const activeTimeView = getEl('active-time-view');
+const reporteesView = getEl('reportees-view');
+
+// Reportees Dashboard Elements
+const reporteesDateRangeText = getEl('reportees-date-range-text');
+const reporteesPeriodPill = getEl('reportees-period-pill');
+const reporteesSearchInput = getEl('reportees-search-input');
+const reporteesRangeSelectorBtn = getEl('reportees-range-selector-btn');
+const reporteesDropdownSelectedLabel = getEl('reportees-dropdown-selected-label');
+const reporteesRangeMenu = getEl('reportees-range-menu');
+const summaryTotalReportees = getEl('summary-total-reportees');
+const summaryTeamHours = getEl('summary-team-hours');
+const summaryPeriodDays = getEl('summary-period-days');
+const reporteesLoading = getEl('reportees-loading');
+const reporteesError = getEl('reportees-error');
+const reporteesErrorMsg = getEl('reportees-error-msg');
+const reporteesRetryBtn = getEl('reportees-retry-btn');
+const reporteesEmpty = getEl('reportees-empty');
+const reporteesEmptyMsg = getEl('reportees-empty-msg');
+const reporteesList = getEl('reportees-list');
+
 // ================= STATE VARIABLES =================
 let pollInterval = null;
 let renderedRows = {}; // Holds legacy map of appName -> DOM element
@@ -32,6 +57,14 @@ let expandedHours = new Set(); // Set of currently expanded hour numbers
 let currentPeriod = 'today'; // 'today' | 'yesterday' | 'last7days' | 'current_month'
 let currentActivityView = 'app'; // 'app' | 'hours' (defaults to App-Wise)
 let showWeekends = false; // Default: false (unchecked, hides Sat & Sun in historical views)
+
+// Reportees State
+let currentDashboardView = 'active-time'; // 'active-time' | 'reportees'
+let reporteesData = null;
+let reporteesDays = 30;
+let reporteesSearchQuery = '';
+let collapsedReporteeIds = new Set();
+let isReporteesLoading = false;
 
 // Client-side view cache for instant tab switching (0ms)
 let clientViewCache = {
@@ -48,6 +81,9 @@ if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   setupPeriodTabs();
   setupViewToggle();
+  setupHeaderNav();
+  setupReporteesControls();
+  checkReporteesVisibility();
   updateDateDisplay();
   updateViewToggleVisibility();
   updateWeekendToggleVisibility();
@@ -85,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
           selectPeriod('today', false);
           updateDateDisplay();
           startPolling();
+          checkReporteesVisibility();
         } else if (status === 'closed') {
           stopPolling();
         }
@@ -2470,6 +2507,360 @@ function getAppIconSvg(appName) {
   `;
 }
 
+// ================= REPORTEES DASHBOARD CONTROLLER =================
+const REPORTEE_PALETTE = ['#3b82f6', '#a855f7', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
+
+function getReporteeInitials(name) {
+  if (!name || typeof name !== 'string') return '??';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getReporteeColor(index, id) {
+  const seed = (typeof id === 'number' && id > 0) ? id : index;
+  return REPORTEE_PALETTE[seed % REPORTEE_PALETTE.length];
+}
+
+function setupHeaderNav() {
+  if (tabNavActiveTime) {
+    tabNavActiveTime.addEventListener('click', () => {
+      switchDashboardView('active-time');
+    });
+  }
+
+  if (tabNavReportees) {
+    tabNavReportees.addEventListener('click', () => {
+      switchDashboardView('reportees');
+    });
+  }
+}
+
+function switchDashboardView(view) {
+  if (view === currentDashboardView) return;
+  currentDashboardView = view;
+
+  if (view === 'active-time') {
+    if (tabNavActiveTime) tabNavActiveTime.classList.add('active');
+    if (tabNavReportees) tabNavReportees.classList.remove('active');
+    if (activeTimeView) activeTimeView.classList.remove('hidden');
+    if (reporteesView) reporteesView.classList.add('hidden');
+  } else if (view === 'reportees') {
+    if (tabNavActiveTime) tabNavActiveTime.classList.remove('active');
+    if (tabNavReportees) tabNavReportees.classList.add('active');
+    if (activeTimeView) activeTimeView.classList.add('hidden');
+    if (reporteesView) reporteesView.classList.remove('hidden');
+
+    if (!reporteesData) {
+      fetchAndRenderReportees();
+    } else {
+      renderReporteesDashboard();
+    }
+  }
+}
+
+async function checkReporteesVisibility() {
+  if (!window.api || typeof window.api.getReporteesCount !== 'function') return;
+  try {
+    const res = await window.api.getReporteesCount();
+    if (res && typeof res.total_reportees === 'number' && res.total_reportees > 0) {
+      if (tabNavReportees) {
+        tabNavReportees.classList.remove('hidden');
+      }
+      if (navReporteesLabel) {
+        navReporteesLabel.textContent = `Reportees (${res.total_reportees})`;
+      }
+    } else {
+      if (tabNavReportees) {
+        tabNavReportees.classList.add('hidden');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to check reportees visibility:', err);
+    if (tabNavReportees) {
+      tabNavReportees.classList.add('hidden');
+    }
+  }
+}
+
+function setupReporteesControls() {
+  if (reporteesSearchInput) {
+    reporteesSearchInput.addEventListener('input', (e) => {
+      reporteesSearchQuery = e.target.value;
+      renderReporteesDashboard();
+    });
+  }
+
+  if (reporteesRangeSelectorBtn && reporteesRangeMenu) {
+    reporteesRangeSelectorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reporteesRangeMenu.classList.toggle('hidden');
+    });
+
+    const menuItems = reporteesRangeMenu.querySelectorAll('.range-menu-item');
+    menuItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuItems.forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        reporteesDays = parseInt(item.dataset.days, 10) || 30;
+        reporteesRangeMenu.classList.add('hidden');
+        fetchAndRenderReportees(true);
+      });
+    });
+
+    document.addEventListener('click', () => {
+      if (reporteesRangeMenu && !reporteesRangeMenu.classList.contains('hidden')) {
+        reporteesRangeMenu.classList.add('hidden');
+      }
+    });
+  }
+
+  if (reporteesRetryBtn) {
+    reporteesRetryBtn.addEventListener('click', () => {
+      fetchAndRenderReportees(true);
+    });
+  }
+}
+
+async function fetchAndRenderReportees(forceRefresh = false) {
+  if (!window.api || typeof window.api.getTeamHistory !== 'function') return;
+  isReporteesLoading = true;
+
+  if (reporteesLoading) reporteesLoading.classList.remove('hidden');
+  if (reporteesError) reporteesError.classList.add('hidden');
+  if (reporteesEmpty) reporteesEmpty.classList.add('hidden');
+  if (reporteesList) reporteesList.innerHTML = '';
+
+  try {
+    const data = await window.api.getTeamHistory({
+      days: reporteesDays,
+      forceRefresh: forceRefresh
+    });
+
+    isReporteesLoading = false;
+    if (reporteesLoading) reporteesLoading.classList.add('hidden');
+
+    if (!data || typeof data !== 'object' || data.error) {
+      throw new Error((data && data.error) || 'Failed to retrieve team history');
+    }
+
+    reporteesData = data;
+
+    // Update dynamic header label count if fresh data changes it
+    if (typeof data.total_reportees === 'number') {
+      if (data.total_reportees > 0) {
+        if (tabNavReportees) tabNavReportees.classList.remove('hidden');
+        if (navReporteesLabel) navReporteesLabel.textContent = `Reportees (${data.total_reportees})`;
+      } else {
+        if (tabNavReportees) tabNavReportees.classList.add('hidden');
+      }
+    }
+
+    renderReporteesDashboard();
+  } catch (err) {
+    isReporteesLoading = false;
+    if (reporteesLoading) reporteesLoading.classList.add('hidden');
+    if (reporteesError) {
+      reporteesError.classList.remove('hidden');
+      if (reporteesErrorMsg) {
+        reporteesErrorMsg.textContent = `Unable to load reportees: ${err.message || 'Network error'}`;
+      }
+    }
+  }
+}
+
+function renderReporteesDashboard() {
+  if (!reporteesData) return;
+  const data = reporteesData;
+
+  // 1. Update date range header
+  if (reporteesDateRangeText) {
+    reporteesDateRangeText.textContent = `${data.from_formatted || data.from} — ${data.to_formatted || data.to}`;
+  }
+  if (reporteesPeriodPill) {
+    reporteesPeriodPill.textContent = `(${data.days} days)`;
+  }
+  if (reporteesDropdownSelectedLabel) {
+    reporteesDropdownSelectedLabel.textContent = `${data.from_formatted || data.from} - ${data.to_formatted || data.to}`;
+  }
+
+  // 2. Summary cards (reflect full team totals)
+  if (summaryTotalReportees) {
+    summaryTotalReportees.textContent = String(data.total_reportees || 0);
+  }
+  if (summaryTeamHours) {
+    const hours = data.team_total_hours || 0;
+    summaryTeamHours.textContent = `${hours % 1 === 0 ? hours : hours.toFixed(1)}h`;
+  }
+  if (summaryPeriodDays) {
+    summaryPeriodDays.textContent = `${data.days} days`;
+  }
+
+  // 3. Filter reportees
+  const query = reporteesSearchQuery.toLowerCase().trim();
+  const rawReportees = Array.isArray(data.reportees) ? data.reportees : [];
+
+  let filteredReportees = rawReportees;
+  if (query) {
+    filteredReportees = rawReportees.map(r => {
+      const nameMatch = (r.name && r.name.toLowerCase().includes(query));
+      const loginMatch = (r.login && r.login.toLowerCase().includes(query));
+
+      const matchingEntries = (r.all_entries || []).filter(e => {
+        return (e.project && e.project.toLowerCase().includes(query)) ||
+               (e.issue_subject && e.issue_subject.toLowerCase().includes(query)) ||
+               (e.activity && e.activity.toLowerCase().includes(query)) ||
+               (e.comments && e.comments.toLowerCase().includes(query));
+      });
+
+      if (nameMatch || loginMatch) {
+        return r;
+      } else if (matchingEntries.length > 0) {
+        return {
+          ...r,
+          all_entries: matchingEntries
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  }
+
+  if (reporteesList) {
+    reporteesList.innerHTML = '';
+  }
+
+  if (filteredReportees.length === 0) {
+    if (reporteesEmpty) {
+      reporteesEmpty.classList.remove('hidden');
+      if (reporteesEmptyMsg) {
+        reporteesEmptyMsg.textContent = query
+          ? `No reportees or projects found matching "${escapeHtml(query)}"`
+          : 'No reportee activity found for the selected period.';
+      }
+    }
+    return;
+  }
+
+  if (reporteesEmpty) {
+    reporteesEmpty.classList.add('hidden');
+  }
+
+  // 4. Render cards
+  const maxTeamHours = Math.max(
+    ...rawReportees.map(r => r.total_hours || 0),
+    (data.days || 30) * 8 * (5 / 7),
+    1
+  );
+
+  filteredReportees.forEach((r, idx) => {
+    const cardEl = createReporteeCardElement(r, idx, maxTeamHours);
+    if (reporteesList) {
+      reporteesList.appendChild(cardEl);
+    }
+  });
+}
+
+function createReporteeCardElement(r, idx, maxTargetHours) {
+  const card = document.createElement('div');
+  const isCollapsed = collapsedReporteeIds.has(r.id);
+  card.className = `reportee-card${isCollapsed ? ' collapsed' : ''}`;
+  card.dataset.reporteeId = String(r.id);
+
+  const accentColor = getReporteeColor(idx, r.id);
+  const initials = getReporteeInitials(r.name);
+  const totalH = r.total_hours || 0;
+  const pct = Math.min(100, Math.max(4, (totalH / maxTargetHours) * 100));
+
+  const avgH = r.avg_daily_hours % 1 === 0 ? r.avg_daily_hours : (r.avg_daily_hours || 0).toFixed(1);
+  const sublabel = r.active_days > 0 ? `${r.active_days} days × ${avgH}h logged` : `0 days logged`;
+  const totalHStr = `${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h`;
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'reportee-header';
+  header.innerHTML = `
+    <div class="reportee-header-left">
+      <svg class="reportee-chevron" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <div class="reportee-avatar" style="background-color: ${accentColor};">${escapeHtml(initials)}</div>
+      <div class="reportee-user-info">
+        <div class="reportee-name">${escapeHtml(r.name)}</div>
+        <div class="reportee-login">${escapeHtml(r.login)}</div>
+      </div>
+    </div>
+    <div class="reportee-header-right">
+      <div class="reportee-hours-total">${totalHStr}</div>
+      <div class="reportee-progress-wrapper">
+        <div class="reportee-progress-bar" style="width: ${pct}%; background-color: ${accentColor};"></div>
+      </div>
+      <div class="reportee-sublabel">${escapeHtml(sublabel)}</div>
+    </div>
+  `;
+
+  header.addEventListener('click', () => {
+    if (collapsedReporteeIds.has(r.id)) {
+      collapsedReporteeIds.delete(r.id);
+      card.classList.remove('collapsed');
+    } else {
+      collapsedReporteeIds.add(r.id);
+      card.classList.add('collapsed');
+    }
+  });
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'reportee-body';
+
+  const table = document.createElement('table');
+  table.className = 'reportee-table';
+
+  const thead = document.createElement('thead');
+  thead.innerHTML = `
+    <tr>
+      <th style="width: 95px;">DATE ↓</th>
+      <th>PROJECT / ISSUE</th>
+      <th style="width: 140px;">ACTIVITY</th>
+      <th class="th-hours" style="width: 60px;">HOURS</th>
+    </tr>
+  `;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  const entries = Array.isArray(r.all_entries) ? r.all_entries : [];
+
+  if (entries.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="4" style="text-align: center; color: #64748b; padding: 12px 0;">No timesheet entries found for this period.</td>`;
+    tbody.appendChild(tr);
+  } else {
+    entries.forEach(entry => {
+      const tr = document.createElement('tr');
+      const hoursVal = typeof entry.hours === 'number' ? entry.hours : (parseFloat(entry.hours) || 0);
+      const hoursStr = `${hoursVal.toFixed(1)}h`;
+      const issuePart = entry.issue_subject
+        ? `<span class="project-bullet">•</span><span class="issue-subject">${escapeHtml(entry.issue_subject)}</span>`
+        : '';
+
+      tr.innerHTML = `
+        <td class="td-date">${escapeHtml(entry.formatted_date || entry.spent_on || '—')}</td>
+        <td class="td-project"><span>${escapeHtml(entry.project || '—')}</span>${issuePart}</td>
+        <td class="td-activity">${escapeHtml(entry.activity || '—')}</td>
+        <td class="td-hours">${hoursStr}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  card.appendChild(header);
+  card.appendChild(body);
+  return card;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DAILY_TARGET_MINUTES,
@@ -2524,7 +2915,23 @@ if (typeof module !== 'undefined' && module.exports) {
     updateViewToggleVisibility,
     updateViewToggleButtons,
     clearRenderedActivityRows,
-    REDMINE_CATEGORY_COLORS
+    REDMINE_CATEGORY_COLORS,
+    // Reportees exports for testing
+    getReporteeInitials,
+    getReporteeColor,
+    setupHeaderNav,
+    switchDashboardView,
+    getCurrentDashboardView: () => currentDashboardView,
+    setCurrentDashboardView: (v) => { currentDashboardView = v; },
+    fetchAndRenderReportees,
+    renderReporteesDashboard,
+    createReporteeCardElement,
+    getReporteesData: () => reporteesData,
+    setReporteesData: (d) => { reporteesData = d; },
+    getReporteesDays: () => reporteesDays,
+    setReporteesDays: (d) => { reporteesDays = d; },
+    getReporteesSearchQuery: () => reporteesSearchQuery,
+    setReporteesSearchQuery: (q) => { reporteesSearchQuery = q; }
   };
 }
 

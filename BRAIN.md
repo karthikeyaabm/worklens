@@ -106,9 +106,11 @@ WorkLens/
 ├── quotes.js                   # Local quotes storage array for inactivity nudges
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
 ├── redmineTimeIntegration.js   # Service for Redmine GET time_entries API aggregation, yellow category classification, and view building
+├── reporteesService.js         # Service for Team History API fetching, data sanitization, deduplication, and in-memory caching
 ├── storageHealth.js            # Local persistence supervisor (ENOSPC detection, failure threshold, cooldown, notifications)
 ├── teamsActivityTracker.js     # Microsoft Teams intelligent call/meeting state machine and device sensor engine
 ├── run_all_tests.js            # Master automated test runner for all verification suites
+├── test_reportees_dashboard_suite.js # Comprehensive test suite for Reportees dashboard, visibility logic, and data sanitization
 ├── test_redmine_yellow_integration_suite.js # Comprehensive test suite for Redmine time integration & yellow progress bar segments
 ├── test_mouse_pattern_suite.js # Comprehensive test suite for Python mouse automation pattern detection
 ├── test_teams_tracking_suite.js # Comprehensive test suite for Teams call/meeting state transitions and edge cases
@@ -462,6 +464,36 @@ sequenceDiagram
     6.  **Store-Level Defense-in-Depth:**
         *   `saveOrUpdateActiveSessionLocal()` checks `startDay !== endDay`. If any caller attempts to persist a cross-day record, the store automatically splits it via `splitSessionAtMidnightBoundaries()`, persists both single-day chunks, records daily start times for both dates, and returns the active segment.
 
+### 10. Reportees Dashboard & Team History Integration
+*   **Purpose:** Allow managers and team leads to seamlessly inspect live team productivity and daily logged timesheet entries alongside their personal workstation Active Time within the same unified popup window.
+*   **Files Involved:**
+    *   [reporteesService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/reporteesService.js) (API client service, in-memory 60s cache, payload sanitization, deduplication)
+    *   [renderer/activity-popup.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.html) (Header navigation tabs, date range bar, summary cards, reportees list)
+    *   [renderer/activity-popup.css](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.css) (Pill button styling, cards, avatars, dark fluent layout)
+    *   [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js) (View-state controller, search filtering, card expansion, range selection)
+    *   [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js) (`getTeamHistory`, `getReporteesCount` context bridge)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (IPC handlers for `get-team-history` and `get-reportees-count`)
+*   **Dynamic Visibility Logic:**
+    *   The `Reportees (N)` navigation pill button appears immediately beside `ACTIVE TIME` in the header **only** if the logged-in user has `total_reportees > 0`.
+    *   If `total_reportees === 0`, missing, null, or unavailable due to API network error, the label is completely hidden (`class="header-nav-btn reportees-pill-btn hidden"`).
+    *   `N` dynamically reflects the actual reportee count from fresh API data (not hardcoded).
+*   **Navigation & View State:**
+    *   Clicking `Reportees (N)` smoothly toggles the content container to `#reportees-view` while hiding `#active-time-view`.
+    *   Clicking `ACTIVE TIME` restores the full Active Time dashboard (tabs, hour-wise/app-wise activity, progress bars, totals) instantly with zero state loss or recalculation.
+*   **Subheader & Date Range Selector:**
+    *   Displays calendar icon, date interval `[From] — [To]`, and reporting period `([N] days)`.
+    *   Interactive preset dropdown allows selecting `Last 7 Days (7 days)`, `Last 15 Days (15 days)`, or `Last 30 Days (30 days)` (default), re-querying the API and refreshing metrics.
+    *   Search input filters reportees live by employee name, username, project name, issue subject, activity category, or comments.
+*   **Summary Cards:**
+    *   *Total Reportees:* Count of team members from API (`total_reportees`).
+    *   *Team Total Hours:* Aggregated logged effort for the period (`team_total_hours` with fallback sum).
+    *   *Period:* Reporting duration (e.g. `30 days`).
+*   **Individual Reportee Sections & Activity Tables:**
+    *   Circular avatar with employee initials and distinctive palette accent color (`#3b82f6`, `#a855f7`, `#06b6d4`, etc.).
+    *   Employee display name, username subtitle, total logged hours, and horizontal progress bar.
+    *   Supporting sublabel `X days × Yh logged` derived directly from active days and average daily hours.
+    *   Expandable table listing all entries sorted newest first: `DATE ↓`, `PROJECT / ISSUE` (with separator bullet), `ACTIVITY`, and `HOURS`. Missing fields cleanly fallback to `—`.
+
 ---
 
 ## 7. API Documentation
@@ -578,6 +610,58 @@ All API communications are handled in [redmineClient.js](file:///c:/Users/karthi
     *   `longitude`: Approximate decimal longitude string (e.g. `"73.8567"`) or `null` if location unavailable.
     *   `current_address`: Human-readable reverse-geocoded address or `null` if reverse geocoding fails.
 *   **Sync Behavior:** Batched every 2 minutes. Failed logs are retried with an exponential backoff delay. Offline historical records preserve their originally captured location when synced later.
+
+### 6. Team History & Reportees Timesheet API
+*   **URL:** `GET /today_timesheet/team_history.json`
+*   **Parameters:** `user_id=<os_username>`, optional `days=<7|15|30>`
+*   **Purpose:** Retrieve the full team hierarchy, total reportees count, team logged hours, and daily timesheet entries breakdown for a manager's reportees. Used to determine `Reportees (N)` dynamic navigation label visibility and populate the Reportees dashboard.
+*   **Actual Response Shape:**
+    ```json
+    {
+      "manager": {
+        "id": 890,
+        "name": "Karthikeya Kondavathri"
+      },
+      "from": "27-09-2026",
+      "to": "26-10-2026",
+      "days": 30,
+      "total_reportees": 2,
+      "team_total_hours": 320.0,
+      "reportees": [
+        {
+          "user": {
+            "id": 424,
+            "name": "Vishal Hake",
+            "login": "vishal.hake"
+          },
+          "total_hours": 160.0,
+          "daily": [
+            {
+              "date": "23-10-2026",
+              "total_hours": 8.0,
+              "entries": [
+                {
+                  "id": 723368,
+                  "user_id": 424,
+                  "project": "SEPG & SQA",
+                  "issue_id": 227188,
+                  "issue_subject": "Monitoring & Control",
+                  "activity": "Process Automation",
+                  "hours": 8.0,
+                  "comments": "Process Automation",
+                  "spent_on": "23-10-2026"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    ```
+*   **Service & Caching (`reporteesService.js`):**
+    *   **In-Memory 60s Cache:** Caches responses keyed by `${userId}_${days}` with a 60-second TTL to avoid duplicate API calls during rapid tab switching.
+    *   **Data Sanitization & Deduplication:** Cleans missing/null values, converts date formats (`DD-MM-YYYY` to `DD MMM YYYY`), flattens entries into a chronological newest-first array, deduplicates entries by unique `id`, and computes active days and average daily hours.
+    *   **Security:** Redmine API key is securely attached by backend `redmineClient.js` in the Electron main process; no credentials are ever exposed to the renderer process or logged to console.
 
 ---
 
@@ -1292,7 +1376,16 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Future-Date Anomaly Rejection & Quarantine (`quarantineSession`):** In `main.js`, quarantined any session whose start time is ahead of local system time (`recordStartDate > now`) with `duration = 0`, `quarantined = true`, `closed = true` and reset `currentRecord`, terminating artificial forward-day splitting cascades.
     *   **Boundary-Safe Midnight Session Splitting:** Added strict calendar day boundary checks (`actualNow = new Date()`, `sDate <= actualNow`, `nextDayStart <= actualNow`) and a +500ms safety buffer in `scheduleMidnightBoundaryCheck()`, guaranteeing that timer callbacks never trigger prematurely on the previous day.
     *   **Corrupt Timestamp Redmine Sync Exclusion:** Quarantined forward-dated records from Redmine upload in `getEligibleClosedSessions()` and `flushPendingClosedSessions()` while safely retaining them in local JSONL logs for auditing. Verified with Suite 20 (`test_future_date_midnight_recovery_suite.js`).
-    *   **Window Lifecycle & System Tray Resilience:** Defensive protection against Chromium `TypeError: Object has been destroyed` exceptions when re-opening or focusing windows from the Windows System Tray menu or double-click via `showAndFocusWindow()`.
+    *   **v1.3.41 - WorkLens Reportees Dashboard & Team History Integration:**
+    *   **Unified Window Architecture:** Integrated the Reportees Dashboard alongside the existing Active Time dashboard within the single existing Electron popup window (`activityWindow`), avoiding additional windows or separate apps.
+    *   **Dynamic Navigation Header (`ACTIVE TIME` | `Reportees (N)`):** Added interactive header navigation tabs. The `Reportees (N)` pill button (`#tab-nav-reportees`) appears with real-time count `N` **only** when `total_reportees > 0` in API data. If `total_reportees === 0`, null, or unavailable, the label is completely hidden. Both labels are interactive and provide clear visual active states.
+    *   **Zero-Loss Active Time Dashboard Preservation:** Clicking `ACTIVE TIME` restores the original dashboard layout (tabs, hourly/app-wise activity breakdown, progress bars, legends, and totals) instantaneously without resetting state, breaking timers, or losing data.
+    *   **Team History API Integration (`/today_timesheet/team_history.json`):** Integrated backend API requests via `reporteesService.js` and `redmineClient.js` with in-memory 60s caching and request deduplication. Credentials remain strictly protected in the main process without exposing API keys to the renderer or console logs.
+    *   **Data Sanitization & Deduplication:** Cleans missing/null values, standardizes dates into `DD MMM YYYY`, flattens nested entries chronologically newest-first, and prevents double-counting across overlapping structures.
+    *   **Subheader Date Range & Preset Selector:** Displays `[From] — [To]` with `([N] days)` period indicator, search input filtering reportees live by name, username, project, issue, or activity, and preset dropdown menu (`Last 7 Days`, `Last 15 Days`, `Last 30 Days`).
+    *   **3 Summary Cards:** Real-time summary cards displaying `TOTAL REPORTEES` (with users icon), `TEAM TOTAL HOURS` (with clock icon), and `PERIOD` (with calendar icon) derived from live API data.
+    *   **Reportee Cards & Expandable Activity Tables:** Individual expandable cards with employee initials avatar, distinct palette accent colors (`#3b82f6`, `#a855f7`, etc.), employee name, username, total logged hours, progress bar, `X days × Yh logged` sublabel, and expandable activity table with columns: `DATE ↓`, `PROJECT / ISSUE` (bullet separated), `ACTIVITY`, and `HOURS`.
+    *   **Test Suite 21:** Implemented dedicated comprehensive verification suite in `test_reportees_dashboard_suite.js` (16 passing assertions) integrated into master runner `run_all_tests.js`.
 
 ---
 
@@ -1302,6 +1395,7 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 *   **Inactivity Nudge:** Visual and audio alert triggered when the system is idle for 5 minutes.
 *   **JSONL (JSON Lines):** A text-based format where each line is a valid JSON object.
 *   **Redmine Client:** Native client wrapper that handles authentication and API calls to the Redmine server.
+*   **Reportees Dashboard:** Integrated manager dashboard displaying live reportee productivity, totals, and activity entries.
 *   **Watchdog:** Independent supervisor process that monitors WorkLens health and automatically recovers the app if terminated unexpectedly.
 *   **Widget:** Minimalist frameless window pinned to the bottom-right corner of the screen.
 
@@ -1312,13 +1406,14 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
 ```
 1. Set up connection parameters in the .env file.
 2. Run "npm install" to install dependencies.
-3. Run "npm test" to run all 20 test suites and verify system health.
+3. Run "npm test" to run all 21 test suites and verify system health.
 4. Run "npm start" to launch the widget in development.
 5. Main Process Entry Point: main.js
 6. Watchdog Supervisor: watchdog/worklens-watchdog.ps1
 7. Database operations & queue: activityStore.js
 8. API Request Client: redmineClient.js
 9. UI Views: renderer/index.html & renderer/activity-popup.html
+10. Reportees Service: reporteesService.js
 ```
 
 ---

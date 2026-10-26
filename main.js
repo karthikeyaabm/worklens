@@ -248,6 +248,7 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const redmineClient = require('./redmineClient');
 const redmineTimeIntegration = require('./redmineTimeIntegration');
+const reporteesService = require('./reporteesService');
 const { autoUpdater } = require('electron-updater');
 const log = require('./logger');
 autoUpdater.logger = log;
@@ -2409,6 +2410,26 @@ ipcMain.handle('fetch-activity-logs', async (event, period = 'today') => {
 
 ipcMain.handle('fetch-activity-history', async (event, period) => {
   return await handleFetchActivity(period);
+});
+
+ipcMain.handle('get-team-history', async (event, options = {}) => {
+  try {
+    const username = os.userInfo().username;
+    return await reporteesService.fetchTeamHistory(username, options);
+  } catch (err) {
+    console.error('[Main] get-team-history error:', err.message);
+    throw err;
+  }
+});
+
+ipcMain.handle('get-reportees-count', async () => {
+  try {
+    const username = os.userInfo().username;
+    return await reporteesService.getReporteesCount(username);
+  } catch (err) {
+    console.error('[Main] get-reportees-count error:', err.message);
+    return { total_reportees: null, has_reportees: false, error: err.message };
+  }
 });
 
 ipcMain.handle('trigger-sync', async () => {
