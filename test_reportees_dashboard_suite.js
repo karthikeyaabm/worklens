@@ -269,10 +269,10 @@ async function runSuite() {
     assert.ok(cssContent.includes('.refresh-button.spinning'), 'Must style .refresh-button.spinning');
   });
 
-  runTest('4.5 activity-popup contains minimize and maximize window controls', () => {
+  runTest('4.5 activity-popup contains maximize window controls and no minimize icon', () => {
     const htmlPath = path.join(__dirname, 'renderer', 'activity-popup.html');
     const htmlContent = fs.readFileSync(htmlPath, 'utf8');
-    assert.ok(htmlContent.includes('id="min-btn"'), 'Must have #min-btn');
+    assert.ok(!htmlContent.includes('id="min-btn"'), 'Must not have #min-btn');
     assert.ok(htmlContent.includes('id="max-btn"'), 'Must have #max-btn');
     assert.ok(htmlContent.includes('class="window-control-icon icon-maximize"'), 'Must have icon-maximize');
     assert.ok(htmlContent.includes('class="window-control-icon icon-restore hidden"'), 'Must have icon-restore');
@@ -316,12 +316,10 @@ async function runSuite() {
     await popupRenderer.handleRefreshClick();
   });
 
-  await runAsyncTest('5.5 handleMinimizeClick and handleMaximizeClick execute safely', async () => {
-    assert.strictEqual(typeof popupRenderer.handleMinimizeClick, 'function', 'handleMinimizeClick must be a function');
+  await runAsyncTest('5.5 handleMaximizeClick executes safely', async () => {
     assert.strictEqual(typeof popupRenderer.handleMaximizeClick, 'function', 'handleMaximizeClick must be a function');
     assert.strictEqual(typeof popupRenderer.updateMaximizedUiState, 'function', 'updateMaximizedUiState must be a function');
 
-    await popupRenderer.handleMinimizeClick();
     await popupRenderer.handleMaximizeClick();
     popupRenderer.updateMaximizedUiState(true);
     popupRenderer.updateMaximizedUiState(false);

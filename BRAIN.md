@@ -490,9 +490,8 @@ sequenceDiagram
     *   **In Active Time view:** Clears client cache (`clientViewCache = { today: null, yesterday: null, ... }`), resets in-flight fetch promises, flushes pending local sessions to Redmine server via `window.api.triggerSync()`, re-fetches activity logs from server for the active tab period, updates dynamic reportees count visibility, and re-renders rows.
     *   **In Reportees view:** Triggers `fetchAndRenderReportees(true)` passing `{ forceRefresh: true }` to bypass the 60-second in-memory cache, directly querying `https://mainet.abmindia.com/today_timesheet/team_history.json`, re-calculating summary statistics, and re-rendering all reportee cards.
     *   Smoothly unsets spinning class after a minimum of 600ms for seamless visual feedback.
-*   **Maximize & Minimize Window Controls (`#min-btn`, `#max-btn`):**
-    *   Integrated into the dashboard header actions adjacent to `#refresh-btn` and `#close-btn` for standard desktop usability.
-    *   **Minimize (`#min-btn`):** Minimizes the dashboard window to the Windows taskbar via IPC `minimize-activity-popup`. Clicking the taskbar icon or the widget's `ACTIVE TIME` card restores and focuses the window.
+*   **Maximize Window Control (`#max-btn`):**
+    *   Integrated into the dashboard header actions adjacent to `#refresh-btn` and `#close-btn` for desktop usability. (Minimize icon `#min-btn` removed to keep clean, uncluttered action buttons alongside the close and tray/widget workflows).
     *   **Maximize / Restore (`#max-btn`):** Toggles between maximized and restored state via IPC `maximize-activity-popup`. Dynamically updates button icon and tooltip between Maximize (`.icon-maximize`) and Restore (`.icon-restore`).
     *   **Header Double-Click:** Double-clicking the `.popup-header` bar natively toggles maximize and restore.
     *   **Full-Screen Responsive Layout (`body.is-maximized`):** When maximized, automatically suppresses the widget connection arrow (`#arrow`), zeroes body padding, and expands `#popup-container` to 100% viewport width and height with zero margins and border-radius, giving maximum visibility to deep reportee hierarchies and app-wise logs.
