@@ -484,6 +484,12 @@ sequenceDiagram
     *   Displays calendar icon, date interval `[From] — [To]`, and reporting period `([N] days)`.
     *   Interactive preset dropdown allows selecting `Last 7 Days (7 days)`, `Last 15 Days (15 days)`, or `Last 30 Days (30 days)` (default), re-querying the API and refreshing metrics.
     *   Search input filters reportees live by employee name, username, project name, issue subject, activity category, or comments.
+*   **Live Dashboard Refresh Button (`#refresh-btn`):**
+    *   Positioned in the header next to the close button (`&times;`), accessible in both Active Time and Reportees dashboard views.
+    *   Provides user-triggered live synchronization with spinning feedback animation (`.refresh-button.spinning`).
+    *   **In Active Time view:** Clears client cache (`clientViewCache = { today: null, yesterday: null, ... }`), resets in-flight fetch promises, flushes pending local sessions to Redmine server via `window.api.triggerSync()`, re-fetches activity logs from server for the active tab period, updates dynamic reportees count visibility, and re-renders rows.
+    *   **In Reportees view:** Triggers `fetchAndRenderReportees(true)` passing `{ forceRefresh: true }` to bypass the 60-second in-memory cache, directly querying `https://mainet.abmindia.com/today_timesheet/team_history.json`, re-calculating summary statistics, and re-rendering all reportee cards.
+    *   Smoothly unsets spinning class after a minimum of 600ms for seamless visual feedback.
 *   **Summary Cards:**
     *   *Total Reportees:* Count of team members from API (`total_reportees`).
     *   *Team Total Hours:* Aggregated logged effort for the period (`team_total_hours` with fallback sum).
@@ -1384,8 +1390,11 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Data Sanitization & Deduplication:** Cleans missing/null values, standardizes dates into `DD MMM YYYY`, flattens nested entries chronologically newest-first, and prevents double-counting across overlapping structures.
     *   **Subheader Date Range & Preset Selector:** Displays `[From] — [To]` with `([N] days)` period indicator, search input filtering reportees live by name, username, project, issue, or activity, and preset dropdown menu (`Last 7 Days`, `Last 15 Days`, `Last 30 Days`).
     *   **3 Summary Cards:** Real-time summary cards displaying `TOTAL REPORTEES` (with users icon), `TEAM TOTAL HOURS` (with clock icon), and `PERIOD` (with calendar icon) derived from live API data.
-    *   **Reportee Cards & Expandable Activity Tables:** Individual expandable cards with employee initials avatar, distinct palette accent colors (`#3b82f6`, `#a855f7`, etc.), employee name, username, total logged hours, progress bar, `X days × Yh logged` sublabel, and expandable activity table with columns: `DATE ↓`, `PROJECT / ISSUE` (bullet separated), `ACTIVITY`, and `HOURS`.
-    *   **Test Suite 21:** Implemented dedicated comprehensive verification suite in `test_reportees_dashboard_suite.js` (16 passing assertions) integrated into master runner `run_all_tests.js`.
+    *   **Test Suite 21:** Implemented dedicated comprehensive verification suite in `test_reportees_dashboard_suite.js` (18 passing assertions) integrated into master runner `run_all_tests.js`.
+    *   **v1.3.42 - Live Dashboard Refresh Button (`#refresh-btn`):**
+    *   **Header Live Refresh:** Added SVG circular refresh button `#refresh-btn` alongside `#close-btn` with smooth spin micro-animation (`@keyframes spinRefresh`).
+    *   **Dual View Synchronization:** Intelligently checks active dashboard view. On Active Time, invalidates client-side tab caches, flushes pending offline sessions via `triggerSync()`, re-queries backend activity logs, and updates UI. On Reportees, sends `{ forceRefresh: true }` to `getTeamHistory()` to bypass the 60s memory cache and fetch fresh team history and timesheets.
+    *   **Test Coverage:** Added automated unit tests in `test_reportees_dashboard_suite.js` verifying DOM element presence, CSS animation classes, and safe asynchronous execution of `handleRefreshClick()`. All 21 master test suites passing.
 
 ---
 

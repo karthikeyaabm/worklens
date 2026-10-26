@@ -257,6 +257,18 @@ async function runSuite() {
     assert.ok(content.includes('.view-panel'), 'Must define .view-panel');
   });
 
+  runTest('4.4 activity-popup contains refresh button and spinning styles', () => {
+    const htmlPath = path.join(__dirname, 'renderer', 'activity-popup.html');
+    const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    assert.ok(htmlContent.includes('id="refresh-btn"'), 'Must have #refresh-btn');
+    assert.ok(htmlContent.includes('class="refresh-button"'), 'Must have .refresh-button');
+
+    const cssPath = path.join(__dirname, 'renderer', 'activity-popup.css');
+    const cssContent = fs.readFileSync(cssPath, 'utf8');
+    assert.ok(cssContent.includes('.refresh-button'), 'Must style .refresh-button');
+    assert.ok(cssContent.includes('.refresh-button.spinning'), 'Must style .refresh-button.spinning');
+  });
+
   // -----------------------------------------------------------------------------
   // 5. CLIENT-SIDE RENDERER HELPER UNIT TESTS
   // -----------------------------------------------------------------------------
@@ -282,6 +294,12 @@ async function runSuite() {
     assert.strictEqual(popupRenderer.getCurrentDashboardView(), 'reportees');
     popupRenderer.switchDashboardView('active-time');
     assert.strictEqual(popupRenderer.getCurrentDashboardView(), 'active-time');
+  });
+
+  await runAsyncTest('5.4 handleRefreshClick executes safely and handles refresh', async () => {
+    assert.strictEqual(typeof popupRenderer.handleRefreshClick, 'function', 'handleRefreshClick must be a function');
+    // Test safe execution when DOM / window.api is undefined or partially defined
+    await popupRenderer.handleRefreshClick();
   });
 
   // -----------------------------------------------------------------------------

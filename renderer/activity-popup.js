@@ -3,6 +3,7 @@ const getEl = (id) => (typeof document !== 'undefined' ? document.getElementById
 const popupContainer = getEl('popup-container');
 const arrowEl = getEl('arrow');
 const closeBtn = getEl('close-btn');
+const refreshBtn = getEl('refresh-btn');
 const dateEl = getEl('current-date');
 const loadingState = getEl('loading-state');
 const errorState = getEl('error-state');
@@ -103,6 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Register close button click
   if (closeBtn) closeBtn.addEventListener('click', initiateCloseAnimation);
+
+  // Register refresh button click
+  if (refreshBtn) refreshBtn.addEventListener('click', handleRefreshClick);
 
   // Register retry button click
   if (retryBtn) retryBtn.addEventListener('click', fetchAndRender);
@@ -1114,7 +1118,7 @@ let inFlightFetchPromises = {};
 
 // ================= API FETCH & DATA PROCESSING =================
 async function fetchAndRender() {
-  if (!window.api || typeof window.api.fetchActivityLogs !== 'function') return;
+  if (typeof window === 'undefined' || !window || !window.api || typeof window.api.fetchActivityLogs !== 'function') return;
 
   const targetPeriod = currentPeriod;
   const seq = ++currentFetchSeq;
@@ -2560,7 +2564,7 @@ function switchDashboardView(view) {
 }
 
 async function checkReporteesVisibility() {
-  if (!window.api || typeof window.api.getReporteesCount !== 'function') return;
+  if (typeof window === 'undefined' || !window || !window.api || typeof window.api.getReporteesCount !== 'function') return;
   try {
     const res = await window.api.getReporteesCount();
     if (res && typeof res.total_reportees === 'number' && res.total_reportees > 0) {
@@ -2624,7 +2628,7 @@ function setupReporteesControls() {
 }
 
 async function fetchAndRenderReportees(forceRefresh = false) {
-  if (!window.api || typeof window.api.getTeamHistory !== 'function') return;
+  if (typeof window === 'undefined' || !window || !window.api || typeof window.api.getTeamHistory !== 'function') return;
   isReporteesLoading = true;
 
   if (reporteesLoading) reporteesLoading.classList.remove('hidden');
@@ -2861,6 +2865,47 @@ function createReporteeCardElement(r, idx, maxTargetHours) {
   return card;
 }
 
+async function handleRefreshClick() {
+  if (refreshBtn) {
+    refreshBtn.classList.add('spinning');
+  }
+
+  try {
+    const hasWindowApi = typeof window !== 'undefined' && window && window.api;
+
+    if (currentDashboardView === 'active-time') {
+      // Invalidate local client view cache and reset in-flight promises
+      clientViewCache = { today: null, yesterday: null, last7days: null, last30days: null };
+      inFlightFetchPromises = {};
+      lastCacheTimestamp = Date.now();
+
+      // Trigger sync to flush pending sessions to server if supported
+      if (hasWindowApi && typeof window.api.triggerSync === 'function') {
+        try {
+          await window.api.triggerSync();
+        } catch (syncErr) {
+          console.error('[Refresh] triggerSync failed:', syncErr);
+        }
+      }
+
+      await fetchAndRender();
+      await checkReporteesVisibility();
+    } else if (currentDashboardView === 'reportees') {
+      // Force refresh bypassing team history cache
+      await fetchAndRenderReportees(true);
+      await checkReporteesVisibility();
+    }
+  } catch (err) {
+    console.error('[Refresh] Error during live data refresh:', err);
+  } finally {
+    setTimeout(() => {
+      if (refreshBtn) {
+        refreshBtn.classList.remove('spinning');
+      }
+    }, 600);
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DAILY_TARGET_MINUTES,
@@ -2931,7 +2976,8 @@ if (typeof module !== 'undefined' && module.exports) {
     getReporteesDays: () => reporteesDays,
     setReporteesDays: (d) => { reporteesDays = d; },
     getReporteesSearchQuery: () => reporteesSearchQuery,
-    setReporteesSearchQuery: (q) => { reporteesSearchQuery = q; }
+    setReporteesSearchQuery: (q) => { reporteesSearchQuery = q; },
+    handleRefreshClick
   };
 }
 
