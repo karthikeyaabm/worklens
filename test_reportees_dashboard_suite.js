@@ -261,12 +261,26 @@ async function runSuite() {
     const htmlPath = path.join(__dirname, 'renderer', 'activity-popup.html');
     const htmlContent = fs.readFileSync(htmlPath, 'utf8');
     assert.ok(htmlContent.includes('id="refresh-btn"'), 'Must have #refresh-btn');
-    assert.ok(htmlContent.includes('class="refresh-button"'), 'Must have .refresh-button');
+    assert.ok(htmlContent.includes('refresh-button'), 'Must have refresh-button');
 
     const cssPath = path.join(__dirname, 'renderer', 'activity-popup.css');
     const cssContent = fs.readFileSync(cssPath, 'utf8');
     assert.ok(cssContent.includes('.refresh-button'), 'Must style .refresh-button');
     assert.ok(cssContent.includes('.refresh-button.spinning'), 'Must style .refresh-button.spinning');
+  });
+
+  runTest('4.5 activity-popup contains minimize and maximize window controls', () => {
+    const htmlPath = path.join(__dirname, 'renderer', 'activity-popup.html');
+    const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    assert.ok(htmlContent.includes('id="min-btn"'), 'Must have #min-btn');
+    assert.ok(htmlContent.includes('id="max-btn"'), 'Must have #max-btn');
+    assert.ok(htmlContent.includes('class="window-control-icon icon-maximize"'), 'Must have icon-maximize');
+    assert.ok(htmlContent.includes('class="window-control-icon icon-restore hidden"'), 'Must have icon-restore');
+
+    const cssPath = path.join(__dirname, 'renderer', 'activity-popup.css');
+    const cssContent = fs.readFileSync(cssPath, 'utf8');
+    assert.ok(cssContent.includes('.window-control-icon'), 'Must style .window-control-icon');
+    assert.ok(cssContent.includes('body.is-maximized'), 'Must define body.is-maximized');
   });
 
   // -----------------------------------------------------------------------------
@@ -300,6 +314,17 @@ async function runSuite() {
     assert.strictEqual(typeof popupRenderer.handleRefreshClick, 'function', 'handleRefreshClick must be a function');
     // Test safe execution when DOM / window.api is undefined or partially defined
     await popupRenderer.handleRefreshClick();
+  });
+
+  await runAsyncTest('5.5 handleMinimizeClick and handleMaximizeClick execute safely', async () => {
+    assert.strictEqual(typeof popupRenderer.handleMinimizeClick, 'function', 'handleMinimizeClick must be a function');
+    assert.strictEqual(typeof popupRenderer.handleMaximizeClick, 'function', 'handleMaximizeClick must be a function');
+    assert.strictEqual(typeof popupRenderer.updateMaximizedUiState, 'function', 'updateMaximizedUiState must be a function');
+
+    await popupRenderer.handleMinimizeClick();
+    await popupRenderer.handleMaximizeClick();
+    popupRenderer.updateMaximizedUiState(true);
+    popupRenderer.updateMaximizedUiState(false);
   });
 
   // -----------------------------------------------------------------------------

@@ -66,12 +66,14 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 2px;
+  -webkit-app-region: drag;
 }
 
 .header-title {
   display: flex;
   align-items: center;
   gap: 6px;
+  -webkit-app-region: no-drag;
 }
 
 .lightning-icon {
@@ -91,6 +93,50 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.header-action-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
+  -webkit-app-region: no-drag;
+}
+
+.header-action-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.header-action-btn:active {
+  transform: scale(0.92);
+}
+
+.header-action-btn.refresh-button:hover {
+  color: #60a5fa;
+}
+
+.header-action-btn.close-button:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.window-control-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.window-control-icon.hidden {
+  display: none !important;
 }
 
 .refresh-button {
@@ -98,8 +144,8 @@ body {
   border: none;
   color: #9ca3af;
   cursor: pointer;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -143,8 +189,8 @@ body {
   color: #9ca3af;
   font-size: 16px;
   cursor: pointer;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -155,6 +201,24 @@ body {
 .close-button:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
+}
+
+/* ================= MAXIMIZED WINDOW STATE ================= */
+body.is-maximized {
+  padding: 0 !important;
+}
+
+body.is-maximized #arrow {
+  display: none !important;
+}
+
+body.is-maximized #popup-container {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 /* ================= PERIOD SELECTOR ================= */

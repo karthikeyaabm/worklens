@@ -490,6 +490,12 @@ sequenceDiagram
     *   **In Active Time view:** Clears client cache (`clientViewCache = { today: null, yesterday: null, ... }`), resets in-flight fetch promises, flushes pending local sessions to Redmine server via `window.api.triggerSync()`, re-fetches activity logs from server for the active tab period, updates dynamic reportees count visibility, and re-renders rows.
     *   **In Reportees view:** Triggers `fetchAndRenderReportees(true)` passing `{ forceRefresh: true }` to bypass the 60-second in-memory cache, directly querying `https://mainet.abmindia.com/today_timesheet/team_history.json`, re-calculating summary statistics, and re-rendering all reportee cards.
     *   Smoothly unsets spinning class after a minimum of 600ms for seamless visual feedback.
+*   **Maximize & Minimize Window Controls (`#min-btn`, `#max-btn`):**
+    *   Integrated into the dashboard header actions adjacent to `#refresh-btn` and `#close-btn` for standard desktop usability.
+    *   **Minimize (`#min-btn`):** Minimizes the dashboard window to the Windows taskbar via IPC `minimize-activity-popup`. Clicking the taskbar icon or the widget's `ACTIVE TIME` card restores and focuses the window.
+    *   **Maximize / Restore (`#max-btn`):** Toggles between maximized and restored state via IPC `maximize-activity-popup`. Dynamically updates button icon and tooltip between Maximize (`.icon-maximize`) and Restore (`.icon-restore`).
+    *   **Header Double-Click:** Double-clicking the `.popup-header` bar natively toggles maximize and restore.
+    *   **Full-Screen Responsive Layout (`body.is-maximized`):** When maximized, automatically suppresses the widget connection arrow (`#arrow`), zeroes body padding, and expands `#popup-container` to 100% viewport width and height with zero margins and border-radius, giving maximum visibility to deep reportee hierarchies and app-wise logs.
 *   **Summary Cards:**
     *   *Total Reportees:* Count of team members from API (`total_reportees`).
     *   *Team Total Hours:* Aggregated logged effort for the period (`team_total_hours` with fallback sum).
@@ -1395,6 +1401,11 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Header Live Refresh:** Added SVG circular refresh button `#refresh-btn` alongside `#close-btn` with smooth spin micro-animation (`@keyframes spinRefresh`).
     *   **Dual View Synchronization:** Intelligently checks active dashboard view. On Active Time, invalidates client-side tab caches, flushes pending offline sessions via `triggerSync()`, re-queries backend activity logs, and updates UI. On Reportees, sends `{ forceRefresh: true }` to `getTeamHistory()` to bypass the 60s memory cache and fetch fresh team history and timesheets.
     *   **Test Coverage:** Added automated unit tests in `test_reportees_dashboard_suite.js` verifying DOM element presence, CSS animation classes, and safe asynchronous execution of `handleRefreshClick()`. All 21 master test suites passing.
+    *   **v1.3.43 - Dashboard Maximize & Minimize Controls (`#min-btn`, `#max-btn`):**
+    *   **Window Management Features:** Added minimize (`#min-btn`) and maximize/restore (`#max-btn`) buttons in the popup header actions next to refresh and close.
+    *   **Electron Window Controls:** Enabled `resizable: true`, `minimizable: true`, `maximizable: true`, and `skipTaskbar: false` on `activityWindow`. Added IPC channels `minimize-activity-popup`, `maximize-activity-popup`, `is-activity-popup-maximized`, and push event `popup-maximized-changed`.
+    *   **Maximized Styling:** Implemented `body.is-maximized` styling to hide the connection arrow `#arrow` and adapt `#popup-container` to 100% viewport space. Added title-bar double-click to maximize/restore.
+    *   **Test Coverage:** Updated `test_reportees_dashboard_suite.js` with test assertions for HTML structure, CSS rules, and helper handlers. All 21 test suites passing.
 
 ---
 

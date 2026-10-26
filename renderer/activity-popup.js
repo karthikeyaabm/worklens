@@ -4,6 +4,7 @@ const popupContainer = getEl('popup-container');
 const arrowEl = getEl('arrow');
 const closeBtn = getEl('close-btn');
 const refreshBtn = getEl('refresh-btn');
+const maxBtn = getEl('max-btn');
 const dateEl = getEl('current-date');
 const loadingState = getEl('loading-state');
 const errorState = getEl('error-state');
@@ -108,6 +109,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Register refresh button click
   if (refreshBtn) refreshBtn.addEventListener('click', handleRefreshClick);
 
+  // Register maximize button click
+  if (maxBtn) maxBtn.addEventListener('click', handleMaximizeClick);
+
+  // Register header double-click for maximize/restore toggle
+  const popupHeader = typeof document !== 'undefined' ? document.querySelector('.popup-header') : null;
+  if (popupHeader) {
+    popupHeader.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button') || e.target.closest('input')) return;
+      handleMaximizeClick();
+    });
+  }
+
   // Register retry button click
   if (retryBtn) retryBtn.addEventListener('click', fetchAndRender);
 
@@ -142,6 +155,18 @@ document.addEventListener('DOMContentLoaded', () => {
       window.api.onUpdateArrowPosition((arrowLeft, isBelow) => {
         updateArrowPosition(arrowLeft, isBelow);
       });
+    }
+
+    if (typeof window.api.onPopupMaximizedChanged === 'function') {
+      window.api.onPopupMaximizedChanged((isMaximized) => {
+        updateMaximizedUiState(isMaximized);
+      });
+    }
+
+    if (typeof window.api.isActivityPopupMaximized === 'function') {
+      window.api.isActivityPopupMaximized().then((isMax) => {
+        updateMaximizedUiState(isMax);
+      }).catch(() => {});
     }
 
     if (typeof window.api.onHistoricalDataReady === 'function') {
@@ -2906,6 +2931,44 @@ async function handleRefreshClick() {
   }
 }
 
+async function handleMaximizeClick() {
+  if (typeof window !== 'undefined' && window && window.api && typeof window.api.maximizeActivityPopup === 'function') {
+    try {
+      const isMax = await window.api.maximizeActivityPopup();
+      updateMaximizedUiState(isMax);
+    } catch (err) {
+      console.error('[WindowControl] Error toggling maximize:', err);
+    }
+  }
+}
+
+function updateMaximizedUiState(isMaximized) {
+  const isMax = Boolean(isMaximized);
+  if (typeof document !== 'undefined' && document.body) {
+    if (isMax) {
+      document.body.classList.add('is-maximized');
+    } else {
+      document.body.classList.remove('is-maximized');
+    }
+  }
+
+  if (maxBtn) {
+    maxBtn.title = isMax ? 'Restore' : 'Maximize';
+    maxBtn.setAttribute('aria-label', isMax ? 'Restore' : 'Maximize');
+    const iconMax = maxBtn.querySelector('.icon-maximize');
+    const iconRestore = maxBtn.querySelector('.icon-restore');
+    if (iconMax && iconRestore) {
+      if (isMax) {
+        iconMax.classList.add('hidden');
+        iconRestore.classList.remove('hidden');
+      } else {
+        iconMax.classList.remove('hidden');
+        iconRestore.classList.add('hidden');
+      }
+    }
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DAILY_TARGET_MINUTES,
@@ -2977,7 +3040,9 @@ if (typeof module !== 'undefined' && module.exports) {
     setReporteesDays: (d) => { reporteesDays = d; },
     getReporteesSearchQuery: () => reporteesSearchQuery,
     setReporteesSearchQuery: (q) => { reporteesSearchQuery = q; },
-    handleRefreshClick
+    handleRefreshClick,
+    handleMaximizeClick,
+    updateMaximizedUiState
   };
 }
 

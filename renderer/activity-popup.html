@@ -26,14 +26,23 @@
         </button>
       </div>
       <div class="header-actions">
-        <button id="refresh-btn" class="refresh-button" title="Refresh live data" aria-label="Refresh live data">
+        <button id="refresh-btn" class="header-action-btn refresh-button" title="Refresh live data" aria-label="Refresh live data">
           <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
         </button>
-        <button id="close-btn" class="close-button" title="Close popup">&times;</button>
+        <button id="max-btn" class="header-action-btn max-button" title="Maximize" aria-label="Maximize">
+          <svg class="window-control-icon icon-maximize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          </svg>
+          <svg class="window-control-icon icon-restore hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="9" width="11" height="11" rx="1.5"></rect>
+            <path d="M9 5h9a1.5 1.5 0 0 1 1.5 1.5v9"></path>
+          </svg>
+        </button>
+        <button id="close-btn" class="header-action-btn close-button" title="Close popup" aria-label="Close popup">&times;</button>
       </div>
     </header>
     

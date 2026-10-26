@@ -64,6 +64,18 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('close-activity-popup');
   },
 
+  minimizeActivityPopup: async () => {
+    return await ipcRenderer.invoke('minimize-activity-popup');
+  },
+
+  maximizeActivityPopup: async () => {
+    return await ipcRenderer.invoke('maximize-activity-popup');
+  },
+
+  isActivityPopupMaximized: async () => {
+    return await ipcRenderer.invoke('is-activity-popup-maximized');
+  },
+
   fetchActivityLogs: async (period = 'today') => {
     return await ipcRenderer.invoke('fetch-activity-logs', period);
   },
@@ -98,6 +110,12 @@ contextBridge.exposeInMainWorld('api', {
     const listener = () => callback();
     ipcRenderer.on('request-close', listener);
     return () => ipcRenderer.removeListener('request-close', listener);
+  },
+
+  onPopupMaximizedChanged: (callback) => {
+    const listener = (event, isMaximized) => callback(isMaximized);
+    ipcRenderer.on('popup-maximized-changed', listener);
+    return () => ipcRenderer.removeListener('popup-maximized-changed', listener);
   },
 
   onHistoricalDataReady: (callback) => {
