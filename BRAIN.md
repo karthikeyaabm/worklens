@@ -859,7 +859,7 @@ Preload bridges access paths by mapping handlers across processes:
 | `get-employee-id` | Invoked by UI | None | Returns numeric Redmine ID. |
 | `get-app-version` | Invoked by UI | None | Returns active semantic version string. |
 | `get-redmine-efforts` | Invoked by UI | None | Returns today's and yesterday's logged times from Redmine. |
-| `get-active-time-today` | Invoked by UI | None | Returns total local tracked seconds today (including offline & unsynced). |
+| `get-active-time-today` | Invoked by UI | None | Returns authoritative total active tracked seconds today (synchronizing local queue, in-progress session, and server summary). |
 | `get-active-time-yesterday` | Invoked by UI | None | Returns total local tracked seconds yesterday. |
 | `get-current-status` | Invoked by UI | None | Returns active state (`Active`, `Offline`, or `Inactive`). |
 | `get-storage-health` | Invoked by UI | None | Returns local storage health snapshot `{ activityCollectionWorking, localStorageWorking, offlineQueueWorking, lastSuccessfulLocalWrite, lastStorageError, storageFailure, consecutiveFailures, isUnhealthy, status }`. |
@@ -1405,6 +1405,15 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Electron Window Controls:** Enabled `resizable: true`, `minimizable: true`, `maximizable: true`, and `skipTaskbar: false` on `activityWindow`. Added IPC channels `minimize-activity-popup`, `maximize-activity-popup`, `is-activity-popup-maximized`, and push event `popup-maximized-changed`.
     *   **Maximized Styling:** Implemented `body.is-maximized` styling to hide the connection arrow `#arrow` and adapt `#popup-container` to 100% viewport space. Added title-bar double-click to maximize/restore.
     *   **Test Coverage:** Updated `test_reportees_dashboard_suite.js` with test assertions for HTML structure, CSS rules, and helper handlers. All 21 test suites passing.
+*   **v1.2.9 - Release Version Alignment & Active Time Data Consistency:**
+    *   **Version Bump:** Bumped application release version to `1.2.9` across `package.json`, `package-lock.json`, `CHANGELOG.md`, and dynamic IPC `get-app-version`.
+    *   **Root Cause Resolution (Stale Cache & Dropped Synced Chunks):** Fixed an issue where `handleFetchActivity('today')` dropped newly synced chunks when `precomputedHistoricalCache.isReady` was active. Previously, `serverTodayLogs` held a stale snapshot from app startup while `getUnsyncedTodayLogs()` excluded chunks marked `synced: true`, causing all sessions closed and synced between 30-day cache refreshes to disappear from the Dashboard's Today view (freezing dashboard total hours).
+    *   **Authoritative Local Ground Truth:** `handleFetchActivity('today')` now starts with all records from `getAllTodayLogs(userId, currentOsUser)` as the baseline, merges non-duplicate external sessions from `serverTodayLogs` (e.g. from other workstations) via signature matching, and appends the live in-memory active session (`currentRecord`) with its real-time duration.
+    *   **Live In-Progress Session Inclusion (`currentRecord`):** Ensured the live tracking session is included with real-time seconds in `logs` returned by `handleFetchActivity('today')`, keeping App Wise, Hours Wise, and footer Total Active Time strictly aligned with ongoing work.
+    *   **Widget & Dashboard Metric Parity (`get-active-time-today`):** Unified calculation in `get-active-time-today` to evaluate local today records + live session (`localTotalSeconds`) and align with server summary (`Math.max(totalSeconds, localTotalSeconds)`), eliminating discrepancies between floating widget `T` and popup dashboard.
+    *   **Quarantine of Corrupt Synthetic Test Records & Normalized Signature Matching:** Identified and quarantined old synthetic test records (with duration >= 40,000s) from earlier test runs that artificially inflated active time. Implemented normalized epoch timestamp signature matching with a ±2-second window to resolve formatting differences (`YYYY-MM-DD` vs `DD-MM-YYYY`) and prevent duplicating server entries on top of local tracking logs.
+    *   **Real-Time Popup Open Refresh:** Updated `onPopupStatusChanged('opened')` to invalidate `clientViewCache.today` and immediately trigger `selectPeriod('today', true)`, guaranteeing fresh real-time data upon opening the modal.
+    *   **Transparency Tooltips:** Added descriptive hover tooltips on the widget (`Active Time Today: Xh Ym (Z.Zh)`) and dashboard footer (`Total Active Time: Xh Ym (Z.Zh)`), providing complete clarity to employees and management and eliminating trust issues stemming from decimal vs. hours/minutes representation.
 
 ---
 

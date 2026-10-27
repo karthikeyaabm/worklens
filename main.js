@@ -1785,12 +1785,36 @@ ipcMain.handle('get-active-time-today', async () => {
     console.error('[Sync] Error getting unsynced duration for active-time-today:', err);
   }
 
-  if (currentRecord && currentRecord.status === 'Active') {
+  // Calculate local total seconds from local today logs + live in-progress session
+  let localTotalSeconds = 0;
+  try {
+    const currentOsUser = os.userInfo().username;
+    const userId = await getUserId();
+    const localTodayLogs = getAllTodayLogs(userId, currentOsUser) || [];
+    for (let i = 0; i < localTodayLogs.length; i++) {
+      const l = localTodayLogs[i];
+      if (l && l.status && l.status.toLowerCase() === 'active' && l.duration > 0 && l.duration < 40000) {
+        localTotalSeconds += (Number(l.duration) || 0);
+      }
+    }
+  } catch (err) {
+    console.error('[Sync] Error calculating local total seconds for active-time-today:', err);
+  }
+
+  if (currentRecord && currentRecord.status === 'Active' && currentRecord.startTime) {
     const now = new Date();
     if (now.toDateString() === currentRecord.startTime.toDateString()) {
-      totalSeconds += Math.round((now - currentRecord.startTime) / 1000);
+      const curDur = Math.round((now - currentRecord.startTime) / 1000);
+      totalSeconds += curDur;
+      localTotalSeconds += curDur;
     }
   }
+
+  // Authoritative alignment: use maximum of server summary and local tracking so neither is underreported
+  if (localTotalSeconds > 0) {
+    totalSeconds = Math.max(totalSeconds, localTotalSeconds);
+  }
+
   return totalSeconds;
 });
 
@@ -1889,6 +1913,7 @@ let historicalFetchPromise = null;
 const HISTORICAL_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL for stable historical data
 
 function invalidateActivity30DaysCache(full = false) {
+  todayResolvedCache.data = null;
   if (full) {
     precomputedHistoricalCache.isReady = false;
     precomputedHistoricalCache.timestamp = 0;
@@ -2320,43 +2345,67 @@ async function handleFetchActivity(period = 'today') {
       return todayResolvedCache.data;
     }
 
-    let logs = [];
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.serverTodayLogs.length > 0) {
-      const unsyncedToday = getUnsyncedTodayLogs(userId, currentOsUser);
-      const unsyncedMapped = unsyncedToday.map(c => ({
-        id: c.local_id,
-        user_id: c.user_id,
-        app_name: c.app_name,
-        window_title: c.window_title,
-        start_time: c.start_time,
-        end_time: c.end_time,
-        duration: c.duration,
-        activity_on: c.activity_on,
-        status: c.status,
-        activity_type: c.activity_type || 'Unknown',
-        latitude: c.latitude || null,
-        longitude: c.longitude || null,
-        current_address: c.current_address || null
-      }));
-      // Merge unsynced and server records avoiding duplicates
-      const seenIds = new Set();
-      const mergedLogs = [];
-      for (let i = 0; i < unsyncedMapped.length; i++) {
-        const item = unsyncedMapped[i];
-        if (item.id) seenIds.add(String(item.id));
-        mergedLogs.push(item);
-      }
-      for (let i = 0; i < precomputedHistoricalCache.serverTodayLogs.length; i++) {
-        const item = precomputedHistoricalCache.serverTodayLogs[i];
-        const idKey = String(item.id || item.local_id || '');
-        if (!idKey || !seenIds.has(idKey)) {
-          if (idKey) seenIds.add(idKey);
-          mergedLogs.push(item);
+    // Always retrieve full local today logs as authoritative ground truth for this device
+    const localLogs = (getAllTodayLogs(userId, currentOsUser) || []).filter(l => {
+      if (!l) return false;
+      if (l.quarantined || (Number(l.duration) || 0) >= 40000) return false;
+      return true;
+    });
+    let logs = [...localLogs];
+
+    // Merge any external server records from today (e.g. from another workstation) without duplicating
+    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.serverTodayLogs && precomputedHistoricalCache.serverTodayLogs.length > 0) {
+      const localSignatures = new Set();
+      for (let i = 0; i < localLogs.length; i++) {
+        const l = localLogs[i];
+        const sDate = parseTimestampToDate(l.start_time);
+        const sSec = sDate ? Math.floor(sDate.getTime() / 1000) : null;
+        const app = (l.app_name || '').toLowerCase().trim();
+        if (sSec !== null) {
+          for (let offset = -2; offset <= 2; offset++) {
+            localSignatures.add(`${sSec + offset}|${app}`);
+          }
         }
       }
-      logs = mergedLogs;
-    } else {
-      logs = getAllTodayLogs(userId, currentOsUser);
+
+      for (let i = 0; i < precomputedHistoricalCache.serverTodayLogs.length; i++) {
+        const item = precomputedHistoricalCache.serverTodayLogs[i];
+        if (!item || (Number(item.duration) || 0) >= 40000) continue;
+        const sDate = parseTimestampToDate(item.start_time);
+        const sSec = sDate ? Math.floor(sDate.getTime() / 1000) : null;
+        const app = (item.app_name || '').toLowerCase().trim();
+        const sig = `${sSec}|${app}`;
+        if (sSec !== null && !localSignatures.has(sig)) {
+          logs.push(item);
+        }
+      }
+    }
+
+    // Include the live in-memory active session (currentRecord) if currently tracking
+    if (currentRecord && currentRecord.status === 'Active' && currentRecord.startTime) {
+      const curStart = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
+      const now = new Date();
+      if (curStart && normalizeToLocalDateStr(curStart) === todayStr) {
+        const liveDuration = Math.max(1, Math.round((now.getTime() - curStart.getTime()) / 1000));
+        logs.push({
+          id: 'live-current-session',
+          local_id: 'live-current-session',
+          user_id: userId,
+          app_name: currentRecord.appName || 'WorkLens',
+          window_title: currentRecord.windowTitle || currentRecord.appName || 'Active Window',
+          start_time: formatDateTime(curStart),
+          end_time: formatDateTime(now),
+          duration: liveDuration,
+          activity_on: todayStr,
+          status: 'Active',
+          synced: false,
+          is_synced: false,
+          activity_type: currentRecord.activityType || 'Human Activity',
+          latitude: currentRecord.latitude || null,
+          longitude: currentRecord.longitude || null,
+          current_address: currentRecord.currentAddress || null
+        });
+      }
     }
 
     // Trigger background loading of historical data asynchronously without awaiting

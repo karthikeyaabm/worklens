@@ -125,7 +125,13 @@ async function loadWidgetData() {
     if (typeof window.api.getActiveTimeYesterday === 'function') {
       const activeYesterday = await window.api.getActiveTimeYesterday();
       const activeYesterdayEl = document.getElementById('active-yesterday');
-      if (activeYesterdayEl) activeYesterdayEl.textContent = formatSeconds(activeYesterday);
+      if (activeYesterdayEl) {
+        activeYesterdayEl.textContent = formatSeconds(activeYesterday);
+        const hours = Math.floor(activeYesterday / 3600);
+        const minutes = Math.floor((activeYesterday % 3600) / 60);
+        const formattedHM = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+        activeYesterdayEl.title = `Active Time Yesterday: ${formattedHM} (${formatSeconds(activeYesterday)})`;
+      }
     }
 
     // 3. Active Time Today
@@ -166,7 +172,13 @@ async function updateActiveTimeToday() {
     if (window.api && typeof window.api.getActiveTimeToday === 'function') {
       const activeToday = await window.api.getActiveTimeToday();
       const activeTodayEl = document.getElementById('active-today');
-      if (activeTodayEl) activeTodayEl.textContent = formatSeconds(activeToday);
+      if (activeTodayEl) {
+        activeTodayEl.textContent = formatSeconds(activeToday);
+        const hours = Math.floor(activeToday / 3600);
+        const minutes = Math.floor((activeToday % 3600) / 60);
+        const formattedHM = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+        activeTodayEl.title = `Active Time Today: ${formattedHM} (${formatSeconds(activeToday)})`;
+      }
     }
   } catch (error) {
     console.error('Failed to update active time today:', error);

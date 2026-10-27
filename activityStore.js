@@ -861,6 +861,8 @@ function getUnsyncedTodayDuration(userId, osUsername = null) {
 
   return chunks
     .filter(c => {
+      if (c.quarantined) return false;
+      if ((c.duration || 0) >= MAX_SESSION_DURATION) return false;
       if (c.synced) return false;
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
       if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
@@ -933,6 +935,8 @@ function getActivityLogsForDate(dateStr, userId = null, osUsername = null) {
   const userIdInt = userId ? parseInt(userId, 10) : null;
 
   return chunks.filter(c => {
+    if (c.quarantined) return false;
+    if ((c.duration || 0) >= MAX_SESSION_DURATION) return false;
     if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
     if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
     return true;
@@ -971,6 +975,8 @@ function getDateWiseActiveDurations(dateStrings, userId = null, osUsername = nul
     const dayChunks = getChunksForDate(ds);
     for (let i = 0; i < dayChunks.length; i++) {
       const c = dayChunks[i];
+      if (c.quarantined) continue;
+      if ((c.duration || 0) >= MAX_SESSION_DURATION) continue;
       if (c.status && c.status.toLowerCase() !== 'active') continue;
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) continue;
       if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) continue;

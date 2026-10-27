@@ -129,13 +129,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof window.api.onPopupStatusChanged === 'function') {
       window.api.onPopupStatusChanged((status) => {
         if (status === 'opened') {
+          // Always invalidate today cache so opening the popup immediately fetches fresh real-time tracking
+          clientViewCache.today = null;
           // If cache expired, reset client cache so fresh background fetch occurs
           if (Date.now() - lastCacheTimestamp > CLIENT_CACHE_TTL_MS) {
             clientViewCache = { today: null, yesterday: null, last7days: null, last30days: null };
             lastCacheTimestamp = Date.now();
           }
           // Always default to today when popup is reopened
-          selectPeriod('today', false);
+          selectPeriod('today', true);
           updateDateDisplay();
           startPolling();
           checkReporteesVisibility();
@@ -1250,6 +1252,8 @@ function renderAppWiseView(rawData) {
 
   if (totalTimeEl) {
     totalTimeEl.textContent = formatDuration(totalDailySeconds);
+    const decimalHours = parseFloat((totalDailySeconds / 3600).toFixed(1));
+    totalTimeEl.title = `Total Active Time: ${formatDuration(totalDailySeconds)} (${decimalHours}h)`;
   }
   updateFooterLabel();
 }
@@ -1322,6 +1326,8 @@ function renderHoursWiseView(rawData) {
   // Calculate and show total active duration from existing activity logs
   if (totalTimeEl) {
     totalTimeEl.textContent = formatDuration(totalDailySeconds);
+    const decimalHours = parseFloat((totalDailySeconds / 3600).toFixed(1));
+    totalTimeEl.title = `Total Active Time: ${formatDuration(totalDailySeconds)} (${decimalHours}h)`;
   }
   updateFooterLabel();
 }

@@ -4,6 +4,19 @@ All notable changes to the WorkLens Desktop Timelog application are documented b
 
 ---
 
+## [1.2.9] - 2026-10-27
+### Added
+- **Active Time Floating Widget & Dashboard Metric Parity**: Unified the calculation in `get-active-time-today` to evaluate local today records plus live in-progress tracking (`localTotalSeconds`) aligned with `Math.max(totalSeconds, localTotalSeconds)`, eliminating time discrepancies between the floating widget and popup dashboard.
+- **Corrupt Synthetic Test Record Quarantine**: Excluded and quarantined anomalous legacy test records (`duration >= 40,000s`) in `activityStore.js` and `main.js`, preventing corrupt 12-hour test sessions from inflating active time totals.
+- **Normalized Epoch Timestamp Deduplication**: Implemented unix timestamp signature matching with a ±2-second window in `handleFetchActivity('today')`, bridging formatting discrepancies (`YYYY-MM-DD` vs `DD-MM-YYYY`) and preventing server logs from duplicating on top of local tracking entries.
+- **Real-Time Popup Open Cache Invalidation**: Configured `onPopupStatusChanged('opened')` to invalidate `clientViewCache.today` and trigger an immediate live refresh upon opening the modal.
+- **Transparency Tooltips**: Added dual-format tooltips (`Active Time Today: Xh Ym (Z.Zh)`) on the floating widget and dashboard footer, providing absolute transparency to employees and management.
+
+### Changed
+- Bumped application release version to `1.2.9` across `package.json` and `package-lock.json`.
+
+---
+
 ## [1.2.8] - 2026-10-25
 ### Added
 - **Future-Date Anomaly Rejection & Cascade Prevention**: In `main.js`, quarantined any session whose start time is ahead of local system time (`recordStartDate > now`) with `quarantineSession()` (`duration = 0`, `quarantined = true`, `closed = true`) and safely reset `currentRecord`, completely stopping artificial future-day splitting cascades.
