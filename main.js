@@ -902,7 +902,7 @@ function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession =
   console.log(`[Midnight Rotation] Opened continuing session for new calendar day: local_id=${continuation.local_id} app="${continuation.appName}" start=${formatDateTime(nextDayStart)}`);
 
   // Invalidate UI caches so dashboard refreshes immediately
-  todayResolvedCache = null;
+  invalidateTodayResolvedCache();
   invalidateActivity30DaysCache(false);
   reconcileMidnightBoundaries();
 }
@@ -1913,7 +1913,7 @@ let historicalFetchPromise = null;
 const HISTORICAL_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL for stable historical data
 
 function invalidateActivity30DaysCache(full = false) {
-  todayResolvedCache.data = null;
+  invalidateTodayResolvedCache();
   if (full) {
     precomputedHistoricalCache.isReady = false;
     precomputedHistoricalCache.timestamp = 0;
@@ -2086,9 +2086,11 @@ let todayResolvedCache = {
 };
 
 function invalidateTodayResolvedCache() {
-  todayResolvedCache.data = null;
-  todayResolvedCache.timestamp = 0;
-  todayResolvedCache.trackingState = null;
+  if (todayResolvedCache) {
+    todayResolvedCache.data = null;
+    todayResolvedCache.timestamp = 0;
+    todayResolvedCache.trackingState = null;
+  }
 }
 
 function getOfflineYesterday(userId, currentOsUser) {
@@ -2328,20 +2330,28 @@ async function getResolvedTodayLogs(userId, currentOsUser) {
   return logs;
 }
 
-async function handleFetchActivity(period = 'today') {
+async function handleFetchActivity(period = 'today', options = {}) {
   const currentOsUser = os.userInfo().username;
   const userId = await getUserId();
   const normalizedPeriod = (period || 'today').toLowerCase().replace('-', '_');
   const today = new Date();
   const todayStr = getLocalDateString(today);
+  const isForceRefresh = Boolean(options && (options.forceRefresh || options === true));
+
+  if (isForceRefresh) {
+    invalidateTodayResolvedCache();
+    if (normalizedPeriod !== 'today') {
+      invalidateActivity30DaysCache(true);
+    }
+  }
 
   // 1. TODAY: ALWAYS IMMEDIATE (Zero network blocking!)
   if (normalizedPeriod === 'today') {
     const nowMs = Date.now();
     const isCurrentlyTracking = (trackingInterval !== null);
 
-    // Serve cached today data if fresh (< 3000ms) and tracking state unchanged
-    if (todayResolvedCache.data && (nowMs - todayResolvedCache.timestamp < 3000) && todayResolvedCache.trackingState === isCurrentlyTracking) {
+    // Serve cached today data if fresh (< 3000ms), tracking state unchanged, and not forced refresh
+    if (!isForceRefresh && todayResolvedCache.data && (nowMs - todayResolvedCache.timestamp < 3000) && todayResolvedCache.trackingState === isCurrentlyTracking) {
       return todayResolvedCache.data;
     }
 
@@ -2488,40 +2498,40 @@ async function handleFetchActivity(period = 'today') {
 
   // 2. YESTERDAY (Ultra-fast non-blocking resolution)
   if (normalizedPeriod === 'yesterday') {
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.yesterday) {
+    if (!isForceRefresh && precomputedHistoricalCache.isReady && precomputedHistoricalCache.yesterday) {
       return precomputedHistoricalCache.yesterday;
     }
-    loadHistoricalDataInBackground(userId, currentOsUser);
+    loadHistoricalDataInBackground(userId, currentOsUser, isForceRefresh);
     return getOfflineYesterday(userId, currentOsUser);
   }
 
   // 3. LAST 7 DAYS (Ultra-fast non-blocking resolution)
   if (normalizedPeriod === 'last7days' || normalizedPeriod === 'last_7_days') {
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last7days) {
+    if (!isForceRefresh && precomputedHistoricalCache.isReady && precomputedHistoricalCache.last7days) {
       return precomputedHistoricalCache.last7days;
     }
-    loadHistoricalDataInBackground(userId, currentOsUser);
+    loadHistoricalDataInBackground(userId, currentOsUser, isForceRefresh);
     return getOfflineLast7Days(userId, currentOsUser);
   }
 
   // 4. LAST 30 DAYS (Ultra-fast non-blocking resolution)
   if (normalizedPeriod === 'last30days' || normalizedPeriod === 'last_30_days' || normalizedPeriod === 'current_month' || normalizedPeriod === 'month') {
-    if (precomputedHistoricalCache.isReady && precomputedHistoricalCache.last30days) {
+    if (!isForceRefresh && precomputedHistoricalCache.isReady && precomputedHistoricalCache.last30days) {
       return precomputedHistoricalCache.last30days;
     }
-    loadHistoricalDataInBackground(userId, currentOsUser);
+    loadHistoricalDataInBackground(userId, currentOsUser, isForceRefresh);
     return getOfflineLast30Days(userId, currentOsUser);
   }
 
-  return await handleFetchActivity('today');
+  return await handleFetchActivity('today', options);
 }
 
-ipcMain.handle('fetch-activity-logs', async (event, period = 'today') => {
-  return await handleFetchActivity(period);
+ipcMain.handle('fetch-activity-logs', async (event, period = 'today', options = {}) => {
+  return await handleFetchActivity(period, options);
 });
 
-ipcMain.handle('fetch-activity-history', async (event, period) => {
-  return await handleFetchActivity(period);
+ipcMain.handle('fetch-activity-history', async (event, period, options = {}) => {
+  return await handleFetchActivity(period, options);
 });
 
 ipcMain.handle('get-team-history', async (event, options = {}) => {

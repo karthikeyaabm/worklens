@@ -1144,7 +1144,7 @@ let currentFetchSeq = 0;
 let inFlightFetchPromises = {};
 
 // ================= API FETCH & DATA PROCESSING =================
-async function fetchAndRender() {
+async function fetchAndRender(forceRefresh = false) {
   if (typeof window === 'undefined' || !window || !window.api || typeof window.api.fetchActivityLogs !== 'function') return;
 
   const targetPeriod = currentPeriod;
@@ -1164,8 +1164,8 @@ async function fetchAndRender() {
 
   try {
     let fetchPromise = inFlightFetchPromises[targetPeriod];
-    if (!fetchPromise) {
-      fetchPromise = window.api.fetchActivityLogs(targetPeriod);
+    if (!fetchPromise || forceRefresh) {
+      fetchPromise = window.api.fetchActivityLogs(targetPeriod, { forceRefresh: Boolean(forceRefresh) });
       inFlightFetchPromises[targetPeriod] = fetchPromise;
     }
 
@@ -2910,16 +2910,14 @@ async function handleRefreshClick() {
       inFlightFetchPromises = {};
       lastCacheTimestamp = Date.now();
 
-      // Trigger sync to flush pending sessions to server if supported
+      // Trigger sync to flush pending sessions in background (non-blocking)
       if (hasWindowApi && typeof window.api.triggerSync === 'function') {
-        try {
-          await window.api.triggerSync();
-        } catch (syncErr) {
-          console.error('[Refresh] triggerSync failed:', syncErr);
-        }
+        window.api.triggerSync().catch(syncErr => {
+          console.error('[Refresh] triggerSync failed in background:', syncErr);
+        });
       }
 
-      await fetchAndRender();
+      await fetchAndRender(true);
       await checkReporteesVisibility();
     } else if (currentDashboardView === 'reportees') {
       // Force refresh bypassing team history cache
@@ -3046,6 +3044,7 @@ if (typeof module !== 'undefined' && module.exports) {
     setReporteesDays: (d) => { reporteesDays = d; },
     getReporteesSearchQuery: () => reporteesSearchQuery,
     setReporteesSearchQuery: (q) => { reporteesSearchQuery = q; },
+    fetchAndRender,
     handleRefreshClick,
     handleMaximizeClick,
     updateMaximizedUiState

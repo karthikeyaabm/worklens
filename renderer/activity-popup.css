@@ -96,6 +96,10 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.header-actions * {
+  -webkit-app-region: no-drag;
+}
+
 .header-action-btn {
   background: transparent;
   border: none;
@@ -133,6 +137,7 @@ body {
 .window-control-icon {
   width: 12px;
   height: 12px;
+  pointer-events: none;
 }
 
 .window-control-icon.hidden {
@@ -167,6 +172,7 @@ body {
   width: 13px;
   height: 13px;
   transition: transform 300ms ease;
+  pointer-events: none;
 }
 
 .refresh-button.spinning .refresh-icon {

@@ -267,6 +267,8 @@ async function runSuite() {
     const cssContent = fs.readFileSync(cssPath, 'utf8');
     assert.ok(cssContent.includes('.refresh-button'), 'Must style .refresh-button');
     assert.ok(cssContent.includes('.refresh-button.spinning'), 'Must style .refresh-button.spinning');
+    assert.ok(cssContent.includes('pointer-events: none'), 'Must have pointer-events: none on refresh-icon');
+    assert.ok(cssContent.includes('.header-actions *'), 'Must ensure all header actions child elements are no-drag');
   });
 
   runTest('4.5 activity-popup contains maximize window controls and no minimize icon', () => {
@@ -310,10 +312,28 @@ async function runSuite() {
     assert.strictEqual(popupRenderer.getCurrentDashboardView(), 'active-time');
   });
 
-  await runAsyncTest('5.4 handleRefreshClick executes safely and handles refresh', async () => {
+  await runAsyncTest('5.4 handleRefreshClick executes safely and handles refresh with forceRefresh', async () => {
     assert.strictEqual(typeof popupRenderer.handleRefreshClick, 'function', 'handleRefreshClick must be a function');
     // Test safe execution when DOM / window.api is undefined or partially defined
     await popupRenderer.handleRefreshClick();
+
+    // Test with mock window.api to verify non-blocking triggerSync and forceRefresh flag
+    let syncTriggered = false;
+    let fetchOptionsReceived = null;
+    global.window = {
+      api: {
+        triggerSync: async () => { syncTriggered = true; return true; },
+        fetchActivityLogs: async (period, options) => {
+          fetchOptionsReceived = options;
+          return { period, logs: [] };
+        },
+        getReporteesCount: async () => ({ total_reportees: 0 })
+      }
+    };
+    await popupRenderer.handleRefreshClick();
+    assert.strictEqual(syncTriggered, true, 'triggerSync should be initiated');
+    assert.ok(fetchOptionsReceived && fetchOptionsReceived.forceRefresh === true, 'fetchActivityLogs must receive forceRefresh: true');
+    delete global.window;
   });
 
   await runAsyncTest('5.5 handleMaximizeClick executes safely', async () => {

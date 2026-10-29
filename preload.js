@@ -76,12 +76,12 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('is-activity-popup-maximized');
   },
 
-  fetchActivityLogs: async (period = 'today') => {
-    return await ipcRenderer.invoke('fetch-activity-logs', period);
+  fetchActivityLogs: async (period = 'today', options = {}) => {
+    return await ipcRenderer.invoke('fetch-activity-logs', period, options);
   },
 
-  fetchActivityHistory: async (period) => {
-    return await ipcRenderer.invoke('fetch-activity-history', period);
+  fetchActivityHistory: async (period, options = {}) => {
+    return await ipcRenderer.invoke('fetch-activity-history', period, options);
   },
 
   // Reportees Dashboard APIs
