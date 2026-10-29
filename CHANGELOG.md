@@ -4,6 +4,19 @@ All notable changes to the WorkLens Desktop Timelog application are documented b
 
 ---
 
+## [1.3.0] - 2026-10-29
+### Added
+- **Single-Source Today Total Time Synchronization across Historical Dashboards**: Unified Today's active duration across the Today tab, Last 7 Days, and Last 30 Days views. Extracted centralized `getAuthoritativeTodayActivity(userId, currentOsUser)` in `main.js` to ensure the live in-progress session and merged records are accurately reflected in Today's row and footer totals across all dashboard periods.
+- **Dynamic Today Synchronization on Tab Switching**: Enhanced `renderHistoryView` in `renderer/activity-popup.js` to dynamically synchronize Today's row with `clientViewCache.today`, ensuring identical progress bar width, duration text, session timestamps, and dual footer totals.
+- **Dashboard Live Refresh Cache Busting (`forceRefresh`)**: Extended `preload.js` and `main.js` (`fetch-activity-logs`, `fetch-activity-history`) to accept an options object with `forceRefresh: true`, invalidating in-memory caches (`todayResolvedCache`, `precomputedHistoricalCache`) upon explicit user refresh clicks.
+- **Drag-Safe Header Actions & Non-Blocking Sync**: Added `pointer-events: none` on header SVG icons and enforced `-webkit-app-region: no-drag` across all `.header-actions *` elements, preventing clicks from being captured as window drags on Windows frameless headers. Decoupled `window.api.triggerSync()` to run non-blockingly during refresh.
+- **Dashboard Maximize & Restore Window Controls**: Integrated `#max-btn` with smooth maximize/restore toggling, title-bar double-click support, and `body.is-maximized` full-viewport styling.
+
+### Changed
+- Bumped application release version to `1.3.0` across `package.json` and `package-lock.json`.
+
+---
+
 ## [1.2.9] - 2026-10-27
 ### Added
 - **Active Time Floating Widget & Dashboard Metric Parity**: Unified the calculation in `get-active-time-today` to evaluate local today records plus live in-progress tracking (`localTotalSeconds`) aligned with `Math.max(totalSeconds, localTotalSeconds)`, eliminating time discrepancies between the floating widget and popup dashboard.

@@ -1421,6 +1421,11 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Electron Window Controls:** Enabled `resizable: true`, `minimizable: true`, `maximizable: true`, and `skipTaskbar: false` on `activityWindow`. Added IPC channels `minimize-activity-popup`, `maximize-activity-popup`, `is-activity-popup-maximized`, and push event `popup-maximized-changed`.
     *   **Maximized Styling:** Implemented `body.is-maximized` styling to hide the connection arrow `#arrow` and adapt `#popup-container` to 100% viewport space. Added title-bar double-click to maximize/restore.
     *   **Test Coverage:** Updated `test_reportees_dashboard_suite.js` with test assertions for HTML structure, CSS rules, and helper handlers. All 21 test suites passing.
+*   **v1.3.0 - Release Version Alignment & Dashboard Feature Finalization:**
+    *   **Version Bump:** Bumped application release version to `1.3.0` across `package.json`, `package-lock.json`, `CHANGELOG.md`, and dynamic IPC `get-app-version`.
+    *   **Single-Source Today Time Alignment:** Centralized `getAuthoritativeTodayActivity` in `main.js` and unified Today's total active duration across Today, Last 7 Days, and Last 30 Days views.
+    *   **Dashboard Live Refresh & Cache Busting:** Added drag-safe header pointer event rules, non-blocking sync, and `forceRefresh: true` IPC cache busting for instantaneous data refresh.
+    *   **Window Management & Reportees:** Finalized maximize/restore controls (`#max-btn`) and multi-level reportees hierarchy dashboard.
 *   **v1.2.9 - Release Version Alignment & Active Time Data Consistency:**
     *   **Version Bump:** Bumped application release version to `1.2.9` across `package.json`, `package-lock.json`, `CHANGELOG.md`, and dynamic IPC `get-app-version`.
     *   **Root Cause Resolution (Stale Cache & Dropped Synced Chunks):** Fixed an issue where `handleFetchActivity('today')` dropped newly synced chunks when `precomputedHistoricalCache.isReady` was active. Previously, `serverTodayLogs` held a stale snapshot from app startup while `getUnsyncedTodayLogs()` excluded chunks marked `synced: true`, causing all sessions closed and synced between 30-day cache refreshes to disappear from the Dashboard's Today view (freezing dashboard total hours).

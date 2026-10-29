@@ -1,6 +1,6 @@
 {
   "name": "worklens",
-  "version": "1.2.9",
+  "version": "1.3.0",
   "description": "WorkLens | Employee Timelog & Activity Tracking",
   "author": "ABM Knowledgeware Ltd.",
   "main": "main.js",
