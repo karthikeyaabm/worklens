@@ -132,6 +132,12 @@ const TEST_SUITES = [
     file: 'test_reportees_dashboard_suite.js',
     runner: 'node',
     description: 'Dynamic navigation tab, total_reportees visibility, summary metrics, individual reportee progress bars and activity tables'
+  },
+  {
+    name: '22. Today & Historical Dashboard Total Time Alignment Suite',
+    file: 'test_today_history_alignment_suite.js',
+    runner: 'node',
+    description: 'Single-source alignment of Today Total Time across Today tab, Last 7 Days, and Last 30 Days'
   }
 ];
 

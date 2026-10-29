@@ -1355,6 +1355,25 @@ function renderHistoryView(rawData) {
   const allDays = rawData?.days || [];
   const days = showWeekends ? allDays : allDays.filter(day => !isWeekend(day.dateStr));
 
+  // Ensure Today row strictly synchronizes with clientViewCache.today if available
+  if (clientViewCache && clientViewCache.today && clientViewCache.today.logs) {
+    const todayLogs = clientViewCache.today.logs;
+    const { totalDailySeconds } = computeAppWiseActivity(todayLogs);
+    const todayDay = days.find(d => d.isToday || d.dateStr === clientViewCache.today.date);
+    if (todayDay) {
+      todayDay.regularDuration = totalDailySeconds;
+      todayDay.activeSeconds = totalDailySeconds;
+      todayDay.duration = totalDailySeconds + (todayDay.yellowDuration || 0);
+      if (clientViewCache.today.startTime && clientViewCache.today.startTime !== '--') {
+        todayDay.startTime = clientViewCache.today.startTime;
+      }
+      if (clientViewCache.today.endTime && clientViewCache.today.endTime !== '--') {
+        todayDay.endTime = clientViewCache.today.endTime;
+      }
+      todayDay.isPresent = Boolean(clientViewCache.today.isPresent);
+    }
+  }
+
   const targetHistoryList = historyList || getEl('history-list');
   const targetTotalTimeEl = totalTimeEl || getEl('total-time');
   const targetEmptyMsg = emptyMsg || getEl('empty-msg');
@@ -3047,7 +3066,9 @@ if (typeof module !== 'undefined' && module.exports) {
     fetchAndRender,
     handleRefreshClick,
     handleMaximizeClick,
-    updateMaximizedUiState
+    updateMaximizedUiState,
+    getClientViewCache: () => clientViewCache,
+    setClientViewCache: (val) => { clientViewCache = val; }
   };
 }
 
