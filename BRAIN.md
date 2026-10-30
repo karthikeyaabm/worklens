@@ -27,12 +27,14 @@ WorkLens is built on Electron's multi-process architecture. It consists of:
     1.  *Main Widget:* A minimalist, frameless desktop status window (185px × 60px) pinned to the bottom-right corner.
     2.  *Activity Detail Popup:* A glassmorphism/Fluent UI container presenting grouped active logs.
     3.  *Inactivity Nudge Card:* A transparent prompt playing audio alerts and displaying motivational quotes when idle time is exceeded.
+    4.  *Username Verification Modal:* A modern glassmorphism dialog (440px × 380px) displayed on first launch or upon user revocation, prompting for the administrator-assigned username before any background tracking or telemetry collectors are initialized.
 
 ```mermaid
 graph TD
     A[Electron Main Process] -->|IPC / preload.js| B[Widget Renderer]
     A -->|IPC / preload.js| C[Activity Popup Renderer]
     A -->|IPC / preload.js| D[Inactivity Nudge Renderer]
+    A -->|IPC / preload.js| I[Username Verification Renderer]
     A -->|redmineClient.js| E[Redmine Server REST API]
     A -->|activityStore.js| F[(Local Store: activity_queue.jsonl)]
     A -->|locationService.js| H[PC Location Provider & Cache]
@@ -76,6 +78,9 @@ WorkLens/
 │   ├── activity-popup.js       # Reconciler and UI handler for the activity details popup
 │   ├── index.html              # Main widget HTML layout
 │   ├── renderer.js             # Main widget interface controller (triggers UI sync and event listeners)
+│   ├── register.html           # First-launch username verification interface
+│   ├── register.css            # Fluent styling for registration dialog
+│   ├── register.js             # Username submission and verification controller
 │   └── style.css               # Main widget layout styling
 ├── anti-afk/                   # Modular Behavior Analysis Engine
 │   ├── config.js               # Thresholds, weights, and decision levels
@@ -124,6 +129,7 @@ WorkLens/
 ├── test_app_hours_toggle_suite.js # Comprehensive test suite for App-Wise and Hours-Wise view toggle, aggregation, and tab sync
 ├── test_midnight_session_split_suite.js # Comprehensive test suite for midnight session split, calendar boundaries & zero cross-day records
 ├── test_future_date_midnight_recovery_suite.js # Comprehensive test suite for boundary safety, future-date rejection, duration sanity quarantine, and recovery
+├── test_username_verification_suite.js # Comprehensive test suite for First-Launch Username Verification, API authentication & revocation
 ├── .env                        # Active environment configurations (not committed)
 └── .env.example                # Example configuration template for environment setup
 ```
@@ -194,18 +200,37 @@ sequenceDiagram
         Main->>OS: Focus existing window & Exit
     end
     Main->>Store: closeOrphanedSessions()
-    Main->>Store: getCachedUserIdForOsUser() / load user_profile.json
-    Main->>Main: startTrackingServices() immediately (decoupled tracking)
-    Main->>UI: Show Widget window (or start hidden)
-    Main-)API: checkUserResolution() (background async)
-    alt Network available & User valid
-        API-->>Main: Return Redmine user_id
-        Main->>Store: saveStoredUserProfile()
-        Main->>Store: backfillUserIdForOsUsername()
-        Main->>Store: getEligibleClosedSessions()
-        Store->>API: Flush outstanding closed items
-    else Network offline
-        Note over Main: Tracking continues locally in offline mode
+    Main->>Store: getStoredVerifiedUser()
+    alt First Launch (No verified user stored)
+        Main->>UI: Show Username Registration Window
+        Note over Main: Tracking engine NOT started; telemetry halted
+        UI->>Main: IPC verify-username(enteredUsername)
+        Main->>API: GET /today_timesheet.json?user_id=enteredUsername
+        alt Backend verifies user (200 OK with user object)
+            API-->>Main: Return Redmine user_id & name
+            Main->>Store: saveStoredUserProfile(username, user_id, name)
+            Main->>Store: backfillUserIdForOsUsername(username, user_id)
+            Main->>UI: Close Registration Window
+            Main->>Main: startTrackingServices()
+            Main->>UI: Show Widget window
+        else Backend rejects user (404 Not Found)
+            Main-->>UI: Return "Invalid username. Please enter the username provided by your administrator."
+            Note over UI: Window stays open for retry; tracking remains halted
+        end
+    else Subsequent Launch (User previously verified)
+        Main->>Main: startTrackingServices()
+        Main->>UI: Show Widget window
+        Main-)API: checkUserResolution() (background async)
+        alt Session Valid (200 OK)
+            Main->>Store: update last_resolved_at
+            Store->>API: Flush outstanding closed items
+        else User Revoked / Deleted (404 Not Found)
+            Main->>Main: stopTrackingServices()
+            Main->>Store: clearStoredUserProfile()
+            Main->>UI: Close Widget & show Registration Window ("Invalid username...")
+        else Network offline
+            Note over Main: Tracking continues locally in offline mode
+        end
     end
     
     loop Every 2 Seconds (Tracking Interval)
@@ -382,6 +407,25 @@ sequenceDiagram
     *   *Compact Modal Proportions & Sizing:* Refined window dimensions of **690px width × 510px height** (configured in `createActivityWindow()` and `positionActivityWindow()` in `main.js`), with compact padding (`12px 16px` in `#popup-container`) and tight vertical spacing (`margin: 6px 10px 18px 10px`), allowing exactly 5 date rows to fit simultaneously in view without scrolling on Last 7 Days view.
     *   *Deduplication & Timezone Safety:* Deduplicates entries by stable `entry.id` to prevent double-counting across repeated fetches or paginated batches. Parses `spent_on` supporting both `DD-MM-YYYY` and `YYYY-MM-DD` without timezone or DST shifts. Safe rebuild from authoritative sources ensures cached totals are recalculated correctly without blind subtraction.
 *   **Icon Caching:** Resolves executable file icons on the main thread using standard shell queries (`Get-Process`) and converts them to base64 images to prevent CPU overhead in the rendering process.
+
+### 7. First-Launch Username Verification & Administrator Identity Binding
+*   **Purpose:** Enforce secure identity verification when WorkLens is installed and opened for the first time by prompting the employee for their administrator-assigned username before initializing any background tracking engine, activity collectors, or network telemetry.
+*   **Files Involved:**
+    *   [renderer/register.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/register.html) (Dialog HTML view with titlebar, instruction prompt, input form, error container, and submit button)
+    *   [renderer/register.css](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/register.css) (Windows 11 Fluent dark glassmorphism styling)
+    *   [renderer/register.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/register.js) (Form input trimming, validation, loading spinners, and error messaging)
+    *   [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js) (`verifyUsername`, `closeRegistrationWindow`, `onRegistrationError` bridges)
+    *   [activityStore.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/activityStore.js) (`getStoredVerifiedUser`, `saveStoredUserProfile`, `clearStoredUserProfile`)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (`createRegistrationWindow`, `showRegistrationWindow`, `startVerifiedApplication`, `handleUserRevocation`, `isUserVerified`, `getActiveUsername`)
+*   **Registration Workflow:**
+    1.  *First Launch Check:* On application ready, `getStoredVerifiedUser()` checks `user_profile.json` for a verified identity. If absent, the registration window (440px × 380px) opens centered on screen.
+    2.  *Tracking Isolation:* Tracking services (`startTrackingServices`), input hooks (`uiohook`), active window monitoring (`active-win`), location services, and sync intervals are strictly prevented from starting until verification succeeds.
+    3.  *Administrator Username Verification:* User enters their administrator-assigned username. Upon clicking Submit or pressing Enter, `verify-username` IPC calls `redmineClient.get('/today_timesheet.json', { user_id })`. The backend server is the authoritative source of truth.
+    4.  *Validation Success:* If the backend returns 200 with a valid user object (`response.user.id`), the verified username, employee ID, and name are stored securely in `user_profile.json`. The registration window closes, `startTrackingServices()` initializes tracking, and the main widget window opens.
+    5.  *Validation Failure:* If the backend rejects the username (404 Not Found), the dialog remains open and displays: *"Invalid username. Please enter the username provided by your administrator."* Tracking remains halted.
+    6.  *Subsequent Launches:* Stored verified user profiles allow normal launch without prompt. `checkUserResolution()` validates the session against Redmine. If an employee is revoked or removed from the database, `handleUserRevocation()` stops tracking immediately, deletes `user_profile.json`, hides widget windows, and presents the registration screen.
+    7.  *Protection Guards:* Auto-start, system tray double-click/open handlers, and `second-instance` events enforce `isUserVerified()` guards, preventing bypass of verification. In addition, the system tray context menu strictly omits user-facing exit/quit controls (retaining only 'Open WorkLens' or 'Complete Verification') to guarantee continuous, tamper-free background tracking without user termination.
+    8.  *Decoupled Identity:* Windows OS username is completely decoupled from employee tracking; all sessions, local queue entries, and API requests bind strictly to the verified administrator-assigned username.
 
 ### 6. Anti-AFK & Enterprise Behavior Analysis Engine
 *   **Purpose:** Exclude fake or automated activity from active time logs by continuously collecting user interaction events and extracting features to detect key-weights, mouse jigglers, and window focus loops.
@@ -691,9 +735,8 @@ WorkLens uses lightweight file-based stores in `%APPDATA%/WorkLens` (resolved dy
    * **Purpose:** Buffers local tracked activity offline and queues sessions for sync with Redmine.
 
 2. **Persistent User Profile Cache (`user_profile.json`):**
-   * **Format:** JSON object `{ "os_username": string, "redmine_user_id": number, "last_resolved_at": string }`.
-   * **Purpose:** Decouples offline startup from Redmine API reachability by caching the resolved numeric user ID associated with the current Windows OS username. It is **never pruned** by activity retention.
-   * **Shared-PC Protection:** Only matches if the active Windows OS username matches `os_username`.
+   * **Format:** JSON object `{ "username": string, "os_username": string, "redmine_user_id": number, "employee_name": string|null, "verified_at": string, "last_resolved_at": string }`.
+   * **Purpose:** Stores the administrator-verified employee identity. Serves as local authorization cache so subsequent launches bypass the registration dialog as long as the backend confirms session validity. Decoupled from Windows OS usernames. It is **never pruned** by activity retention. Cleared immediately if the user is revoked or deleted on the Redmine server.
 
 3. **Persistent Daily Tracking State (`daily_tracking_state.json`):**
    * **Format:** Date-indexed JSON object `{ [dateStr]: { [osUsername]: { "earliestStartTime": string (ISO), "os_username": string, "user_id": number, "updated_at": string } } }`.
@@ -878,6 +921,9 @@ Preload bridges access paths by mapping handlers across processes:
 | `popup-ready` | Invoked by UI | None | Signals main process that the details window is ready. |
 | `trigger-sync` | Invoked by UI | None | Explicitly triggers an offline-queue sync. |
 | `hide-main-window` | Invoked by UI | None | Gracefully hides the main widget and detail popup, running tracking in the background. |
+| `verify-username` | Invoked by UI | `username` (string) | Sends entered admin-assigned username to backend API (`/today_timesheet.json`). If verified, saves profile to `user_profile.json`, launches tracking engine, and starts main app. |
+| `close-registration-window` | Invoked by UI | None | Safely closes the registration window. |
+| `registration-error` | Sent by Main | `errorMessage` (string) | Pushes error message (e.g. on revocation) to registration window renderer. |
 | `popup-status-changed` | Sent by Main | Status string (`opened`/`closed`) | Controls background polling loops. |
 | `update-arrow-position` | Sent by Main | `arrowLeft` (int), `isBelow` (bool) | Updates pointer layout on details popup. |
 | `request-close` | Sent by Main | None | Triggers close transitions inside UI windows. |

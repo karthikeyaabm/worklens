@@ -84,12 +84,15 @@ function getStoredUserProfile() {
   }
 }
 
-function saveStoredUserProfile(osUsername, redmineUserId) {
-  if (!osUsername || !redmineUserId) return;
+function saveStoredUserProfile(username, redmineUserId, employeeName = null) {
+  if (!username || !redmineUserId) return;
   const filePath = getUserProfileFilePath();
   const profile = {
-    os_username: osUsername,
+    username: username,
+    os_username: username,
     redmine_user_id: parseInt(redmineUserId, 10),
+    employee_name: employeeName || null,
+    verified_at: new Date().toISOString(),
     last_resolved_at: new Date().toISOString()
   };
   try {
@@ -104,17 +107,53 @@ function saveStoredUserProfile(osUsername, redmineUserId) {
       cachedUserProfileMtime = stat.mtimeMs;
       cachedUserProfileSize = stat.size;
     } catch (_) {}
-    console.log(`[Storage] Saved user profile cache: ${osUsername} -> Redmine ID ${redmineUserId}`);
+    console.log(`[Storage] Saved user profile cache: ${username} -> Redmine ID ${redmineUserId}`);
   } catch (err) {
     console.error('[Storage] Failed to write user_profile.json:', err);
     storageHealth.recordStorageFailure(err);
   }
 }
 
-function getCachedUserIdForOsUser(currentOsUsername) {
-  if (!currentOsUsername) return null;
+function clearStoredUserProfile() {
+  const filePath = getUserProfileFilePath();
+  cachedUserProfile = null;
+  cachedUserProfileMtime = 0;
+  cachedUserProfileSize = 0;
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log('[Storage] Cleared stored user profile.');
+    }
+  } catch (err) {
+    console.error('[Storage] Failed to clear user_profile.json:', err);
+  }
+}
+
+function getStoredVerifiedUser() {
   const profile = getStoredUserProfile();
-  if (profile && profile.os_username && profile.os_username.toLowerCase() === currentOsUsername.toLowerCase()) {
+  if (!profile) return null;
+  const uname = profile.username || profile.os_username || null;
+  const uid = profile.redmine_user_id ? parseInt(profile.redmine_user_id, 10) : null;
+  if (uname && uid) {
+    return {
+      username: uname,
+      userId: uid,
+      employeeName: profile.employee_name || null,
+      verifiedAt: profile.verified_at || null,
+      lastResolvedAt: profile.last_resolved_at || null
+    };
+  }
+  return null;
+}
+
+function getCachedUserIdForOsUser(currentOsUsername) {
+  const profile = getStoredUserProfile();
+  if (!profile) return null;
+  if (!currentOsUsername) {
+    return profile.redmine_user_id || null;
+  }
+  const uname = (profile.username || profile.os_username || '').toLowerCase();
+  if (uname === currentOsUsername.toLowerCase()) {
     return profile.redmine_user_id || null;
   }
   return null;
@@ -862,7 +901,7 @@ function getUnsyncedTodayDuration(userId, osUsername = null) {
   return chunks
     .filter(c => {
       if (c.quarantined) return false;
-      if ((c.duration || 0) >= MAX_SESSION_DURATION) return false;
+      if ((c.duration || 0) > MAX_SESSION_DURATION) return false;
       if (c.synced) return false;
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
       if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
@@ -936,7 +975,7 @@ function getActivityLogsForDate(dateStr, userId = null, osUsername = null) {
 
   return chunks.filter(c => {
     if (c.quarantined) return false;
-    if ((c.duration || 0) >= MAX_SESSION_DURATION) return false;
+    if ((c.duration || 0) > MAX_SESSION_DURATION) return false;
     if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) return false;
     if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) return false;
     return true;
@@ -976,7 +1015,7 @@ function getDateWiseActiveDurations(dateStrings, userId = null, osUsername = nul
     for (let i = 0; i < dayChunks.length; i++) {
       const c = dayChunks[i];
       if (c.quarantined) continue;
-      if ((c.duration || 0) >= MAX_SESSION_DURATION) continue;
+      if ((c.duration || 0) > MAX_SESSION_DURATION) continue;
       if (c.status && c.status.toLowerCase() !== 'active') continue;
       if (userIdInt && c.user_id && parseInt(c.user_id, 10) !== userIdInt) continue;
       if (osUsername && c.os_username && c.os_username.toLowerCase() !== osUsername.toLowerCase()) continue;
@@ -1087,6 +1126,8 @@ module.exports = {
   getStoredUserProfile,
   saveStoredUserProfile,
   getCachedUserIdForOsUser,
+  clearStoredUserProfile,
+  getStoredVerifiedUser,
   backfillUserIdForOsUsername,
   // Persistent daily tracking state
   getDailyStateFilePath,

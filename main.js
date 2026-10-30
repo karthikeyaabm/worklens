@@ -189,6 +189,8 @@ const {
   getUnsyncedTodayLogs,
   getUserIdFromLocalQueue,
   saveStoredUserProfile,
+  clearStoredUserProfile,
+  getStoredVerifiedUser,
   getCachedUserIdForOsUser,
   backfillUserIdForOsUsername,
   getLocalDateString,
@@ -264,7 +266,129 @@ let finalSyncDone = false;
 // Request single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 
+let activeUsername = null;
+let registrationWindow = null;
+let userResolutionInterval = null;
+
+function getActiveUsername() {
+  if (activeUsername) return activeUsername;
+  const verified = getStoredVerifiedUser();
+  if (verified && verified.username) {
+    activeUsername = verified.username;
+    return activeUsername;
+  }
+  return null;
+}
+
+function isUserVerified() {
+  return isUserResolved && cachedUserId !== null && Boolean(getActiveUsername());
+}
+
+function createRegistrationWindow(initialError = null) {
+  if (registrationWindow && !registrationWindow.isDestroyed()) {
+    if (registrationWindow.isMinimized()) registrationWindow.restore();
+    registrationWindow.show();
+    registrationWindow.focus();
+    if (initialError) {
+      registrationWindow.webContents.send('registration-error', initialError);
+    }
+    return registrationWindow;
+  }
+
+  registrationWindow = new BrowserWindow({
+    width: 440,
+    height: 380,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    center: true,
+    resizable: false,
+    skipTaskbar: false,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false
+    }
+  });
+
+  const query = initialError ? { error: initialError } : {};
+  registrationWindow.loadFile(path.join(__dirname, 'renderer', 'register.html'), { query });
+
+  registrationWindow.on('close', () => {
+    if (!isUserVerified() && !isQuitting) {
+      isQuitting = true;
+      app.quit();
+    }
+  });
+
+  registrationWindow.on('closed', () => {
+    registrationWindow = null;
+  });
+
+  return registrationWindow;
+}
+
+function showRegistrationWindow(errorMessage = null) {
+  if (registrationWindow && !registrationWindow.isDestroyed()) {
+    if (registrationWindow.isMinimized()) registrationWindow.restore();
+    registrationWindow.show();
+    registrationWindow.focus();
+    if (errorMessage) {
+      registrationWindow.webContents.send('registration-error', errorMessage);
+    }
+    return;
+  }
+  createRegistrationWindow(errorMessage);
+}
+
+function startVerifiedApplication() {
+  console.log('[Registration] Starting WorkLens application following successful verification...');
+  if (registrationWindow && !registrationWindow.isDestroyed()) {
+    registrationWindow.destroy();
+    registrationWindow = null;
+  }
+
+  locationService.initLocationService();
+  startTrackingServices();
+  preCacheCommonIcons();
+  createWindow();
+  createTray();
+
+  if (!userResolutionInterval) {
+    userResolutionInterval = setInterval(checkUserResolution, 30000);
+  }
+}
+
+function handleUserRevocation(errorMessage) {
+  console.warn(`[User Resolution] Revocation triggered: ${errorMessage}`);
+  stopTrackingServices();
+  clearStoredUserProfile();
+  cachedUserId = null;
+  isUserResolved = false;
+  activeUsername = null;
+  usernameError = errorMessage;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+  if (activityWindow && !activityWindow.isDestroyed()) {
+    activityWindow.hide();
+  }
+  if (inactivityPopup && !inactivityPopup.isDestroyed()) {
+    inactivityPopup.close();
+  }
+
+  createTray();
+  createRegistrationWindow(errorMessage);
+}
+
 function showAndFocusWindow() {
+  if (!isUserVerified()) {
+    showRegistrationWindow();
+    return;
+  }
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
   }
@@ -567,16 +691,15 @@ function calculateDuration(startTime, endTime) {
   return Math.floor((endTime - startTime) / 1000);
 }
 
-// Get or Cache Redmine User ID using OS username via REST API
-// Get or Cache Redmine User ID using OS username via REST API
-// Still needed for the numeric user_id in the activity-log POST body.
+// Get or Cache Redmine User ID using verified username via REST API
 async function getUserId() {
   if (cachedUserId !== null) return cachedUserId;
 
-  const currentOsUser = os.userInfo().username;
+  const currentUsername = getActiveUsername();
+  if (!currentUsername) return null;
 
   // 1. Try dedicated persistent user profile cache
-  const persistentUserId = getCachedUserIdForOsUser(currentOsUser);
+  const persistentUserId = getCachedUserIdForOsUser(currentUsername);
   if (persistentUserId) {
     cachedUserId = persistentUserId;
     isUserResolved = true;
@@ -584,25 +707,29 @@ async function getUserId() {
   }
 
   // 2. Try local queue recovery if not yet stored in profile cache
-  const localUserId = getUserIdFromLocalQueue(currentOsUser);
+  const localUserId = getUserIdFromLocalQueue(currentUsername);
   if (localUserId) {
     cachedUserId = localUserId;
     isUserResolved = true;
-    saveStoredUserProfile(currentOsUser, localUserId);
+    saveStoredUserProfile(currentUsername, localUserId);
   }
   return cachedUserId;
 }
 
 async function checkUserResolution() {
-  const username = os.userInfo().username;
-  console.log(`[User Resolution] Retrying user resolution for OS username: "${username}"`);
+  const username = getActiveUsername();
+  if (!username) {
+    console.warn('[User Resolution] No active verified username. Skipping resolution check.');
+    return;
+  }
+  console.log(`[User Resolution] Validating user session for username: "${username}"`);
   
   try {
     const response = await redmineClient.get('/today_timesheet.json', {
       user_id: username
     });
 
-    if (response && response.user) {
+    if (response && response.user && response.user.id) {
       const newUserId = response.user.id;
       usernameError = null;
       isBackendReachable = true;
@@ -612,9 +739,9 @@ async function checkUserResolution() {
       cachedUserId = newUserId;
 
       // Save to dedicated persistent user profile cache
-      saveStoredUserProfile(username, newUserId);
+      saveStoredUserProfile(username, newUserId, response.user.name);
 
-      // Backfill any pending offline records belonging to the current OS username
+      // Backfill any pending offline records belonging to the verified username
       backfillUserIdForOsUsername(username, newUserId);
       
       if (!wasResolved) {
@@ -626,22 +753,21 @@ async function checkUserResolution() {
       flushPendingClosedSessions();
     } else {
       console.warn(`[User Resolution] FAILURE: User "${username}" explicitly not found in Redmine database.`);
-      usernameError = `User "${username}" not found in Redmine database`;
-      isBackendReachable = true;
-      
-      if (isUserResolved || cachedUserId !== null) {
-        console.error('[User Resolution] Active user explicitly became invalid. Stopping tracking services.');
-        stopTrackingServices();
-        isUserResolved = false;
-        cachedUserId = null;
-      }
+      handleUserRevocation('Invalid username. Please enter the username provided by your administrator.');
     }
   } catch (error) {
-    console.error('[User Resolution] reachability check failed:', error.message || error);
+    const errorMsg = String(error.message || error);
+    console.error('[User Resolution] Reachability check failed:', errorMsg);
     
+    if (errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('Not Found')) {
+      console.warn(`[User Resolution] FAILURE: User "${username}" revoked or deleted (404).`);
+      handleUserRevocation('Invalid username. Please enter the username provided by your administrator.');
+      return;
+    }
+
     isBackendReachable = false;
     
-    // Check if we can recover cached user ID for this OS user
+    // Check if we can recover cached user ID for this user
     if (!cachedUserId) {
       const localUserId = getCachedUserIdForOsUser(username) || getUserIdFromLocalQueue(username);
       if (localUserId) {
@@ -652,7 +778,7 @@ async function checkUserResolution() {
       }
     }
 
-    // Do NOT stop tracking services on network error! Local tracking remains active.
+    // Do NOT stop tracking services on network error! Local tracking remains active for registered users.
     console.log('[User Resolution] Offline mode active. Local tracking services continue running.');
   }
 }
@@ -803,7 +929,7 @@ function splitActiveSessionAtMidnight(boundaryDate = new Date(), targetSession =
   if (!sDate) return;
 
   const actualNow = new Date();
-  const currentOsUser = os.userInfo().username;
+  const currentOsUser = getActiveUsername();
   const loc = locationService.getCurrentLocation();
   const bDate = (boundaryDate instanceof Date) ? boundaryDate : (boundaryDate ? parseTimestampToDate(boundaryDate) : actualNow);
 
@@ -953,7 +1079,7 @@ function scheduleMidnightBoundaryCheck() {
 
 function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null, activityType = 'Unknown') {
   const cleanStatus = status.toLowerCase();
-  const currentOsUser = os.userInfo().username;
+  const currentOsUser = getActiveUsername();
 
   if (currentRecord) {
     const recordStartDate = (currentRecord.startTime instanceof Date) ? currentRecord.startTime : parseTimestampToDate(currentRecord.startTime);
@@ -1086,7 +1212,7 @@ function closeCurrentSession(endTime = new Date()) {
     }
   }
 
-  saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, os.userInfo().username);
+  saveOrUpdateActiveSessionLocal(currentRecord, cachedUserId, getActiveUsername());
   console.log(`[Session] Closed session locally: local_id=${currentRecord.local_id} app="${currentRecord.appName}" duration=${currentRecord.duration}s`);
   if (isTeamsWindow({ owner: { name: currentRecord.appName, path: '' } })) {
     console.log(`[Teams] Active session duration: ${currentRecord.duration} seconds`);
@@ -1663,7 +1789,7 @@ ipcMain.handle('get-username', () => {
   );
 
   return {
-    username: os.userInfo().username,
+    username: getActiveUsername() || '',
     isOffline: !isBackendReachable,
     isTrackingActive: trackingInterval !== null,
     error: isUserExplicitlyInvalid ? usernameError : null
@@ -1681,7 +1807,8 @@ ipcMain.handle('get-redmine-efforts', async () => {
     return cachedRedmineEfforts;
   }
   try {
-    const username = os.userInfo().username;
+    const username = getActiveUsername();
+    if (!username) return cachedRedmineEfforts;
     const response = await redmineClient.get('/today_timesheet.json', { user_id: username });
 
     console.log('\n========== TODAY TIMESHEET RESPONSE ==========');
@@ -1730,7 +1857,8 @@ async function fetchActivitySummary() {
     return activitySummaryInFlight;
   }
 
-  const username = os.userInfo().username;
+  const username = getActiveUsername();
+  if (!username) return { today: 0, yesterday: 0 };
 
   activitySummaryInFlight = (async () => {
     try {
@@ -1777,7 +1905,7 @@ ipcMain.handle('get-active-time-today', async () => {
   let totalSeconds = cachedActiveTimeToday;
 
   try {
-    const currentOsUser = os.userInfo().username;
+    const currentOsUser = getActiveUsername();
     const userId = await getUserId();
     const unsyncedDuration = getUnsyncedTodayDuration(userId, currentOsUser);
     totalSeconds += unsyncedDuration;
@@ -1788,7 +1916,7 @@ ipcMain.handle('get-active-time-today', async () => {
   // Calculate local total seconds from local today logs + live in-progress session
   let localTotalSeconds = 0;
   try {
-    const currentOsUser = os.userInfo().username;
+    const currentOsUser = getActiveUsername();
     const userId = await getUserId();
     const localTodayLogs = getAllTodayLogs(userId, currentOsUser) || [];
     for (let i = 0; i < localTodayLogs.length; i++) {
@@ -2496,7 +2624,7 @@ function syncTodayInHistoricalView(view, userId, currentOsUser) {
 }
 
 async function handleFetchActivity(period = 'today', options = {}) {
-  const currentOsUser = os.userInfo().username;
+  const currentOsUser = getActiveUsername();
   const userId = await getUserId();
   const normalizedPeriod = (period || 'today').toLowerCase().replace('-', '_');
   const today = new Date();
@@ -2609,7 +2737,8 @@ ipcMain.handle('fetch-activity-history', async (event, period, options = {}) => 
 
 ipcMain.handle('get-team-history', async (event, options = {}) => {
   try {
-    const username = os.userInfo().username;
+    const username = getActiveUsername();
+    if (!username) return null;
     return await reporteesService.fetchTeamHistory(username, options);
   } catch (err) {
     console.error('[Main] get-team-history error:', err.message);
@@ -2619,11 +2748,83 @@ ipcMain.handle('get-team-history', async (event, options = {}) => {
 
 ipcMain.handle('get-reportees-count', async () => {
   try {
-    const username = os.userInfo().username;
+    const username = getActiveUsername();
+    if (!username) return { total_reportees: null, has_reportees: false };
     return await reporteesService.getReporteesCount(username);
   } catch (err) {
     console.error('[Main] get-reportees-count error:', err.message);
     return { total_reportees: null, has_reportees: false, error: err.message };
+  }
+});
+
+// Verification IPC Handlers
+ipcMain.handle('verify-username', async (event, enteredUsername) => {
+  if (!enteredUsername || typeof enteredUsername !== 'string' || !enteredUsername.trim()) {
+    return {
+      success: false,
+      message: 'Invalid username. Please enter the username provided by your administrator.'
+    };
+  }
+
+  const username = enteredUsername.trim();
+  console.log(`[Verification] Verifying admin-assigned username: "${username}" via backend API...`);
+
+  try {
+    const response = await redmineClient.get('/today_timesheet.json', { user_id: username });
+
+    if (response && response.user && response.user.id) {
+      const userId = response.user.id;
+      const employeeName = response.user.name || username;
+      console.log(`[Verification] SUCCESS: User "${username}" verified (ID: ${userId}, Name: "${employeeName}").`);
+
+      saveStoredUserProfile(username, userId, employeeName);
+      activeUsername = username;
+      cachedUserId = userId;
+      isUserResolved = true;
+      usernameError = null;
+      isBackendReachable = true;
+
+      backfillUserIdForOsUsername(username, userId);
+
+      startVerifiedApplication();
+
+      return {
+        success: true,
+        user: {
+          id: userId,
+          name: employeeName,
+          username: username
+        }
+      };
+    } else {
+      console.warn(`[Verification] Backend rejected username "${username}" (user object missing).`);
+      return {
+        success: false,
+        message: 'Invalid username. Please enter the username provided by your administrator.'
+      };
+    }
+  } catch (err) {
+    const errorMsg = String(err.message || err);
+    console.error(`[Verification] Request failed for "${username}":`, errorMsg);
+
+    if (errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('Not Found')) {
+      return {
+        success: false,
+        message: 'Invalid username. Please enter the username provided by your administrator.'
+      };
+    }
+
+    return {
+      success: false,
+      networkError: true,
+      message: 'Unable to connect to server. Please check your network connection and try again.'
+    };
+  }
+});
+
+ipcMain.handle('close-registration-window', () => {
+  if (registrationWindow && !registrationWindow.isDestroyed()) {
+    registrationWindow.close();
   }
 });
 
@@ -2649,25 +2850,38 @@ ipcMain.handle('popup-ready', () => {
 });
 
 function createTray() {
+  if (tray && !tray.isDestroyed()) {
+    tray.destroy();
+    tray = null;
+  }
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   let trayIcon = nativeImage.createFromPath(iconPath);
   trayIcon = trayIcon.resize({ width: 16, height: 16 });
 
   tray = new Tray(trayIcon);
+  const verified = isUserVerified();
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Open WorkLens',
+      label: verified ? 'Open WorkLens' : 'Complete Verification',
       click: () => {
-        showAndFocusWindow();
+        if (!isUserVerified()) {
+          showRegistrationWindow();
+        } else {
+          showAndFocusWindow();
+        }
       }
     }
   ]);
 
-  tray.setToolTip('WorkLens');
+  tray.setToolTip(verified ? 'WorkLens' : 'WorkLens (Verification Required)');
   tray.setContextMenu(contextMenu);
 
   tray.on('double-click', () => {
-    showAndFocusWindow();
+    if (!isUserVerified()) {
+      showRegistrationWindow();
+    } else {
+      showAndFocusWindow();
+    }
   });
 }
 
@@ -2739,46 +2953,54 @@ if (gotTheLock) {
     });
 
     // 1. Recover identity from persistent user profile cache (or legacy queue fallback)
-    const currentOsUser = os.userInfo().username;
-    const persistentUserId = getCachedUserIdForOsUser(currentOsUser) || getUserIdFromLocalQueue(currentOsUser);
-    if (persistentUserId) {
-      cachedUserId = persistentUserId;
+    const verified = getStoredVerifiedUser();
+    if (verified) {
+      activeUsername = verified.username;
+      cachedUserId = verified.userId;
       isUserResolved = true;
-      saveStoredUserProfile(currentOsUser, persistentUserId);
-      console.log(`[Startup] Recovered user identity for "${currentOsUser}" from persistent cache: ID ${persistentUserId}`);
+      saveStoredUserProfile(verified.username, verified.userId, verified.employeeName);
+      console.log(`[Startup] Recovered verified user identity for "${activeUsername}": ID ${cachedUserId}`);
+
+      // 2. Start PC location service and allow brief warm-up
+      locationService.initLocationService();
+      try {
+        await locationService.waitForInitialLocation(2000);
+      } catch (_) {}
+
+      // 2b. Start tracking services for verified user
+      startTrackingServices();
+
+      // 3. Initiate background user resolution to validate session
+      checkUserResolution();
+
+      // 4. Start background user resolution validation loop running every 30 seconds
+      userResolutionInterval = setInterval(checkUserResolution, 30000);
+
+      // Pre-cache common system icons
+      preCacheCommonIcons();
+
+      createWindow();
+      createTray();
     } else {
-      console.log(`[Startup] No cached Redmine user ID for "${currentOsUser}". Starting in local offline mode.`);
+      console.log('[Startup] First launch detected: No verified administrator username. Showing verification screen.');
+      createTray();
+      createRegistrationWindow();
     }
 
-    // 2. Start PC location service and allow brief warm-up
-    locationService.initLocationService();
-    try {
-      await locationService.waitForInitialLocation(2000);
-    } catch (_) {}
-
-    // 2b. Start tracking services immediately and unconditionally on startup!
-    startTrackingServices();
-
-    // 3. Initiate background user resolution (does not block tracking)
-    checkUserResolution();
-
-    // 4. Start background user resolution retry loop running every 30 seconds
-    setInterval(checkUserResolution, 30000);
-
-    // Pre-cache common system icons
-    preCacheCommonIcons();
-
-    createWindow();
-    createTray();
-
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
+      if (!isUserVerified()) {
+        showRegistrationWindow();
+      } else if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
     });
 
     app.on('second-instance', () => {
-      showAndFocusWindow();
+      if (!isUserVerified()) {
+        showRegistrationWindow();
+      } else {
+        showAndFocusWindow();
+      }
     });
 
     log.info(`Installed version: ${app.getVersion()}`);

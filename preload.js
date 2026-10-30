@@ -144,5 +144,20 @@ contextBridge.exposeInMainWorld('api', {
 
   hideMainWindow: async () => {
     return await ipcRenderer.invoke('hide-main-window');
+  },
+
+  // First-launch username verification APIs
+  verifyUsername: async (username) => {
+    return await ipcRenderer.invoke('verify-username', username);
+  },
+
+  closeRegistrationWindow: async () => {
+    return await ipcRenderer.invoke('close-registration-window');
+  },
+
+  onRegistrationError: (callback) => {
+    const listener = (event, msg) => callback(msg);
+    ipcRenderer.on('registration-error', listener);
+    return () => ipcRenderer.removeListener('registration-error', listener);
   }
 });

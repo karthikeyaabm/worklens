@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkLens — First-Launch Verification</title>
+  <link rel="stylesheet" href="register.css">
+</head>
+<body>
+  <div class="window-container">
+    <!-- Draggable Custom Title Bar -->
+    <header class="titlebar">
+      <div class="titlebar-left">
+        <svg class="titlebar-logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="#3b82f6" stroke-width="2.5" fill="rgba(59, 130, 246, 0.15)" />
+          <path d="M12 6V12L15.5 14" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span class="titlebar-title">WorkLens</span>
+      </div>
+      <div class="titlebar-right">
+        <button id="reg-close-btn" class="titlebar-close" title="Close WorkLens" tabindex="-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Registration Content Box -->
+    <main class="content-body">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </div>
+
+      <h1 class="registration-title">Identity Verification</h1>
+      <p class="registration-subtitle" id="instruction-message">Enter the username provided by your administrator.</p>
+
+      <form id="registration-form" novalidate>
+        <div class="input-group">
+          <label for="username-input" class="input-label">Assigned Username</label>
+          <div class="input-wrapper">
+            <input
+              type="text"
+              id="username-input"
+              class="username-field"
+              placeholder="e.g. john.doe"
+              autocomplete="off"
+              spellcheck="false"
+              autofocus
+            />
+          </div>
+        </div>
+
+        <!-- Dynamic Status / Error Banner -->
+        <div id="error-container" class="message-banner error-banner hidden" role="alert">
+          <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span id="error-text" class="banner-text">Invalid username. Please enter the username provided by your administrator.</span>
+        </div>
+
+        <div id="loading-container" class="message-banner loading-banner hidden">
+          <div class="spinner"></div>
+          <span class="banner-text">Verifying with administrator system...</span>
+        </div>
+
+        <button type="submit" id="submit-btn" class="submit-button">
+          <span id="submit-btn-text">Submit</span>
+        </button>
+      </form>
+    </main>
+  </div>
+
+  <script src="register.js"></script>
+</body>
+</html>
+

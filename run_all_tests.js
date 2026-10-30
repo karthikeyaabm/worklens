@@ -138,6 +138,12 @@ const TEST_SUITES = [
     file: 'test_today_history_alignment_suite.js',
     runner: 'node',
     description: 'Single-source alignment of Today Total Time across Today tab, Last 7 Days, and Last 30 Days'
+  },
+  {
+    name: '23. First-Launch Username Verification Suite',
+    file: 'test_username_verification_suite.js',
+    runner: 'electron',
+    description: 'First-launch admin username prompt, backend verification source-of-truth, session recovery & revocation'
   }
 ];
 
@@ -161,10 +167,15 @@ async function runAll() {
     const suiteFilePath = path.resolve(__dirname, suite.file);
     const start = Date.now();
 
+    const suiteEnv = { ...process.env, NODE_ENV: 'test' };
+    if (suite.runner === 'electron') {
+      delete suiteEnv.ELECTRON_RUN_AS_NODE;
+    }
+
     const proc = spawnSync(cmd, [suiteFilePath], {
       cwd: __dirname,
       encoding: 'utf8',
-      env: { ...process.env, NODE_ENV: 'test' }
+      env: suiteEnv
     });
 
     const duration = ((Date.now() - start) / 1000).toFixed(2);
