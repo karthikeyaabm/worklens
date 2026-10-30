@@ -283,6 +283,11 @@ body {
   animation: pulse-blue 2s infinite;
 }
 
+.status-dot.restricted {
+  background: #94a3b8; /* Slate / Paused outside working hours */
+  box-shadow: 0 0 4px #94a3b8;
+}
+
 @keyframes pulse-green {
   0% {
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);

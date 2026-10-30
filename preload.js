@@ -43,6 +43,14 @@ contextBridge.exposeInMainWorld('api', {
     return await ipcRenderer.invoke('get-current-status');
   },
 
+  getWorkingHoursConfig: async () => {
+    return await ipcRenderer.invoke('get-working-hours-config');
+  },
+
+  getWorkingHoursStatus: async () => {
+    return await ipcRenderer.invoke('get-working-hours-status');
+  },
+
   getStorageHealth: async () => {
     return await ipcRenderer.invoke('get-storage-health');
   },

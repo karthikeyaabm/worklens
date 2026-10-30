@@ -174,6 +174,10 @@ The bridge scripts run before renderer files load. It exposes a restricted `wind
 *   **[renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js):** Runs inside the glassmorphism details window. Polls logging details from the main process and binds CSS layouts.
 
 ### 5. PC Location Provider & Cache: [locationService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/locationService.js)
+*   **Purpose:** Acquires device latitude, longitude, and reverse-geocoded physical address via native Windows location APIs with persistent caching.
+
+### 6. Working Hours & Schedule Restriction Controller: [workingHoursController.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/workingHoursController.js)
+*   **Purpose:** Centralized schedule controller enforcing API-driven Full-Time (24/7) vs Restricted Tracking (dynamic weekdays & operating hours). Manages actual activity collector start/stop, boundary transitions, midnight-crossing shifts, and activity store gatekeeping.
 Dedicated Windows-compatible PC location acquisition and reverse geocoding service:
 *   Runtime PC location resolution via Windows Native Location (`System.Device.Location.GeoCoordinateWatcher`) with automatic network IP geolocation fallback (`ip-api.com` / `freeipapi.com`).
 *   Reverse geocoding via OpenStreetMap Nominatim and BigDataCloud to produce human-readable addresses (`current_address`).
@@ -555,6 +559,48 @@ sequenceDiagram
     *   Supporting sublabel `X days × Yh logged` derived directly from active days and average daily hours.
     *   Expandable table listing all entries sorted newest first: `DATE ↓`, `PROJECT / ISSUE` (with separator bullet), `ACTIVITY`, and `HOURS`. Missing fields cleanly fallback to `—`.
 
+### 11. Dynamic Day-Based and Time-Based Tracking Control (`workingHoursController.js`)
+
+WorkLens implements an API-driven working schedule restriction architecture allowing centralized control over when employee workstations are monitored.
+
+#### 1. Tracking Modes & Core Business Logic
+*   **Mode A: Full-Time Tracking (`work_lens_full_time = "1"`):**
+    *   WorkLens operates 24 hours a day, 7 days a week.
+    *   Completely ignores `work_lens_day` and `work_lens_time`.
+    *   Preserves existing continuous tracking behavior without restrictions.
+*   **Mode B: Restricted Tracking (`work_lens_full_time = "0"`):**
+    *   Tracking is strictly permitted ONLY when **BOTH** conditions are satisfied:
+        1.  **Dynamic Day Validation:** Current local weekday matches one of the API-configured allowed days in `work_lens_day`. Weekdays are never hardcoded and support arbitrary subsets of all 7 days (e.g. Wednesday-only, weekend-only, or custom schedules).
+        2.  **Dynamic Time Validation:** Current local time falls within the configured start and end window in `work_lens_time` (format: `HH:MM, HH:MM`). Start time is **inclusive** and end time is **exclusive** (e.g. `09:00` ON, `20:59:59` ON, `21:00:00` OFF).
+*   **Midnight-Crossing Schedule Support:**
+    *   Supports overnight shifts crossing midnight (e.g. `21:00, 06:00`).
+    *   Correctly attributes the post-midnight portion (00:00 to 06:00) to the schedule's originating allowed day.
+    *   If yesterday was an allowed day, tracking continues past midnight until the morning end boundary (06:00).
+    *   If yesterday was not permitted, tracking is blocked after midnight even if today is an allowed day.
+
+#### 2. Actual Tracking Start & Stop Pipeline
+Stopping tracking means completely halting the underlying activity collection engine, not simply hiding the UI:
+*   **When Tracking is Restricted (OFF):**
+    *   Stops global mouse and keyboard event hooks (`uIOhook.stop()`).
+    *   Stops active-window tracking tick loop (`clearInterval(trackingInterval)`).
+    *   Stops system idle monitoring (`stopInactivityCheck()`) and closes open inactivity nudge popups.
+    *   Resets Anti-AFK engine buffers (`antiAfkDetector.clear()`).
+    *   Safely closes and persists any active in-flight session (`closeCurrentSession(new Date())`).
+    *   Flushes all pending closed sessions to Redmine (`flushPendingClosedSessions()`).
+    *   Enforces central recording gatekeeper in `activityStore.js` (`setTrackingPermissionChecker`), rejecting any new active session records during restricted periods.
+*   **When Tracking Becomes Permitted (ON):**
+    *   Reinitializes global hooks and polling intervals.
+    *   Starts a new valid tracking session for the current foreground window.
+    *   Resumes activity classification and Redmine synchronization.
+    *   Zero backfilling occurs for restricted periods.
+
+#### 3. Automatic Scheduling & Lifecycle Resilience
+*   **Boundary Timers & Heartbeat:** Uses `getNextAllowedStart()` and `getNextAllowedEnd()` to set precise boundary transition timers with safety buffers, backed by a 30-second heartbeat loop to defend against system sleep drift.
+*   **Dynamic API Updates:** Live updates from the summary API immediately update permissions and start/stop collectors without requiring an application restart.
+*   **Fail-Closed Security:** Missing or invalid restricted fields fail closed (tracking remains disabled) and log errors without exposing API credentials.
+*   **Sleep & Wake Resilience:** Automatically re-evaluates schedule on Windows resume (`powerMonitor.on('resume')`).
+*   **Persistence:** Validated configurations are persisted to `userData/working_hours_config.json` for offline boot recovery.
+
 ---
 
 ## 7. API Documentation
@@ -910,7 +956,9 @@ Preload bridges access paths by mapping handlers across processes:
 | `get-redmine-efforts` | Invoked by UI | None | Returns today's and yesterday's logged times from Redmine. |
 | `get-active-time-today` | Invoked by UI | None | Returns authoritative total active tracked seconds today (synchronizing local queue, in-progress session, and server summary). |
 | `get-active-time-yesterday` | Invoked by UI | None | Returns total local tracked seconds yesterday. |
-| `get-current-status` | Invoked by UI | None | Returns active state (`Active`, `Offline`, or `Inactive`). |
+| `get-current-status` | Invoked by UI | None | Returns active state (`Active`, `Offline`, `Inactive`, `Outside Working Hours`, or `Non-Working Day`). |
+| `get-working-hours-config` | Invoked by UI | None | Returns active schedule configuration (`isFullTime`, `allowedDays`, `workingHours`, `raw`). |
+| `get-working-hours-status` | Invoked by UI | None | Returns live tracking evaluation (`permitted`, `reason`, `displayStatus`, `nextAllowedStart`, `nextAllowedEnd`). |
 | `get-storage-health` | Invoked by UI | None | Returns local storage health snapshot `{ activityCollectionWorking, localStorageWorking, offlineQueueWorking, lastSuccessfulLocalWrite, lastStorageError, storageFailure, consecutiveFailures, isUnhealthy, status }`. |
 | `toggle-activity-popup` | Invoked by UI | None | Shows/hides the activity log details window. |
 | `open-activity-popup` | Invoked by UI | None | Positions and displays the activity popup. |
@@ -1317,6 +1365,7 @@ WorkLens includes a comprehensive testing framework covering all system-level mo
 | **Python Mouse Pattern Detection** | `test_mouse_pattern_suite.js` | `node` | 10 | Periodic clicks, mouse vibration, back-and-forth, random movement annotation |
 | **Dashboard Performance Suite** | `test_dashboard_performance_suite.js` | `node` | 8 | Date parsing speed, in-memory date index, 4-period accuracy, execution time benchmarks < 20ms, cache invalidation |
 | **Midnight Session Split Suite** | `test_midnight_session_split_suite.js` | `electron` | 15 | 12:00:00 AM / 11:59:59 PM boundaries, multi-day splits, sleep/wake, restart reconciliation, offline persistence, zero cross-day records |
+| **Working Hours & Schedule Restriction** | `test_working_hours_schedule_suite.js` | `node` | 40 | Dynamic weekday/time parsing, 24/7 full-time mode, overnight schedules, boundary start/stop, recording safety gates |
 
 ### Running Tests
 *   **Run All Suites (Recommended):** `npm test` or `npm run test:all` (executes `node run_all_tests.js` with unified output).
@@ -1467,6 +1516,15 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Electron Window Controls:** Enabled `resizable: true`, `minimizable: true`, `maximizable: true`, and `skipTaskbar: false` on `activityWindow`. Added IPC channels `minimize-activity-popup`, `maximize-activity-popup`, `is-activity-popup-maximized`, and push event `popup-maximized-changed`.
     *   **Maximized Styling:** Implemented `body.is-maximized` styling to hide the connection arrow `#arrow` and adapt `#popup-container` to 100% viewport space. Added title-bar double-click to maximize/restore.
     *   **Test Coverage:** Updated `test_reportees_dashboard_suite.js` with test assertions for HTML structure, CSS rules, and helper handlers. All 21 test suites passing.
+*   **v1.3.1 - Dynamic Day-Based & Time-Based Working Schedule Restriction Control:**
+    *   **API-Driven Schedule Restriction:** Integrated `work_lens_full_time`, `work_lens_time`, and `work_lens_day` from the summary API into a centralized `workingHoursController.js`.
+    *   **Two Tracking Modes:** Full-Time Tracking (24/7 continuous operation when `work_lens_full_time === "1"`) and Restricted Tracking (when `"0"`, enforcing both dynamic weekdays and working hours).
+    *   **Dynamic Weekday Validation:** Fully dynamic comma-separated weekday parser with capitalization normalization and deduplication in a Set. Never assumes Monday–Friday.
+    *   **Overnight Midnight-Crossing Support:** Fully supports overnight shifts (e.g. `21:00, 06:00`), attributing post-midnight hours (00:00 to 06:00) to the schedule's originating day.
+    *   **Complete Pipeline Start/Stop:** Halts uIOhook mouse/keyboard collectors, window tracking intervals, inactivity checks, anti-AFK buffers, and sync timers during restricted periods. Flushes pending closed sessions and closes active sessions cleanly.
+    *   **Recording Boundary Gatekeeper:** Embedded `setTrackingPermissionChecker` in `activityStore.js`, rejecting new active sessions or unauthorized log creations outside allowed hours.
+    *   **Automated Scheduling & Sleep Resilience:** Employs precision boundary timers (`getNextAllowedStart` / `getNextAllowedEnd`), 30-second heartbeat polling, and `powerMonitor.on('resume')` re-evaluation.
+    *   **Comprehensive Test Suite:** Added `test_working_hours_schedule_suite.js` covering 40 unit and integration tests across boundary conditions, overnight schedules, dynamic configuration refreshes, and recording gate safety.
 *   **v1.3.0 - Release Version Alignment & Dashboard Feature Finalization:**
     *   **Version Bump:** Bumped application release version to `1.3.0` across `package.json`, `package-lock.json`, `CHANGELOG.md`, and dynamic IPC `get-app-version`.
     *   **Single-Source Today Time Alignment:** Centralized `getAuthoritativeTodayActivity` in `main.js` and unified Today's total active duration across Today, Last 7 Days, and Last 30 Days views.

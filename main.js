@@ -202,8 +202,13 @@ const {
   parseTimestampToDate,
   formatTime12,
   getPersistedDailyStartTime,
-  recordDailyStartTime
+  recordDailyStartTime,
+  setTrackingPermissionChecker
 } = require('./activityStore');
+const workingHoursController = require('./workingHoursController');
+
+// Enforce working hours schedule at local activity store recording boundary
+setTrackingPermissionChecker((date) => workingHoursController.canTrackNow(date));
 const storageHealth = require('./storageHealth');
 const locationService = require('./locationService');
 
@@ -351,7 +356,11 @@ function startVerifiedApplication() {
   }
 
   locationService.initLocationService();
-  startTrackingServices();
+  if (workingHoursController.canTrackNow()) {
+    startTrackingServices();
+  } else {
+    stopTrackingServices();
+  }
   preCacheCommonIcons();
   createWindow();
   createTray();
@@ -435,7 +444,39 @@ function stopUiohook() {
   }
 }
 
+// Initialize centralized Working Hours Controller
+workingHoursController.init({
+  onStartTracking: () => {
+    if (isUserResolved) {
+      startTrackingServices();
+    }
+  },
+  onStopTracking: (reason) => {
+    stopTrackingServices(reason);
+  },
+  onStatusChanged: (statusResult) => {
+    if (!statusResult.permitted) {
+      currentStatus = statusResult.displayStatus;
+    }
+    if (tray && !tray.isDestroyed()) {
+      if (!isUserVerified()) {
+        tray.setToolTip('WorkLens (Verification Required)');
+      } else if (!statusResult.permitted) {
+        tray.setToolTip(WorkLens ());
+      } else {
+        tray.setToolTip('WorkLens');
+      }
+    }
+  }
+});
+
 function startTrackingServices() {
+  if (!workingHoursController.canTrackNow()) {
+    console.log('[Services] Refusing to start tracking services: outside permitted working hours.');
+    const sched = workingHoursController.getTrackingStatus();
+    currentStatus = sched.displayStatus || 'Outside Working Hours';
+    return;
+  }
   console.log('[Services] Starting all tracking services...');
   
   // 1. Keyboard/mouse tracking
@@ -457,7 +498,7 @@ function startTrackingServices() {
   flushPendingClosedSessions();
 }
 
-function stopTrackingServices() {
+function stopTrackingServices(reason = null) {
   console.log('[Services] Stopping all tracking services...');
 
   // 1. Keyboard/mouse tracking
@@ -482,15 +523,31 @@ function stopTrackingServices() {
   }
   inactivityPopupShown = false;
 
-  // 5. Sync interval
-  if (syncInterval) {
-    clearInterval(syncInterval);
-    syncInterval = null;
+  // 5. Anti-AFK engine state reset
+  try {
+    antiAfkDetector.clear();
+  } catch (e) {
+    console.error('[AntiAFK] Error clearing anti-afk state:', e);
   }
 
   // 6. Close and save the current active session
   if (currentRecord) {
     closeCurrentSession(new Date());
+  }
+
+  // 7. Flush pending closed sessions safely
+  flushPendingClosedSessions();
+
+  // 8. Sync interval
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+
+  // 9. Update currentStatus for UI
+  const sched = workingHoursController.getTrackingStatus();
+  if (!sched.permitted) {
+    currentStatus = sched.displayStatus || 'Outside Working Hours';
   }
 }
 
@@ -749,7 +806,11 @@ async function checkUserResolution() {
       } else {
         console.log('[User Resolution] SUCCESS: User verified successfully. Triggering automatic sync.');
       }
-      startTrackingServices();
+      if (workingHoursController.canTrackNow()) {
+        startTrackingServices();
+      } else {
+        stopTrackingServices();
+      }
       flushPendingClosedSessions();
     } else {
       console.warn(`[User Resolution] FAILURE: User "${username}" explicitly not found in Redmine database.`);
@@ -1078,6 +1139,12 @@ function scheduleMidnightBoundaryCheck() {
 }
 
 function startOrContinueCurrentSession(appName, windowTitle, status, now = new Date(), reason = null, activityType = 'Unknown') {
+  if (!workingHoursController.canTrackNow(now)) {
+    if (currentRecord) {
+      closeCurrentSession(now);
+    }
+    return;
+  }
   const cleanStatus = status.toLowerCase();
   const currentOsUser = getActiveUsername();
 
@@ -1223,6 +1290,12 @@ function closeCurrentSession(endTime = new Date()) {
 // Main tracking tick
 async function trackTick() {
   try {
+    if (!workingHoursController.canTrackNow()) {
+      if (currentRecord) {
+        closeCurrentSession(new Date());
+      }
+      return;
+    }
     storageHealth.recordActivityCollection(true);
     const now = new Date();
     const nowMs = now.getTime();
@@ -1867,6 +1940,15 @@ async function fetchActivitySummary() {
       console.log('\n========== ACTIVITY SUMMARY RESPONSE ==========');
       console.log(JSON.stringify(response, null, 2));
 
+      // Dynamically apply working hours configuration from summary API response
+      if (response) {
+        try {
+          workingHoursController.updateConfiguration(response);
+        } catch (confErr) {
+          console.error('[WorkingHours] Error updating working hours configuration from summary:', confErr);
+        }
+      }
+
       const todayHours = parseFloat(response?.today?.duration_hours ?? 0) || 0;
       const yesterdayHours = parseFloat(response?.yesterday?.duration_hours ?? 0) || 0;
 
@@ -1959,7 +2041,19 @@ ipcMain.handle('get-active-time-yesterday', async () => {
 });
 
 ipcMain.handle('get-current-status', () => {
+  if (!workingHoursController.canTrackNow()) {
+    const sched = workingHoursController.getTrackingStatus();
+    return sched.displayStatus || 'Outside Working Hours';
+  }
   return currentStatus;
+});
+
+ipcMain.handle('get-working-hours-config', () => {
+  return workingHoursController.getActiveConfiguration();
+});
+
+ipcMain.handle('get-working-hours-status', () => {
+  return workingHoursController.getTrackingStatus();
 });
 
 ipcMain.handle('get-storage-health', () => {
@@ -2967,8 +3061,12 @@ if (gotTheLock) {
         await locationService.waitForInitialLocation(2000);
       } catch (_) {}
 
-      // 2b. Start tracking services for verified user
-      startTrackingServices();
+      // 2b. Start tracking services for verified user if permitted by schedule
+      if (workingHoursController.canTrackNow()) {
+        startTrackingServices();
+      } else {
+        stopTrackingServices();
+      }
 
       // 3. Initiate background user resolution to validate session
       checkUserResolution();
@@ -3084,9 +3182,15 @@ if (gotTheLock) {
     });
 
     powerMonitor.on('resume', async () => {
-      console.log('System resumed, restarting tracking...');
-      lastTickTimestamp = Date.now();
-      trackTick();
+      console.log('System resumed, evaluating working hours schedule...');
+      workingHoursController.evaluateSchedule();
+      if (workingHoursController.canTrackNow()) {
+        lastTickTimestamp = Date.now();
+        startTrackingServices();
+        trackTick();
+      } else {
+        stopTrackingServices();
+      }
       flushPendingClosedSessions();
     });
 
@@ -3119,6 +3223,7 @@ if (gotTheLock) {
 
   app.on('before-quit', async (event) => {
     isQuitting = true;
+    workingHoursController.destroy();
     updateWatchdogState({ intentionalShutdown: true, reason: 'before-quit', timestamp: Date.now() });
     stopInactivityCheck();
     if (inactivityPopup && !inactivityPopup.isDestroyed()) {

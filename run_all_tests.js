@@ -144,6 +144,12 @@ const TEST_SUITES = [
     file: 'test_username_verification_suite.js',
     runner: 'electron',
     description: 'First-launch admin username prompt, backend verification source-of-truth, session recovery & revocation'
+  },
+  {
+    name: '24. Dynamic Working Hours & Schedule Restriction Suite',
+    file: 'test_working_hours_schedule_suite.js',
+    runner: 'node',
+    description: 'Dynamic weekday/time parsing, 24/7 full-time mode, overnight schedules, boundary start/stop, recording safety gates'
   }
 ];
 

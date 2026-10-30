@@ -156,6 +156,12 @@ async function updateStatusDot() {
         } else if (status === 'Offline') {
           dotEl.className = 'status-dot offline';
           dotEl.title = 'Active (Offline)';
+        } else if (status === 'Outside Working Hours' || (status && status.startsWith('Outside Working Hours'))) {
+          dotEl.className = 'status-dot restricted';
+          dotEl.title = status;
+        } else if (status === 'Non-Working Day' || (status && status.startsWith('Non-Working Day'))) {
+          dotEl.className = 'status-dot restricted';
+          dotEl.title = status;
         } else {
           dotEl.className = 'status-dot inactive';
           dotEl.title = 'Inactive';

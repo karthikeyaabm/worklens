@@ -22,6 +22,29 @@ function getStorageFaultInjection() {
   return storageFaultInjection;
 }
 
+// Centralized tracking permission checker (enforces working hours restriction at recording boundary)
+let trackingPermissionChecker = null;
+
+function setTrackingPermissionChecker(checker) {
+  trackingPermissionChecker = checker;
+}
+
+function getTrackingPermissionChecker() {
+  return trackingPermissionChecker;
+}
+
+function isTrackingPermitted(date) {
+  if (typeof trackingPermissionChecker === 'function') {
+    try {
+      return trackingPermissionChecker(date);
+    } catch (e) {
+      console.error('[ActivityStore] Error in trackingPermissionChecker:', e);
+      return false; // Fail closed on checker error
+    }
+  }
+  return true; // Default to true if unconfigured (preserves existing behavior/tests)
+}
+
 let cachedParsedChunks = null;
 let cachedFileMtimeMs = 0;
 let cachedFileSize = 0;
@@ -34,8 +57,15 @@ function invalidateChunksCache() {
   cachedDateIndex = new Map();
 }
 
+function getUserDataDir() {
+  if (app && typeof app.getPath === 'function') {
+    try { return app.getPath('userData'); } catch (_) {}
+  }
+  return process.env.WORKLENS_DATA_DIR || path.join(process.cwd(), 'scratch');
+}
+
 function getQueueFilePath() {
-  const currentPath = path.join(app.getPath('userData'), 'activity_queue.jsonl');
+  const currentPath = path.join(getUserDataDir(), 'activity_queue.jsonl');
   if (queueFilePath !== currentPath) {
     queueFilePath = currentPath;
     invalidateChunksCache();
@@ -48,7 +78,7 @@ let cachedUserProfileMtime = 0;
 let cachedUserProfileSize = 0;
 
 function getUserProfileFilePath() {
-  const current = path.join(app.getPath('userData'), 'user_profile.json');
+  const current = path.join(getUserDataDir(), 'user_profile.json');
   if (userProfileFilePath !== current) {
     userProfileFilePath = current;
     cachedUserProfile = null;
@@ -165,7 +195,7 @@ let cachedDailyStateMtime = 0;
 let cachedDailyStateSize = 0;
 
 function getDailyStateFilePath() {
-  const current = path.join(app.getPath('userData'), 'daily_tracking_state.json');
+  const current = path.join(getUserDataDir(), 'daily_tracking_state.json');
   if (dailyStateFilePath !== current) {
     dailyStateFilePath = current;
     cachedDailyState = null;
@@ -676,6 +706,16 @@ function saveOrUpdateSingleSessionLocal(session, userId, currentOsUser = null) {
     duration = MAX_SESSION_DURATION;
   }
 
+  const isPermitted = isTrackingPermitted(startDateObj || new Date());
+  if (!isPermitted) {
+    if (index >= 0 && session.closed) {
+      // Allow closing an existing session when tracking transitions to restricted
+    } else {
+      console.warn('[ActivityStore] Recording rejected: activity is outside permitted working hours schedule.');
+      return null;
+    }
+  }
+
   // Persist earliest start time for this local calendar day
   const chunkDate = normalizeToLocalDateStr(startFormatted || actOnFormatted);
   if (chunkDate && start) {
@@ -1111,6 +1151,8 @@ function getDateWiseTimeRanges(dateStrings, userId = null, osUsername = null) {
 
 module.exports = {
   saveOrUpdateActiveSessionLocal,
+  setTrackingPermissionChecker,
+  getTrackingPermissionChecker,
   closeOrphanedSessions,
   getEligibleClosedSessions,
   getPendingClosedSessions,
