@@ -2829,11 +2829,22 @@ ipcMain.handle('fetch-activity-history', async (event, period, options = {}) => 
   return await handleFetchActivity(period, options);
 });
 
+ipcMain.handle('get-reportees-time-slot', async (event, options = {}) => {
+  try {
+    const userId = (await getUserId()) || getActiveUsername();
+    if (!userId) return null;
+    return await reporteesService.fetchReporteesTimeSlot(userId, options);
+  } catch (err) {
+    console.error('[Main] get-reportees-time-slot error:', err.message);
+    throw err;
+  }
+});
+
 ipcMain.handle('get-team-history', async (event, options = {}) => {
   try {
-    const username = getActiveUsername();
-    if (!username) return null;
-    return await reporteesService.fetchTeamHistory(username, options);
+    const userId = (await getUserId()) || getActiveUsername();
+    if (!userId) return null;
+    return await reporteesService.fetchReporteesTimeSlot(userId, options);
   } catch (err) {
     console.error('[Main] get-team-history error:', err.message);
     throw err;
@@ -2842,12 +2853,40 @@ ipcMain.handle('get-team-history', async (event, options = {}) => {
 
 ipcMain.handle('get-reportees-count', async () => {
   try {
-    const username = getActiveUsername();
-    if (!username) return { total_reportees: null, has_reportees: false };
-    return await reporteesService.getReporteesCount(username);
+    const userId = (await getUserId()) || getActiveUsername();
+    if (!userId) return { total_reportees: null, has_reportees: false };
+    return await reporteesService.getReporteesCount(userId);
   } catch (err) {
     console.error('[Main] get-reportees-count error:', err.message);
     return { total_reportees: null, has_reportees: false, error: err.message };
+  }
+});
+
+ipcMain.handle('export-time-slot-excel', async (event, payload = {}) => {
+  try {
+    const buffer = reporteesService.buildExcelWorkbook(payload);
+    const defaultFilename = payload.filename || `WorkLens_Reportees_Time_Slot_${payload.from || 'start'}_to_${payload.to || 'end'}.xlsx`;
+
+    const downloadsPath = app.getPath('downloads');
+    let targetPath = path.join(downloadsPath, defaultFilename);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Reportees Time Slot Data',
+        defaultPath: targetPath,
+        filters: [{ name: 'Excel Workbook (*.xlsx)', extensions: ['xlsx'] }]
+      });
+      if (canceled || !filePath) {
+        return { success: false, canceled: true };
+      }
+      targetPath = filePath;
+    }
+
+    fs.writeFileSync(targetPath, buffer);
+    return { success: true, filePath: targetPath, filename: path.basename(targetPath) };
+  } catch (err) {
+    console.error('[Main] export-time-slot-excel error:', err.message);
+    return { success: false, error: err.message };
   }
 });
 

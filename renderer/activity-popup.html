@@ -14,16 +14,46 @@
     <!-- Window Header -->
     <header class="popup-header">
       <div class="header-title" id="header-nav">
+        <!-- Active Time Tab -->
         <button type="button" id="tab-nav-active-time" class="header-nav-btn active" title="Active Time">
           <span class="lightning-icon">⚡</span>
           <h1>ACTIVE TIME</h1>
         </button>
+
+        <!-- Divider 1 -->
+        <div class="header-divider hidden" id="header-divider-reportees">|</div>
+
+        <!-- Reportees Tab Button (Clean button without dropdown) -->
         <button type="button" id="tab-nav-reportees" class="header-nav-btn reportees-pill-btn hidden" title="Reportees">
           <svg class="header-reportees-icon" viewBox="0 0 20 20" fill="currentColor">
             <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 16v-1a4 4 0 00-2.07-3.483A5.002 5.002 0 0118 15v1h-2zM4.07 11.517A4 4 0 002 15v1h2v-1c0-.98.35-1.88 1.07-2.483z" />
           </svg>
-          <span id="nav-reportees-label">Reportees</span>
+          <span id="nav-reportees-label">Reportees (1)</span>
         </button>
+
+        <!-- Divider 2 -->
+        <div class="header-divider hidden" id="header-divider-date">|</div>
+
+        <!-- Header Date Range Selector -->
+        <div class="header-date-dropdown-wrapper hidden" id="header-date-picker-container">
+          <button type="button" id="header-date-range-btn" class="header-date-range-btn" title="Select date range" aria-haspopup="true" aria-expanded="false">
+            <svg class="header-calendar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
+              <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
+              <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <span id="header-date-range-label">28 Oct 2026 – 04 Nov 2026</span>
+            <svg class="header-chevron-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <div id="header-date-range-menu" class="header-date-range-menu hidden" role="menu">
+            <div class="header-range-menu-item" data-days="7">Last 7 Days (7 days)</div>
+            <div class="header-range-menu-item" data-days="15">Last 15 Days (15 days)</div>
+            <div class="header-range-menu-item active" data-days="30">Last 30 Days (30 days)</div>
+          </div>
+        </div>
       </div>
       <div class="header-actions">
         <button id="refresh-btn" class="header-action-btn refresh-button" title="Refresh live data" aria-label="Refresh live data">
@@ -154,119 +184,138 @@
 
     <!-- ================= REPORTEES DASHBOARD VIEW ================= -->
     <div id="reportees-view" class="view-panel hidden">
-      <!-- Date Range Bar / Subheader -->
-      <div class="reportees-date-bar">
-        <div class="reportees-date-left">
-          <svg class="date-bar-calendar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
-            <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
-            <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-            <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-          </svg>
-          <span id="reportees-date-range-text" class="reportees-date-range-text">-- — --</span>
-          <span id="reportees-period-pill" class="reportees-period-pill">(30 days)</span>
-        </div>
-        <div class="reportees-date-right">
-          <!-- Search Box -->
-          <div class="reportees-search-wrapper">
-            <svg class="reportees-search-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M14 14L11.1 11.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <input type="text" id="reportees-search-input" class="reportees-search-input" placeholder="Search reportees or projects..." autocomplete="off" />
+      <!-- Shortage Legend Badge -->
+      <div class="reportee-shortage-badge" id="reportee-shortage-badge">
+        <span class="shortage-badge-icon">⚠️</span>
+        <span class="shortage-badge-text">Red Row = Required Hours Shortage (&lt; 7.5h / Early Out &lt; 6h / Half Day Leave &lt; 3.5h)</span>
+      </div>
+
+      <!-- Employee Profile Card Section (Dynamic Dropdown) -->
+      <div class="reportee-profile-dropdown-wrapper" id="reportees-dropdown-container">
+        <div class="reportee-profile-card" id="reportee-profile-card" role="button" tabindex="0" title="Click to view time slot data">
+          <div class="reportee-profile-avatar" id="reportee-avatar">KK</div>
+          <div class="reportee-profile-details">
+            <div class="reportee-profile-name" id="reportee-name">Karthikeya Kondavathri</div>
           </div>
-          <!-- Date Range Selector Dropdown -->
-          <div class="reportees-dropdown-wrapper">
-            <button type="button" id="reportees-range-selector-btn" class="reportees-range-selector-btn" title="Select date range">
-              <svg class="dropdown-calendar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
-                <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
-                <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-                <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-              </svg>
-              <span id="reportees-dropdown-selected-label">27 Sep 2026 - 26 Oct 2026</span>
-              <svg class="dropdown-chevron-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
-            <div id="reportees-range-menu" class="reportees-range-menu hidden">
-              <div class="range-menu-item" data-days="7">Last 7 Days (7 days)</div>
-              <div class="range-menu-item" data-days="15">Last 15 Days (15 days)</div>
-              <div class="range-menu-item active" data-days="30">Last 30 Days (30 days)</div>
+          <div class="reportee-profile-stats" id="reportee-profile-stats">
+            <div class="profile-stat-item">
+              <span class="profile-stat-label">TOTAL TIME:</span>
+              <span class="profile-stat-val val-total" id="reportee-stat-total">0.00h</span>
+            </div>
+            <div class="profile-stat-item">
+              <span class="profile-stat-label">WORK TIME:</span>
+              <span class="profile-stat-val val-work" id="reportee-stat-work">0.00h</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      <!-- 3 Summary Cards -->
-      <div class="reportees-summary-cards">
-        <!-- Card 1: Total Reportees -->
-        <div class="summary-card">
-          <div class="summary-icon-box card-icon-users">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 3s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+          <div class="reportee-profile-chevron" id="reportee-profile-chevron">
+            <svg class="profile-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
-          <div class="summary-info">
-            <div class="summary-label">TOTAL REPORTEES</div>
-            <div id="summary-total-reportees" class="summary-value">0</div>
           </div>
         </div>
 
-        <!-- Card 2: Team Total Hours -->
-        <div class="summary-card">
-          <div class="summary-icon-box card-icon-clock">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
-              <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+        <!-- Reportees Dropdown Menu -->
+        <div id="reportees-dropdown-menu" class="reportees-dropdown-menu hidden">
+          <div class="reportees-menu-header">
+            <div class="reportees-menu-title-row">
+              <span class="reportees-menu-title">All Reportees</span>
+              <span class="reportees-count-badge" id="reportees-dropdown-count">0</span>
+            </div>
+            <div class="reportees-menu-search-wrapper">
+              <svg class="reportees-menu-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="reportees-dropdown-search-input" class="reportees-menu-search-input" placeholder="Search reportees by name or ID..." />
+            </div>
           </div>
-          <div class="summary-info">
-            <div class="summary-label">TEAM TOTAL HOURS</div>
-            <div id="summary-team-hours" class="summary-value">0h</div>
-          </div>
-        </div>
-
-        <!-- Card 3: Period -->
-        <div class="summary-card">
-          <div class="summary-icon-box card-icon-calendar">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" />
-              <path d="M3 10H21" stroke="currentColor" stroke-width="2" />
-              <path d="M8 2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              <path d="M16 2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-            </svg>
-          </div>
-          <div class="summary-info">
-            <div class="summary-label">PERIOD</div>
-            <div id="summary-period-days" class="summary-value">30 days</div>
+          <div id="reportees-dropdown-list" class="reportees-dropdown-list">
+            <!-- Dynamic Reportee Items Injected by JS -->
           </div>
         </div>
       </div>
 
-      <!-- Reportees Scrollable Content Area -->
-      <div class="reportees-content-area" id="reportees-scroll-container">
-        <!-- Reportees Loading State -->
+      <!-- Table Scrollable Area (Collapsible Accordion Table) -->
+      <div class="timeslot-table-wrapper hidden" id="reportees-scroll-container">
+        <!-- Loading State -->
         <div id="reportees-loading" class="state-container hidden">
           <div class="spinner"></div>
-          <p>Loading reportees data...</p>
+          <p>Loading reportees time slot data...</p>
         </div>
 
-        <!-- Reportees Error State -->
+        <!-- Error State -->
         <div id="reportees-error" class="state-container hidden">
-          <p id="reportees-error-msg" class="error-msg">Unable to load reportees data.</p>
+          <p id="reportees-error-msg" class="error-msg">Unable to load reportees time slot data.</p>
           <button id="reportees-retry-btn" class="retry-button">Retry</button>
         </div>
 
-        <!-- Reportees Empty State -->
+        <!-- Empty State -->
         <div id="reportees-empty" class="state-container hidden">
-          <p id="reportees-empty-msg" class="empty-msg">No reportees found.</p>
+          <p id="reportees-empty-msg" class="empty-msg">No reportee activity logs found for this period.</p>
         </div>
 
-        <!-- Reportees Cards List -->
-        <div id="reportees-list" class="reportees-list">
-          <!-- Injected dynamically -->
+        <!-- Dynamic Time-Slot Table -->
+        <div class="timeslot-table-scroll" id="timeslot-table-scroll">
+          <table id="timeslot-table" class="timeslot-data-table">
+            <thead>
+              <tr>
+                <th class="th-col th-date">DATE <span class="sort-icon">▲</span></th>
+                <th class="th-col th-early-morning">
+                  <div class="th-main-title">Early Morning</div>
+                  <div class="th-time-range">(12 AM to 8.30 AM)</div>
+                </th>
+                <th class="th-col th-office-time">
+                  <div class="th-main-title">Office Time</div>
+                  <div class="th-time-range">(8.30 AM to 7.30 PM)</div>
+                </th>
+                <th class="th-col th-after-office">
+                  <div class="th-main-title">After Office Time</div>
+                  <div class="th-time-range">(7.30 PM to 11.59 PM)</div>
+                </th>
+                <th class="th-col th-slot-total">TOTAL</th>
+                <th class="th-col th-work-time">WORK TIME</th>
+                <th class="th-col th-leave">LEAVE</th>
+                <th class="th-col th-holiday">HOLIDAY</th>
+                <th class="th-col th-early-out">EARLY OUT</th>
+              </tr>
+            </thead>
+            <tbody id="timeslot-table-body">
+              <!-- Dynamically populated rows for selected employee only -->
+            </tbody>
+            <tfoot id="timeslot-table-foot">
+              <tr class="timeslot-row-total">
+                <td class="td-total-label td-date">Total</td>
+                <td class="td-num td-early-morning" id="total-early-morning">0.00h</td>
+                <td class="td-num td-office-time" id="total-office-time">0.00h</td>
+                <td class="td-num td-after-office" id="total-after-office">0.00h</td>
+                <td class="td-num td-slot-total td-cyan" id="total-system-active">0.00h</td>
+                <td class="td-num td-work-time" id="total-work-time">0.00h</td>
+                <td class="td-num td-leave" id="total-leave">0.00h</td>
+                <td class="td-num td-holiday" id="total-holiday">0.00h</td>
+                <td class="td-num td-early-out" id="total-early-out">0.00h</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
+      </div>
+
+      <!-- Semantic hidden containers for backward-compatible metadata -->
+      <div style="display:none;" aria-hidden="true">
+        <span id="reportee-id"></span>
+        <span id="reportee-manager"></span>
+        <span id="reportees-date-range-text">-- — --</span>
+        <span id="reportees-period-pill">(7 days)</span>
+        <input type="text" id="reportees-search-input" />
+        <button type="button" id="reportees-range-selector-btn"></button>
+        <span id="reportees-dropdown-selected-label"></span>
+        <div id="reportees-range-menu"></div>
+        <span id="summary-total-reportees">0</span>
+        <span id="summary-team-hours">0h</span>
+        <span id="summary-period-days">7 days</span>
+        <div id="reportees-list"></div>
+        <span id="timeslot-records-count"></span>
+        <button id="timeslot-export-excel-btn"></button>
+        <span id="total-overall">0.00h</span>
       </div>
     </div>
   </div>

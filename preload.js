@@ -93,12 +93,20 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // Reportees Dashboard APIs
+  getReporteesTimeSlot: async (options = {}) => {
+    return await ipcRenderer.invoke('get-reportees-time-slot', options);
+  },
+
   getTeamHistory: async (options = {}) => {
-    return await ipcRenderer.invoke('get-team-history', options);
+    return await ipcRenderer.invoke('get-reportees-time-slot', options);
   },
 
   getReporteesCount: async () => {
     return await ipcRenderer.invoke('get-reportees-count');
+  },
+
+  exportTimeSlotExcel: async (payload = {}) => {
+    return await ipcRenderer.invoke('export-time-slot-excel', payload);
   },
 
   // Activity Popup Listeners/Signals

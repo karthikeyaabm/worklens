@@ -111,11 +111,11 @@ WorkLens/
 ├── quotes.js                   # Local quotes storage array for inactivity nudges
 ├── redmineClient.js            # Native fetch wrapper for Redmine HTTP REST requests
 ├── redmineTimeIntegration.js   # Service for Redmine GET time_entries API aggregation, yellow category classification, and view building
-├── reporteesService.js         # Service for Team History API fetching, data sanitization, deduplication, and in-memory caching
+├── reporteesService.js         # Service for Reportees Time Slot API fetching, data sanitization, shortage coloring, and Excel export
 ├── storageHealth.js            # Local persistence supervisor (ENOSPC detection, failure threshold, cooldown, notifications)
 ├── teamsActivityTracker.js     # Microsoft Teams intelligent call/meeting state machine and device sensor engine
 ├── run_all_tests.js            # Master automated test runner for all verification suites
-├── test_reportees_dashboard_suite.js # Comprehensive test suite for Reportees dashboard, visibility logic, and data sanitization
+├── test_reportees_dashboard_suite.js # Comprehensive test suite for Reportees Time Slot API, dynamic visibility, shortage row highlighting, and Excel export
 ├── test_redmine_yellow_integration_suite.js # Comprehensive test suite for Redmine time integration & yellow progress bar segments
 ├── test_mouse_pattern_suite.js # Comprehensive test suite for Python mouse automation pattern detection
 ├── test_teams_tracking_suite.js # Comprehensive test suite for Teams call/meeting state transitions and edge cases
@@ -517,47 +517,71 @@ sequenceDiagram
     6.  **Store-Level Defense-in-Depth:**
         *   `saveOrUpdateActiveSessionLocal()` checks `startDay !== endDay`. If any caller attempts to persist a cross-day record, the store automatically splits it via `splitSessionAtMidnightBoundaries()`, persists both single-day chunks, records daily start times for both dates, and returns the active segment.
 
-### 10. Reportees Dashboard & Team History Integration
-*   **Purpose:** Allow managers and team leads to seamlessly inspect live team productivity and daily logged timesheet entries alongside their personal workstation Active Time within the same unified popup window.
+### 10. Reportees Dashboard & System Active Time Slot Integration
+*   **Purpose:** Allow managers and team leads to seamlessly inspect live team activity, daily time slots, and timesheet hours alongside personal workstation Active Time within the unified popup window.
 *   **Files Involved:**
-    *   [reporteesService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/reporteesService.js) (API client service, in-memory 60s cache, payload sanitization, deduplication)
-    *   [renderer/activity-popup.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.html) (Header navigation tabs, date range bar, summary cards, reportees list)
-    *   [renderer/activity-popup.css](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.css) (Pill button styling, cards, avatars, dark fluent layout)
-    *   [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js) (View-state controller, search filtering, card expansion, range selection)
-    *   [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js) (`getTeamHistory`, `getReporteesCount` context bridge)
-    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (IPC handlers for `get-team-history` and `get-reportees-count`)
-*   **Dynamic Visibility Logic:**
-    *   The `Reportees (N)` navigation pill button appears immediately beside `ACTIVE TIME` in the header **only** if the logged-in user has `total_reportees > 0`.
-    *   If `total_reportees === 0`, missing, null, or unavailable due to API network error, the label is completely hidden (`class="header-nav-btn reportees-pill-btn hidden"`).
-    *   `N` dynamically reflects the actual reportee count from fresh API data (not hardcoded).
-*   **Navigation & View State:**
-    *   Clicking `Reportees (N)` smoothly toggles the content container to `#reportees-view` while hiding `#active-time-view`.
-    *   Clicking `ACTIVE TIME` restores the full Active Time dashboard (tabs, hour-wise/app-wise activity, progress bars, totals) instantly with zero state loss or recalculation.
-*   **Subheader & Date Range Selector:**
-    *   Displays calendar icon, date interval `[From] — [To]`, and reporting period `([N] days)`.
-    *   Interactive preset dropdown allows selecting `Last 7 Days (7 days)`, `Last 15 Days (15 days)`, or `Last 30 Days (30 days)` (default), re-querying the API and refreshing metrics.
-    *   Search input filters reportees live by employee name, username, project name, issue subject, activity category, or comments.
-*   **Live Dashboard Refresh Button (`#refresh-btn`):**
-    *   Positioned in the header next to the close button (`&times;`), accessible in both Active Time and Reportees dashboard views.
-    *   Provides user-triggered live synchronization with spinning feedback animation (`.refresh-button.spinning`).
-    *   **Drag-Safe Pointer Events:** Child icons (`.refresh-icon`, `.window-control-icon`) use `pointer-events: none;` and `.header-actions *` strictly enforces `-webkit-app-region: no-drag;`, preventing Chromium on Windows from treating button clicks inside draggable headers as window drags.
-    *   **In Active Time view:** Clears client cache (`clientViewCache = { today: null, yesterday: null, ... }`), resets in-flight fetch promises, triggers background sync via `window.api.triggerSync()` non-blockingly without delaying local UI rendering, passes `{ forceRefresh: true }` to `window.api.fetchActivityLogs()` to bust main process caches (`todayResolvedCache` and `precomputedHistoricalCache`), re-fetches local ground truth and live in-memory session, updates dynamic reportees count visibility, and immediately re-renders rows (<50ms).
-    *   **In Reportees view:** Triggers `fetchAndRenderReportees(true)` passing `{ forceRefresh: true }` to bypass the 60-second in-memory cache, directly querying `https://mainet.abmindia.com/today_timesheet/team_history.json`, re-calculating summary statistics, and re-rendering all reportee cards.
-    *   Smoothly unsets spinning class after a minimum of 600ms for seamless visual feedback.
-*   **Maximize Window Control (`#max-btn`):**
-    *   Integrated into the dashboard header actions adjacent to `#refresh-btn` and `#close-btn` for desktop usability. (Minimize icon `#min-btn` removed to keep clean, uncluttered action buttons alongside the close and tray/widget workflows).
-    *   **Maximize / Restore (`#max-btn`):** Toggles between maximized and restored state via IPC `maximize-activity-popup`. Dynamically updates button icon and tooltip between Maximize (`.icon-maximize`) and Restore (`.icon-restore`).
-    *   **Header Double-Click:** Double-clicking the `.popup-header` bar natively toggles maximize and restore.
-    *   **Full-Screen Responsive Layout (`body.is-maximized`):** When maximized, automatically suppresses the widget connection arrow (`#arrow`), zeroes body padding, and expands `#popup-container` to 100% viewport width and height with zero margins and border-radius, giving maximum visibility to deep reportee hierarchies and app-wise logs.
-*   **Summary Cards:**
-    *   *Total Reportees:* Count of team members from API (`total_reportees`).
-    *   *Team Total Hours:* Aggregated logged effort for the period (`team_total_hours` with fallback sum).
-    *   *Period:* Reporting duration (e.g. `30 days`).
-*   **Individual Reportee Sections & Activity Tables:**
-    *   Circular avatar with employee initials and distinctive palette accent color (`#3b82f6`, `#a855f7`, `#06b6d4`, etc.).
-    *   Employee display name, username subtitle, total logged hours, and horizontal progress bar.
-    *   Supporting sublabel `X days × Yh logged` derived directly from active days and average daily hours.
-    *   Expandable table listing all entries sorted newest first: `DATE ↓`, `PROJECT / ISSUE` (with separator bullet), `ACTIVITY`, and `HOURS`. Missing fields cleanly fallback to `—`.
+    *   [reporteesService.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/reporteesService.js) (API client service for `reportees_time_slot.json`, 60s cache, payload sanitization, shortage evaluation, Excel workbook generation via `xlsx`)
+    *   [renderer/activity-popup.html](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.html) (Header navigation tabs, date range bar, System Active Time Slot heading, badges, Export Excel button, data table, total footer)
+    *   [renderer/activity-popup.css](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.css) (Pill button styling, table borders, time slot header tints, exact `is_shortage` row highlight colors, dark fluent layout)
+    *   [renderer/activity-popup.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/renderer/activity-popup.js) (View-state controller, dynamic date range queries, search filtering, decimal formatting, shortage row mapping, Excel export trigger)
+    *   [preload.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/preload.js) (`getReporteesTimeSlot`, `getReporteesCount`, `exportTimeSlotExcel`, and backward-compatible `getTeamHistory` bridge)
+    *   [main.js](file:///c:/Users/karthikeya.kondavath/Desktop/Daily-Timelog-Main/WorkLens/main.js) (IPC handlers for `get-reportees-time-slot`, `get-reportees-count`, and `export-time-slot-excel` with native file save dialog)
+*   **Dynamic Conditional Visibility (`total_reportees`):**
+    *   **Condition 1 (`total_reportees === 0`):** The Reportees Time Slot section and `#tab-nav-reportees` pill button are **completely hidden**. No empty table and no empty container is displayed. The rest of the WorkLens dashboard remains unchanged.
+    *   **Condition 2 (`total_reportees >= 1`):** The `Reportees (N)` pill button appears immediately beside `ACTIVE TIME` in the header, displaying the real-time count `N`. Displays all available reportee records dynamically without hardcoded employee limits.
+*   **Multi-Reportee Dropdown & Dynamic Employee Selection (v1.3.48):**
+    *   **Clean Tab Navigation Button (`Reportees (N)`):** The reportees header option is styled as a clean pill tab button without a dropdown menu or chevron. Clicking the button directly switches between Active Time and Reportees dashboard views.
+    *   **Automatic Profile & Table Binding:** Seamlessly binds the employee details into the profile card and populates the 9-column time-slot table with their records and isolated totals.
+    *   **Shortage Legend Badge:** Positioned immediately above the employee card, displaying `⚠️ Red Row = Required Hours Shortage (< 7.5h / Early Out < 6h / Half Day Leave < 3.5h)` in a pill badge with dark red tint (`rgba(239, 68, 68, 0.1)`, border `rgba(239, 68, 68, 0.3)`, and text `#fca5a5`).
+    *   **Employee Profile Card & Interactive Reportee Dropdown:** Displays a dedicated sleek profile card directly beneath the shortage badge:
+        *   Avatar box with employee initials (e.g. `VH` for Vishal Hake, `KK` for Karthikeya Kondavathri).
+        *   Bold Employee Name with interactive hover glow.
+        *   **Dynamic Total Time & Work Time Stat Pills:** Directly inside the profile card to the right of the employee name, displays two real-time stat pills:
+            *   `TOTAL TIME:` (System active total hours highlighted in cyan `#38bdf8`, e.g. `161.67h`).
+            *   `WORK TIME:` (Redmine timesheet hours highlighted in clean white `#f1f5f9`, e.g. `153.00h`).
+            *   Provides instant visibility into the employee's total tracked time and Redmine logged time even when the table is collapsed.
+        *   Chevron arrow indicator (`▼` / `▲`).
+        *   **Collapsible Accordion Table Toggle:** Clicking the employee box (e.g. Vishal Hake) toggles the time-slot data table open and closed. On initial load the table is collapsed; clicking the employee card opens the table and rotates the chevron arrow (`▲`), and clicking again collapses/hides the table (`▼`).
+        *   **Instant Context & Table Switch:** Selecting any reportee updates the profile card, renders that reportee's date-wise table and totals, and expands the table view.
+    *   **Compact Dynamic Time-Slot Table (9 Columns, Single TOTAL, 100% Fit):**
+        *   **Single TOTAL Column:** Retains the single authoritative TOTAL column immediately following AFTER OFFICE (highlighted in cyan `#38bdf8`).
+        *   **Proportional Column Widths (Zero Horizontal Scroll):** Table uses `table-layout: fixed; width: 100%;` with exact column percentages totaling 100% (`DATE` 18%, `EARLY MORNING` 12%, `OFFICE TIME` 11%, `AFTER OFFICE` 11%, `TOTAL` 10%, `WORK TIME` 10%, `LEAVE` 9%, `HOLIDAY` 9%, `EARLY OUT` 10%).
+        *   **Compact Spacing:** Cell padding streamlined to `5px 3px` to eliminate horizontal overflow.
+        *   **Graceful Header Wrapping & Centered Alignment:** Headers utilize `text-align: center !important;`, `white-space: normal; line-height: 1.15; font-size: 8.5px;` with center-aligned subtitles and ranges for clean visual balance.
+        *   **100% Solid Dark Background:** Enforced solid opaque `#14181e` on `#popup-container` and `#0f172a` on `.timeslot-table-wrapper`, completely stopping background window bleed-through.
+        1. `DATE ▲` (Activity date with calendar icon)
+        2. `Early Morning (12 AM to 8.30 AM)`
+        3. `Office Time (8.30 AM to 7.30 PM)`
+        4. `After Office Time (7.30 PM to 11.59 PM)`
+        5. `TOTAL` (System active total hours highlighted in cyan `#38bdf8`)
+        6. `WORK TIME` (Timesheet hours)
+        7. `LEAVE` (Leave hours)
+        8. `HOLIDAY` (Holiday hours)
+        9. `EARLY OUT` (Early out hours)
+    *   **Strict Employee Data Isolation:** Table records and summary totals strictly filter by `record.user_id === selectedUserId`. Manager-level aggregate totals are never mixed into individual employee records.
+    *   **Consistent Hour Formatting:** Values are formatted consistently in hours with two decimals and the `h` suffix (e.g. `0.00h`, `1.18h`, `31.26h`, `34.85h`).
+    *   **Default Selection:** Automatically selects the first available reportee on dashboard initialization, or displays a clean empty state if no reportees exist.
+    *   **Decimal Formatting & Null Handling:** Decimal hours are rendered directly from API numbers without incorrect rounding. Null/undefined fields display clean blank cells.
+    *   **Total Row:** Bottom `<tfoot>` calculates and displays column sums across all visible reportee records.
+    *   **Horizontal Scrolling:** Encapsulated in `.timeslot-table-wrapper` with responsive overflow scroll for smaller screens.
+*   **Important Row Color Logic (`is_shortage`):**
+    *   Row highlighting strictly evaluates the boolean `record.is_shortage` field from the API:
+        *   `is_shortage === true`: Entire row highlighted in **Red** (`rgba(239, 68, 68, 0.16)` background, `#fca5a5` text, `#f87171` cyan/total values and calendar icon). Class `.timeslot-row-shortage`.
+        *   `is_shortage === false`: Entire row highlighted in **Green** (`rgba(34, 197, 94, 0.14)` background, `#86efac` text, `#4ade80` cyan/total values and calendar icon). Class `.timeslot-row-normal`.
+        *   `is_shortage === null || undefined`: Retains default neutral table background and text colors.
+    *   Color is applied to all cells in that row and is strictly driven by the API's `is_shortage` boolean value.
+*   **Excel Export (`Export Time Slot Excel`):**
+    *   Uses native `xlsx` library to generate binary `.xlsx` files without external cloud dependencies.
+    *   Default filename format: `WorkLens_Reportees_Time_Slot_{from}_to_{to}.xlsx`.
+    *   Includes exact 10 columns, all displayed reportee data rows, and final calculated Total row.
+*   **Dynamic Date Range Control:**
+    *   Preset selector (`Last 7 Days`, `Last 15 Days`, `Last 30 Days`) dynamically generates `from` and `to` dates in `DD-MM-YYYY` format.
+    *   Changing the date range triggers fresh API calls with updated `from` and `to` parameters, recalculates table totals, updates the Total Records Found badge, and updates Excel export data.
+    *   Single-line layout: Wrapped date bar controls with `white-space: nowrap` and `flex-wrap: nowrap` so the calendar icon, date range, and period duration pill remain strictly on a single clean line without wrapping.
+*   **UI Layout & Mathematical Consistency (v1.3.47):**
+    *   **100% Solid Opaque Background:** Removed translucent backdrop blurring and opacity on `#popup-container` and `.timeslot-table-wrapper`, enforcing solid dark background colors (`#14181e` and `#0f172a`) to eliminate desktop/background bleed-through on transparent Electron windows.
+    *   **Full 10-Column Proportional Viewport Fitting:** Optimized all 10 column widths totaling exactly 634px inside a 650px container with `table-layout: fixed`. Eliminates unnecessary horizontal scrolling while keeping Date and User fully legible with subtle 4px custom scrollbars.
+    *   **Consistent Rounding & Totals Methodology:** Unified the calculation of `total` across rows and footer summary: `TOTAL = Math.round((EM + OT + AOT) * 100) / 100`. Prevents decimal sum discrepancies (e.g., 18.39 + 136.42 + 21.41 = 176.22 vs 176.24) and guarantees row totals and footer column sums match seamlessly.
 
 ### 11. Dynamic Day-Based and Time-Based Tracking Control (`workingHoursController.js`)
 
@@ -718,10 +742,10 @@ All API communications are handled in [redmineClient.js](file:///c:/Users/karthi
     *   `current_address`: Human-readable reverse-geocoded address or `null` if reverse geocoding fails.
 *   **Sync Behavior:** Batched every 2 minutes. Failed logs are retried with an exponential backoff delay. Offline historical records preserve their originally captured location when synced later.
 
-### 6. Team History & Reportees Timesheet API
-*   **URL:** `GET /today_timesheet/team_history.json`
-*   **Parameters:** `user_id=<os_username>`, optional `days=<7|15|30>`
-*   **Purpose:** Retrieve the full team hierarchy, total reportees count, team logged hours, and daily timesheet entries breakdown for a manager's reportees. Used to determine `Reportees (N)` dynamic navigation label visibility and populate the Reportees dashboard.
+### 6. Reportees Time Slot API
+*   **URL:** `GET /user_system_activity_logs/reportees_time_slot.json`
+*   **Parameters:** `user_id=<manager_id>`, `from=<DD-MM-YYYY>`, `to=<DD-MM-YYYY>`, `key=<API_KEY>`
+*   **Purpose:** Retrieve date-wise activity logs and time slots across Early Morning, Office Time, and After Office Time along with Timesheet hours for a manager's reportees. Single source of truth for the Reportees dashboard and dynamic navigation header visibility.
 *   **Actual Response Shape:**
     ```json
     {
@@ -729,45 +753,43 @@ All API communications are handled in [redmineClient.js](file:///c:/Users/karthi
         "id": 890,
         "name": "Karthikeya Kondavathri"
       },
-      "from": "27-09-2026",
-      "to": "26-10-2026",
-      "days": 30,
-      "total_reportees": 2,
-      "team_total_hours": 320.0,
-      "reportees": [
+      "from": "28-10-2026",
+      "to": "04-11-2026",
+      "days": 8,
+      "total_reportees": 1,
+      "total_records": 6,
+      "records": [
         {
-          "user": {
-            "id": 424,
-            "name": "Vishal Hake",
-            "login": "vishal.hake"
-          },
-          "total_hours": 160.0,
-          "daily": [
-            {
-              "date": "23-10-2026",
-              "total_hours": 8.0,
-              "entries": [
-                {
-                  "id": 723368,
-                  "user_id": 424,
-                  "project": "SEPG & SQA",
-                  "issue_id": 227188,
-                  "issue_subject": "Monitoring & Control",
-                  "activity": "Process Automation",
-                  "hours": 8.0,
-                  "comments": "Process Automation",
-                  "spent_on": "23-10-2026"
-                }
-              ]
-            }
-          ]
+          "date": "28-10-2026",
+          "user_id": 890,
+          "user": "Karthikeya Kondavathri",
+          "reporting_manager": "Vishal Hake",
+          "early_morning": 0.0,
+          "office_time": 1.18,
+          "after_office_time": 0.0,
+          "total": 1.18,
+          "leave": 8.0,
+          "holiday": 0.0,
+          "early_out": 0.0,
+          "work_time": 0.0,
+          "is_shortage": false
         }
-      ]
+      ],
+      "totals": {
+        "early_morning": 0.0,
+        "office_time": 31.26,
+        "after_office_time": 3.59,
+        "total": 34.85,
+        "leave": 8.0,
+        "holiday": 0.0,
+        "early_out": 2.0,
+        "work_time": 32.0
+      }
     }
     ```
 *   **Service & Caching (`reporteesService.js`):**
-    *   **In-Memory 60s Cache:** Caches responses keyed by `${userId}_${days}` with a 60-second TTL to avoid duplicate API calls during rapid tab switching.
-    *   **Data Sanitization & Deduplication:** Cleans missing/null values, converts date formats (`DD-MM-YYYY` to `DD MMM YYYY`), flattens entries into a chronological newest-first array, deduplicates entries by unique `id`, and computes active days and average daily hours.
+    *   **In-Memory 60s Cache:** Caches responses keyed by `${userId}_${from}_${to}` with a 60-second TTL to eliminate redundant network traffic during rapid tab switches.
+    *   **Data Sanitization & Normalization:** Safely converts null/missing values, parses numbers as decimals, strictly preserves `is_shortage` booleans, and calculates column totals.
     *   **Security:** Redmine API key is securely attached by backend `redmineClient.js` in the Electron main process; no credentials are ever exposed to the renderer process or logged to console.
 
 ---
@@ -1525,6 +1547,80 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Recording Boundary Gatekeeper:** Embedded `setTrackingPermissionChecker` in `activityStore.js`, rejecting new active sessions or unauthorized log creations outside allowed hours.
     *   **Automated Scheduling & Sleep Resilience:** Employs precision boundary timers (`getNextAllowedStart` / `getNextAllowedEnd`), 30-second heartbeat polling, and `powerMonitor.on('resume')` re-evaluation.
     *   **Comprehensive Test Suite:** Added `test_working_hours_schedule_suite.js` covering 40 unit and integration tests across boundary conditions, overnight schedules, dynamic configuration refreshes, and recording gate safety.
+*   **v1.3.5 - Release Version Bump (1.3.5):**
+    *   **Version Update:** Updated application release version to `1.3.5` across `package.json`, `package-lock.json`, `renderer/index.html`, and dynamic IPC `get-app-version`.
+*   **v1.3.62 - Total Time & Work Time Stat Badges in Employee Profile Card:**
+    *   **Direct Card Metrics:** Displayed **Total Time** (`#reportee-stat-total`, in cyan `#38bdf8`) and **Work Time** (`#reportee-stat-work`, in crisp white `#f1f5f9`) directly within `.reportee-profile-card` to the left of the accordion chevron.
+    *   **Instant Visibility without Expanding:** Allows managers to immediately see the employee's total active hours and Redmine logged work hours even when the accordion data table is collapsed.
+    *   **Dynamic Synchronization:** Automatically synchronized through `updateTableTotals(totals)` on initial reportee load, date range change, and employee selection.
+*   **v1.3.61 - Accordion Chevron Binding & Resilient Container Resolution:**
+    *   **Container Reference Binding:** Explicitly declared `const reporteesScrollContainer` and `const reporteeProfileChevron` in `activity-popup.js` with resilient `document.getElementById` resolution to ensure clicks immediately toggle the table open and closed without runtime ReferenceErrors.
+    *   **Direct Chevron Click Listener:** Added click listener on `#reportee-profile-chevron` in addition to the card box, and set `pointer-events: none` on the inner SVG icon so clicks on the dropdown arrow trigger the toggle seamlessly.
+    *   **Test Suite Test 5.8:** Added automated test asserting `toggleReporteeTable()` expand/collapse transitions (27/27 passing).
+*   **v1.3.60 - Collapsible Accordion Table Toggle on Employee Card Click:**
+    *   **Expand / Collapse on Click:** Wired `#reportee-profile-card` (Vishal Hake) to toggle the visibility of the time-slot data table (`#reportees-scroll-container`). Clicking the card expands the table; clicking it again hides it.
+    *   **Initial Collapsed State:** Table starts in collapsed state with `hidden` utility class, revealing data only when the user clicks the employee card.
+    *   **Interactive Chevron Rotation:** The right-hand chevron arrow rotates 180 degrees (`▲`) when expanded (`.is-expanded`) and points down (`▼`) when collapsed.
+*   **v1.3.59 - Center Alignment for Table Column Headers:**
+    *   **Centered Column Headers:** Enforced `text-align: center !important;` across all `.timeslot-data-table th` headers and titles (`.th-main-title`, `.th-time-range`) for clean, balanced header presentation.
+    *   **Preserved Numerical Alignment:** Retained `text-align: right` on all data cells (`td.td-num`) and left-alignment on `td.td-date` for clean tabular scanability.
+*   **v1.3.58 - Time-Slot Column Header Subtitles & Exact Range Labels:**
+    *   **Descriptive Time Slot Headers:** Updated time slot column headers to display exact operational windows: `Early Morning (12 AM to 8.30 AM)`, `Office Time (8.30 AM to 7.30 PM)`, and `After Office Time (7.30 PM to 11.59 PM)`.
+    *   **Sleek Two-Line Typography:** Styled main title (`.th-main-title`, 8.5px, bold) and secondary range (`.th-time-range`, 7.5px, `#64748b`) with compact line height to preserve vertical space and column alignment.
+*   **v1.3.57 - Restoration of HOLIDAY Table Column (9-Column Proportions):**
+    *   **HOLIDAY Column Added:** Restored the missing `HOLIDAY` column between `LEAVE` and `EARLY OUT` in table `<thead>`, dynamic `<tbody>` rows, and `<tfoot>` summary row.
+    *   **Proportional 100% Widths:** Re-balanced 9 column proportions totaling exactly 100% (`DATE` 18%, `EARLY MORNING` 12%, `OFFICE TIME` 11%, `AFTER OFFICE` 11%, `TOTAL` 10%, `WORK TIME` 10%, `LEAVE` 9%, `HOLIDAY` 9%, `EARLY OUT` 10%) to maintain zero side scrolling.
+    *   **Test Suite Updated:** Updated `test_reportees_dashboard_suite.js` to assert the presence of `th-holiday">HOLIDAY`.
+*   **v1.3.56 - Inverted is_shortage Row Highlighting (true = Red, false = Green):**
+    *   **Semantic Shortage Highlighting:** Aligned row highlighting to natural business logic where `is_shortage === true` (shortage present) maps to Red (`.timeslot-row-shortage`) and `is_shortage === false` (no shortage / target met) maps to Green (`.timeslot-row-normal`).
+    *   **Unit Tests Synchronized:** Updated `test_reportees_dashboard_suite.js` Test Cases 4 & 5 to verify `true -> red` and `false -> green`.
+*   **v1.3.55 - Shortage Legend Badge Placed Above Reportee Card:**
+    *   **Shortage Explanation Badge:** Placed `⚠️ Red Row = Required Hours Shortage (< 7.5h / Early Out < 6h / Half Day Leave < 3.5h)` (`.reportee-shortage-badge`) directly on top of the employee card (Vishal Hake) in the Reportees dashboard view.
+    *   **Harmonious Spacing:** Configured compact top/bottom margins to preserve screen space while providing clear visual guidance on row shortage conditions.
+*   **v1.3.54 - Employee Profile Card Dropdown & Top Spacing:**
+    *   **Top Breathing Room:** Added `margin-top: 10px;` on `.reportee-profile-dropdown-wrapper` to provide clear vertical spacing between the top header bar and the employee box.
+    *   **Interactive Employee Dropdown:** Converted `.reportee-profile-card` into a dropdown trigger with cursor pointer, hover effects, and rotating chevron indicator (`▼`).
+    *   **Reportee Selection & Instant Table Render:** Clicking the employee box opens `.reportees-dropdown-menu` with real-time employee search. Selecting an employee closes the menu, updates the card avatar/name, and renders that reportee's date-wise data table and isolated totals.
+*   **v1.3.53 - Red & Green Row Highlighting for is_shortage:**
+    *   **Strict Boolean Highlighting:** Configured `.timeslot-row-shortage` and `.timeslot-row-normal` styling in `activity-popup.css` to visually tint the entire row based on API data.
+    *   **is_shortage === false (Red Row):** Renders with translucent red background (`rgba(239, 68, 68, 0.16)`), red text (`#fca5a5`), red border (`rgba(239, 68, 68, 0.28)`), and red total/calendar accents (`#f87171`).
+    *   **is_shortage === true (Green Row):** Renders with translucent green background (`rgba(34, 197, 94, 0.14)`), green text (`#86efac`), green border (`rgba(34, 197, 94, 0.25)`), and green total/calendar accents (`#4ade80`).
+*   **v1.3.52 - Streamlined Employee Profile Card (ID & Reporting Manager Removed):**
+    *   **Subtitle Removal:** Removed the `ID: <id> | Reporting Manager: <name>` subtitle from the employee profile card per user request.
+    *   **Compact Modern Profile Card:** The profile card now cleanly displays only the employee's initials avatar and bold employee name, reducing vertical height and maximizing screen space for activity data.
+*   **v1.3.51 - Removal of Duplicate Total Column (8-Column Structure):**
+    *   **Duplicate Column Removed:** Removed the redundant 9th `TOTAL` column from the table header, rows, and footer, leaving a single authoritative `TOTAL` column (Col 5, in cyan `#38bdf8`) summing Early Morning, Office Time, and After Office hours.
+    *   **Expanded 8-Column Proportions:** Re-allocated column widths proportionally to 100% (`DATE` 20%, `EARLY MORNING` 13%, `OFFICE TIME` 12%, `AFTER OFFICE` 12%, `TOTAL` 11%, `WORK TIME` 11%, `LEAVE` 10%, `EARLY OUT` 11%), providing maximum readability and zero side scroll.
+*   **v1.3.50 - Compact Table Spacing & Zero Horizontal Side Scroll:**
+    *   **Proportional 100% Column Fitting:** Updated `.timeslot-data-table` to proportional percentages totaling exactly 100% (`17%`, `12%`, `11%`, `11%`, `9.5%`, `11%`, `9%`, `9.5%`, `10%`) with `table-layout: fixed`, eliminating horizontal side scrolling entirely.
+    *   **Reduced Padding & Spacing:** Streamlined cell padding to `5px 3px` and container padding to `10px 12px`, ensuring the 9th column (`TOTAL`) and all decimal numbers are fully visible without truncation.
+    *   **Graceful Multi-Line Headers:** Added `white-space: normal; line-height: 1.15; font-size: 8.5px;` to header cells to eliminate truncation like `EARLY MO...` and `OFFICE TI...`.
+    *   **Complete Opacity Enforced:** Replaced semi-transparent container background with solid opaque `#14181e`, eliminating window bleed-through.
+*   **v1.3.49 - Direct Reportees Tab Button (Dropdown Menu Removed):**
+    *   **Dropdown Removal:** Removed the dropdown menu and chevron arrow from the `Reportees (N)` header label per user request.
+    *   **Clean Tab Navigation:** The `Reportees (N)` label functions as a clean pill button that directly switches into the Reportees view when clicked.
+    *   **Preserved Employee Profile & 9-Column Table:** Kept the Employee Profile Section (`reportee-profile-card`) and 9-column dynamic time-slot table fully intact.
+*   **v1.3.48 - Multi-Reportee Dropdown & Dynamic Employee Table:**
+    *   **Multi-Reportee Dropdown:** Added interactive `Reportees (N) ▼` dropdown in the header displaying all reportees with avatar initials, name, employee ID, and reporting manager. Includes real-time search filtering by name or ID and total count badge.
+    *   **Dynamic Employee Selection & Profile Section:** Added dynamic employee selection updating the profile card (initials avatar, name, ID, and reporting manager in cyan) and instantly switching data context.
+    *   **Isolated 9-Column Time-Slot Table:** Replaced the multi-user table with an individual employee 9-column layout (`DATE`, `EARLY MORNING`, `OFFICE TIME`, `AFTER OFFICE`, `TOTAL`, `WORK TIME`, `LEAVE`, `EARLY OUT`, `TOTAL`) with calendar row icons, alternating row backgrounds, and cyan total highlighting.
+    *   **Employee-Specific Totals Calculation:** Added `calculateEmployeeTotals` in `reporteesService.js` and `activity-popup.js` to guarantee summary totals reflect only the selected employee's records without mixing data.
+    *   **Hour Suffix Formatting:** Values consistently formatted as decimal hours with `h` suffix (e.g. `1.18h`, `0.00h`).
+    *   **Test Suite 21 Expansion:** Expanded `test_reportees_dashboard_suite.js` to 26 unit and integration assertions covering 3-reportee dropdown fixtures, dynamic selection, isolated calculations, and initials generation.
+*   **v1.3.47 - Reportees Dashboard UI & Data Consistency Corrections:**
+    *   **Full 10-Column Fitting & Layout:** Optimized column proportions totaling 634px inside the 650px popup viewport with `table-layout: fixed`. All 10 columns (`DATE`, `USER`, `EARLY MORNING`, `OFFICE TIME`, `AFTER OFFICE TIME`, `TOTAL`, `LEAVE`, `HOLIDAY`, `EARLY OUT`, `WORK TIME`) fit cleanly without horizontal scrolling. Applied subtle 4px scrollbars.
+    *   **Zero Background Transparency / Bleed-Through:** Replaced translucent rgba and backdrop blur on `#popup-container`, `#reportees-view`, and `.timeslot-table-wrapper` with solid 100% opaque `#14181e` and `#0f172a`, preventing background text and IDE windows from bleeding through the transparent window.
+    *   **Single-Line Date Range Header:** Configured `white-space: nowrap` and `flex-wrap: nowrap` on `.reportees-date-bar`, properly positioning the calendar icon, date range, and duration badge without multiline wrapping.
+    *   **Unified Mathematical Methodology for Totals:** Enforced `TOTAL = Math.round((EM + OT + AOT) * 100) / 100` across both raw records and aggregated footer totals in `reporteesService.js` and `activity-popup.js`, eliminating floating-point rounding discrepancies (e.g. 176.22 vs 176.24).
+*   **v1.3.46 - Reportees Time Slot API Replacement & System Active Time Slot Table:**
+    *   **API Replacement:** Replaced `/today_timesheet/team_history.json` with `/user_system_activity_logs/reportees_time_slot.json?user_id={USER_ID}&from={FROM_DATE}&to={TO_DATE}&key={API_KEY}` in `reporteesService.js` and `main.js`.
+    *   **Conditional Visibility (`total_reportees`):** Enforced Condition 1 (`total_reportees === 0` completely hides the section with no empty table/container) and Condition 2 (`total_reportees >= 1` displays the section with dynamic reportee records).
+    *   **System Active Time Slot Table:** Built complete table with exact 10 columns (`DATE`, `USER`, `EARLY MORNING [12 AM to 8:30 AM]`, `OFFICE TIME [8:30 AM to 7:30 PM]`, `AFTER OFFICE TIME [7:30 PM to 11:59 PM]`, `TOTAL`, `LEAVE`, `HOLIDAY`, `EARLY OUT`, `WORK TIME`) and bottom Total row.
+    *   **Row Highlight Logic (`is_shortage`):** Implemented strict boolean row styling: `is_shortage === false` highlights row in Light Red / Pink (`#fee2e2`, text `#991b1b`) and `is_shortage === true` in Light Green (`#dcfce7`, text `#166534`).
+    *   **Maximized Full-Height Layout:** Removed the top title, subtitle, badges, and export button banner to provide an uncluttered full-height viewport for the 10-column System Active Time Slot table.
+    *   **Excel Export (.xlsx):** Integrated `xlsx` dependency to export active records and totals into `WorkLens_Reportees_Time_Slot_{from}_to_{to}.xlsx` via native Electron file dialog.
+    *   **Test Suite 21 Verification:** Updated `test_reportees_dashboard_suite.js` with all 8 production verification test cases passing (19/19 assertions).
+
 *   **v1.3.0 - Release Version Alignment & Dashboard Feature Finalization:**
     *   **Version Bump:** Bumped application release version to `1.3.0` across `package.json`, `package-lock.json`, `CHANGELOG.md`, and dynamic IPC `get-app-version`.
     *   **Single-Source Today Time Alignment:** Centralized `getAuthoritativeTodayActivity` in `main.js` and unified Today's total active duration across Today, Last 7 Days, and Last 30 Days views.
