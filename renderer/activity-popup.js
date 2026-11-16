@@ -53,6 +53,7 @@ const reporteeStatTotal = getEl('reportee-stat-total');
 const reporteeStatWork = getEl('reportee-stat-work');
 const reporteeProfileChevron = getEl('reportee-profile-chevron');
 const reporteesScrollContainer = getEl('reportees-scroll-container');
+const reporteesSectionsContainer = getEl('reportees-sections-container');
 
 // Reportees Dashboard Elements
 const reporteesDateRangeText = getEl('reportees-date-range-text');
@@ -2609,6 +2610,7 @@ let reporteesMenuSearchQuery = '';
 let isReporteesDropdownOpen = false;
 let isHeaderDateMenuOpen = false;
 let isReporteeTableExpanded = false;
+let expandedReporteeUserIds = new Set();
 
 function toggleReporteeTable(forceOpen) {
   const container = (typeof reporteesScrollContainer !== 'undefined' && reporteesScrollContainer) || 
@@ -2619,6 +2621,15 @@ function toggleReporteeTable(forceOpen) {
   const isCurrentlyHidden = container ? container.classList.contains('hidden') : !isReporteeTableExpanded;
   const willOpen = typeof forceOpen === 'boolean' ? forceOpen : isCurrentlyHidden;
   isReporteeTableExpanded = willOpen;
+
+  const primaryEmp = allReporteesList && allReporteesList[0];
+  if (primaryEmp) {
+    if (willOpen) {
+      expandedReporteeUserIds.add(Number(primaryEmp.id));
+    } else {
+      expandedReporteeUserIds.delete(Number(primaryEmp.id));
+    }
+  }
 
   if (container) {
     if (willOpen) {
@@ -3036,6 +3047,171 @@ function getRowClassForShortage(isShortage) {
   return '';
 }
 
+function renderTableRowsForBody(tbodyEl, records) {
+  if (!tbodyEl) return;
+  tbodyEl.innerHTML = '';
+
+  if (!records || records.length === 0) {
+    tbodyEl.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #64748b; padding: 12px 0;">No reportee activity logs found for this period.</td></tr>`;
+    return;
+  }
+
+  records.forEach(r => {
+    const tr = document.createElement('tr');
+    const rowClass = getRowClassForShortage(r.is_shortage);
+    if (rowClass) tr.className = rowClass;
+
+    const em = parseFloat(r.early_morning) || 0;
+    const ot = parseFloat(r.office_time) || 0;
+    const aot = parseFloat(r.after_office_time) || 0;
+    const slotSum = Math.round((em + ot + aot) * 100) / 100;
+    const rawTotal = parseFloat(r.total) || 0;
+    const rowTotal = (slotSum > 0 || rawTotal === 0) ? slotSum : rawTotal;
+
+    const displayDate = r.date_formatted || r.date || '';
+
+    tr.innerHTML = `
+      <td class="td-date">
+        <span class="row-date-wrapper">
+          <svg class="row-cal-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
+            <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <span class="row-date-text">${escapeHtml(displayDate)}</span>
+        </span>
+      </td>
+      <td class="td-num td-early-morning">${formatHoursVal(r.early_morning)}</td>
+      <td class="td-num td-office-time">${formatHoursVal(r.office_time)}</td>
+      <td class="td-num td-after-office">${formatHoursVal(r.after_office_time)}</td>
+      <td class="td-num td-slot-total td-cyan">${formatHoursVal(rowTotal)}</td>
+      <td class="td-num td-work-time">${formatHoursVal(r.work_time)}</td>
+      <td class="td-num td-leave">${formatHoursVal(r.leave)}</td>
+      <td class="td-num td-holiday">${formatHoursVal(r.holiday)}</td>
+      <td class="td-num td-early-out">${formatHoursVal(r.early_out)}</td>
+    `;
+    tbodyEl.appendChild(tr);
+  });
+}
+
+function createExtraReporteeBlock(emp, empRecords, empTotals, isExpanded) {
+  if (typeof document === 'undefined') return null;
+
+  const block = document.createElement('div');
+  block.className = 'reportee-employee-block reportee-extra-block';
+  block.setAttribute('data-user-id', String(emp.id));
+
+  const card = document.createElement('div');
+  card.className = `reportee-profile-card ${isExpanded ? 'is-expanded' : ''}`;
+  card.setAttribute('role', 'button');
+  card.setAttribute('tabindex', '0');
+  card.setAttribute('title', isExpanded ? 'Click to hide time slot data' : 'Click to view time slot data');
+
+  const initials = getReporteeInitials(emp.name);
+  card.innerHTML = `
+    <div class="reportee-profile-avatar">${escapeHtml(initials)}</div>
+    <div class="reportee-profile-details">
+      <div class="reportee-profile-name">${escapeHtml(emp.name || 'Unknown Employee')}</div>
+    </div>
+    <div class="reportee-profile-stats">
+      <div class="profile-stat-item">
+        <span class="profile-stat-label">TOTAL TIME:</span>
+        <span class="profile-stat-val val-total">${formatHoursVal(empTotals.total)}</span>
+      </div>
+      <div class="profile-stat-item">
+        <span class="profile-stat-label">WORK TIME:</span>
+        <span class="profile-stat-val val-work">${formatHoursVal(empTotals.work_time)}</span>
+      </div>
+    </div>
+    <div class="reportee-profile-chevron">
+      <svg class="profile-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </div>
+  `;
+
+  const tableWrapper = document.createElement('div');
+  tableWrapper.className = `timeslot-table-wrapper ${isExpanded ? '' : 'hidden'}`;
+
+  tableWrapper.innerHTML = `
+    <div class="timeslot-table-scroll">
+      <table class="timeslot-data-table">
+        <thead>
+          <tr>
+            <th class="th-col th-date">DATE <span class="sort-icon">▲</span></th>
+            <th class="th-col th-early-morning">
+              <div class="th-main-title">Early Morning</div>
+              <div class="th-time-range">(12 AM to 8.30 AM)</div>
+            </th>
+            <th class="th-col th-office-time">
+              <div class="th-main-title">Office Time</div>
+              <div class="th-time-range">(8.30 AM to 7.30 PM)</div>
+            </th>
+            <th class="th-col th-after-office">
+              <div class="th-main-title">After Office Time</div>
+              <div class="th-time-range">(7.30 PM to 11.59 PM)</div>
+            </th>
+            <th class="th-col th-slot-total">TOTAL</th>
+            <th class="th-col th-work-time">WORK TIME</th>
+            <th class="th-col th-leave">LEAVE</th>
+            <th class="th-col th-holiday">HOLIDAY</th>
+            <th class="th-col th-early-out">EARLY OUT</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr class="timeslot-row-total">
+            <td class="td-total-label td-date">Total</td>
+            <td class="td-num td-early-morning">${formatHoursVal(empTotals.early_morning)}</td>
+            <td class="td-num td-office-time">${formatHoursVal(empTotals.office_time)}</td>
+            <td class="td-num td-after-office">${formatHoursVal(empTotals.after_office_time)}</td>
+            <td class="td-num td-slot-total td-cyan">${formatHoursVal(empTotals.total)}</td>
+            <td class="td-num td-work-time">${formatHoursVal(empTotals.work_time)}</td>
+            <td class="td-num td-leave">${formatHoursVal(empTotals.leave)}</td>
+            <td class="td-num td-holiday">${formatHoursVal(empTotals.holiday)}</td>
+            <td class="td-num td-early-out">${formatHoursVal(empTotals.early_out)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+
+  const tbody = tableWrapper.querySelector('tbody');
+  renderTableRowsForBody(tbody, empRecords);
+
+  const toggleBlock = () => {
+    const isHidden = tableWrapper.classList.contains('hidden');
+    if (isHidden) {
+      tableWrapper.classList.remove('hidden');
+      card.classList.add('is-expanded');
+      card.setAttribute('title', 'Click to hide time slot data');
+      expandedReporteeUserIds.add(Number(emp.id));
+    } else {
+      tableWrapper.classList.add('hidden');
+      card.classList.remove('is-expanded');
+      card.setAttribute('title', 'Click to view time slot data');
+      expandedReporteeUserIds.delete(Number(emp.id));
+    }
+  };
+
+  card.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleBlock();
+  });
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleBlock();
+    }
+  });
+
+  block.appendChild(card);
+  block.appendChild(tableWrapper);
+  return block;
+}
+
 function renderReporteesDashboard() {
   if (!reporteesData) return;
   const data = reporteesData;
@@ -3064,16 +3240,42 @@ function renderReporteesDashboard() {
     summaryTotalReportees.textContent = String(count);
   }
 
-  // 2. Update employee profile for current selection
-  const selectedEmp = allReporteesList.find(r => Number(r.id) === currentSelectedUserId) || allReporteesList[0];
-  if (selectedEmp) {
-    currentSelectedUserId = selectedEmp.id;
-    updateEmployeeProfile(selectedEmp);
+  const rawRecords = Array.isArray(reporteesData.records) ? reporteesData.records : [];
+
+  // 2. Render primary employee (index 0)
+  const primaryEmp = allReporteesList[0];
+  if (primaryEmp) {
+    currentSelectedUserId = primaryEmp.id;
+    updateEmployeeProfile(primaryEmp);
+    const primaryRecords = rawRecords.filter(r => Number(r.user_id) === Number(primaryEmp.id));
+    currentFilteredRecords = primaryRecords;
+    const primaryTotals = calculateEmployeeTotals(primaryRecords);
+    currentCalculatedTotals = primaryTotals;
+    updateTableTotals(primaryTotals);
+    renderTableRowsForBody(timeslotTableBody, primaryRecords);
+    const isPrimaryExpanded = expandedReporteeUserIds.has(Number(primaryEmp.id)) || isReporteeTableExpanded;
+    toggleReporteeTable(isPrimaryExpanded);
   }
 
-  // 3. Render table and totals
-  renderEmployeeTableAndTotals();
-  toggleReporteeTable(isReporteeTableExpanded);
+  // 3. Render all additional reportees (indices 1 to N) dynamically so all reportees appear on the dashboard
+  const sectionsContainer = (typeof reporteesSectionsContainer !== 'undefined' && reporteesSectionsContainer) ||
+    (typeof document !== 'undefined' ? document.getElementById('reportees-sections-container') : null);
+
+  if (sectionsContainer) {
+    const oldExtras = sectionsContainer.querySelectorAll('.reportee-extra-block');
+    oldExtras.forEach(el => el.remove());
+
+    for (let i = 1; i < allReporteesList.length; i++) {
+      const emp = allReporteesList[i];
+      const empRecords = rawRecords.filter(r => Number(r.user_id) === Number(emp.id));
+      const empTotals = calculateEmployeeTotals(empRecords);
+      const isExpanded = expandedReporteeUserIds.has(Number(emp.id));
+      const extraBlock = createExtraReporteeBlock(emp, empRecords, empTotals, isExpanded);
+      if (extraBlock) {
+        sectionsContainer.appendChild(extraBlock);
+      }
+    }
+  }
 }
 
 function calculateEmployeeTotals(records) {
@@ -3125,70 +3327,15 @@ function renderEmployeeTableAndTotals() {
     timeslotRecordsCount.textContent = `Total Records Found: ${employeeRecords.length}`;
   }
 
-  timeslotTableBody.innerHTML = '';
-
-  if (employeeRecords.length === 0) {
-    if (reporteesEmpty) {
-      reporteesEmpty.classList.remove('hidden');
-      if (reporteesEmptyMsg) {
-        reporteesEmptyMsg.textContent = 'No reportee activity logs found for this period.';
-      }
-    }
-    updateTableTotals({
-      early_morning: 0,
-      office_time: 0,
-      after_office_time: 0,
-      total: 0,
-      work_time: 0,
-      leave: 0,
-      holiday: 0,
-      early_out: 0
-    });
-    return;
-  }
-
   if (reporteesEmpty) {
-    reporteesEmpty.classList.add('hidden');
+    if (employeeRecords.length === 0) {
+      reporteesEmpty.classList.remove('hidden');
+    } else {
+      reporteesEmpty.classList.add('hidden');
+    }
   }
 
-  // Render 9-column rows
-  employeeRecords.forEach(r => {
-    const tr = document.createElement('tr');
-    const rowClass = getRowClassForShortage(r.is_shortage);
-    if (rowClass) tr.className = rowClass;
-
-    const em = parseFloat(r.early_morning) || 0;
-    const ot = parseFloat(r.office_time) || 0;
-    const aot = parseFloat(r.after_office_time) || 0;
-    const slotSum = Math.round((em + ot + aot) * 100) / 100;
-    const rawTotal = parseFloat(r.total) || 0;
-    const rowTotal = (slotSum > 0 || rawTotal === 0) ? slotSum : rawTotal;
-
-    const displayDate = r.date_formatted || r.date || '';
-
-    tr.innerHTML = `
-      <td class="td-date">
-        <span class="row-date-wrapper">
-          <svg class="row-cal-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
-            <path d="M3 8H17" stroke="currentColor" stroke-width="1.6" />
-            <path d="M7 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-            <path d="M13 2.5V5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-          </svg>
-          <span class="row-date-text">${escapeHtml(displayDate)}</span>
-        </span>
-      </td>
-      <td class="td-num td-early-morning">${formatHoursVal(r.early_morning)}</td>
-      <td class="td-num td-office-time">${formatHoursVal(r.office_time)}</td>
-      <td class="td-num td-after-office">${formatHoursVal(r.after_office_time)}</td>
-      <td class="td-num td-slot-total td-cyan">${formatHoursVal(rowTotal)}</td>
-      <td class="td-num td-work-time">${formatHoursVal(r.work_time)}</td>
-      <td class="td-num td-leave">${formatHoursVal(r.leave)}</td>
-      <td class="td-num td-holiday">${formatHoursVal(r.holiday)}</td>
-      <td class="td-num td-early-out">${formatHoursVal(r.early_out)}</td>
-    `;
-    timeslotTableBody.appendChild(tr);
-  });
+  renderTableRowsForBody(timeslotTableBody, employeeRecords);
 
   // Calculate totals from selected employee's records only
   const empTotals = calculateEmployeeTotals(employeeRecords);
@@ -3407,6 +3554,8 @@ if (typeof module !== 'undefined' && module.exports) {
     getRowClassForShortage,
     handleExportExcelClick,
     createReporteeCardElement,
+    createExtraReporteeBlock,
+    renderTableRowsForBody,
     getReporteesData: () => reporteesData,
     setReporteesData: (d) => { reporteesData = d; },
     getReporteesDays: () => reporteesDays,

@@ -2680,8 +2680,8 @@ body.is-maximized #popup-container {
   color: #fca5a5;
   font-size: 10.5px;
   font-weight: 500;
-  margin-top: 4px;
-  margin-bottom: 6px;
+  margin-top: 8px;
+  margin-bottom: 2px;
   user-select: none;
   flex-shrink: 0;
   width: fit-content;
@@ -2700,6 +2700,37 @@ body.is-maximized #popup-container {
 }
 
 /* ================= EMPLOYEE PROFILE CARD & DROPDOWN ================= */
+.reportees-sections-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding-top: 10px;
+  padding-right: 2px;
+  margin-top: 4px;
+}
+
+.reportees-sections-container::-webkit-scrollbar {
+  width: 4px;
+}
+.reportees-sections-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+.reportees-sections-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.reportee-employee-block {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
 .reportee-profile-dropdown-wrapper {
   position: relative;
   margin-top: 0;

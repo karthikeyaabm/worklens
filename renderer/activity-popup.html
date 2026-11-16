@@ -184,123 +184,111 @@
 
     <!-- ================= REPORTEES DASHBOARD VIEW ================= -->
     <div id="reportees-view" class="view-panel hidden">
-      <!-- Shortage Legend Badge -->
+      <!-- Scrollable Container for Dynamic Reportee Sections (All Reportees Rendered) -->
+      <div id="reportees-sections-container" class="reportees-sections-container">
+        <!-- Primary Employee Block (Index 0) -->
+        <div class="reportee-employee-block" id="reportee-block-primary">
+          <div class="reportee-profile-card" id="reportee-profile-card" role="button" tabindex="0" title="Click to view time slot data">
+            <div class="reportee-profile-avatar" id="reportee-avatar">KK</div>
+            <div class="reportee-profile-details">
+              <div class="reportee-profile-name" id="reportee-name">Karthikeya Kondavathri</div>
+            </div>
+            <div class="reportee-profile-stats" id="reportee-profile-stats">
+              <div class="profile-stat-item">
+                <span class="profile-stat-label">TOTAL TIME:</span>
+                <span class="profile-stat-val val-total" id="reportee-stat-total">0.00h</span>
+              </div>
+              <div class="profile-stat-item">
+                <span class="profile-stat-label">WORK TIME:</span>
+                <span class="profile-stat-val val-work" id="reportee-stat-work">0.00h</span>
+              </div>
+            </div>
+            <div class="reportee-profile-chevron" id="reportee-profile-chevron">
+              <svg class="profile-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Table Scrollable Area (Collapsible Accordion Table) -->
+          <div class="timeslot-table-wrapper hidden" id="reportees-scroll-container">
+            <!-- Loading State -->
+            <div id="reportees-loading" class="state-container hidden">
+              <div class="spinner"></div>
+              <p>Loading reportees time slot data...</p>
+            </div>
+
+            <!-- Error State -->
+            <div id="reportees-error" class="state-container hidden">
+              <p id="reportees-error-msg" class="error-msg">Unable to load reportees time slot data.</p>
+              <button id="reportees-retry-btn" class="retry-button">Retry</button>
+            </div>
+
+            <!-- Empty State -->
+            <div id="reportees-empty" class="state-container hidden">
+              <p id="reportees-empty-msg" class="empty-msg">No reportee activity logs found for this period.</p>
+            </div>
+
+            <!-- Dynamic Time-Slot Table -->
+            <div class="timeslot-table-scroll" id="timeslot-table-scroll">
+              <table id="timeslot-table" class="timeslot-data-table">
+                <thead>
+                  <tr>
+                    <th class="th-col th-date">DATE <span class="sort-icon">▲</span></th>
+                    <th class="th-col th-early-morning">
+                      <div class="th-main-title">Early Morning</div>
+                      <div class="th-time-range">(12 AM to 8.30 AM)</div>
+                    </th>
+                    <th class="th-col th-office-time">
+                      <div class="th-main-title">Office Time</div>
+                      <div class="th-time-range">(8.30 AM to 7.30 PM)</div>
+                    </th>
+                    <th class="th-col th-after-office">
+                      <div class="th-main-title">After Office Time</div>
+                      <div class="th-time-range">(7.30 PM to 11.59 PM)</div>
+                    </th>
+                    <th class="th-col th-slot-total">TOTAL</th>
+                    <th class="th-col th-work-time">WORK TIME</th>
+                    <th class="th-col th-leave">LEAVE</th>
+                    <th class="th-col th-holiday">HOLIDAY</th>
+                    <th class="th-col th-early-out">EARLY OUT</th>
+                  </tr>
+                </thead>
+                <tbody id="timeslot-table-body">
+                  <!-- Dynamically populated rows for selected employee only -->
+                </tbody>
+                <tfoot id="timeslot-table-foot">
+                  <tr class="timeslot-row-total">
+                    <td class="td-total-label td-date">Total</td>
+                    <td class="td-num td-early-morning" id="total-early-morning">0.00h</td>
+                    <td class="td-num td-office-time" id="total-office-time">0.00h</td>
+                    <td class="td-num td-after-office" id="total-after-office">0.00h</td>
+                    <td class="td-num td-slot-total td-cyan" id="total-system-active">0.00h</td>
+                    <td class="td-num td-work-time" id="total-work-time">0.00h</td>
+                    <td class="td-num td-leave" id="total-leave">0.00h</td>
+                    <td class="td-num td-holiday" id="total-holiday">0.00h</td>
+                    <td class="td-num td-early-out" id="total-early-out">0.00h</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shortage Legend Badge (Placed at bottom of dashboard) -->
       <div class="reportee-shortage-badge" id="reportee-shortage-badge">
         <span class="shortage-badge-icon">⚠️</span>
         <span class="shortage-badge-text">Red Row = Required Hours Shortage (&lt; 7.5h / Early Out &lt; 6h / Half Day Leave &lt; 3.5h)</span>
       </div>
 
-      <!-- Employee Profile Card Section (Dynamic Dropdown) -->
-      <div class="reportee-profile-dropdown-wrapper" id="reportees-dropdown-container">
-        <div class="reportee-profile-card" id="reportee-profile-card" role="button" tabindex="0" title="Click to view time slot data">
-          <div class="reportee-profile-avatar" id="reportee-avatar">KK</div>
-          <div class="reportee-profile-details">
-            <div class="reportee-profile-name" id="reportee-name">Karthikeya Kondavathri</div>
-          </div>
-          <div class="reportee-profile-stats" id="reportee-profile-stats">
-            <div class="profile-stat-item">
-              <span class="profile-stat-label">TOTAL TIME:</span>
-              <span class="profile-stat-val val-total" id="reportee-stat-total">0.00h</span>
-            </div>
-            <div class="profile-stat-item">
-              <span class="profile-stat-label">WORK TIME:</span>
-              <span class="profile-stat-val val-work" id="reportee-stat-work">0.00h</span>
-            </div>
-          </div>
-          <div class="reportee-profile-chevron" id="reportee-profile-chevron">
-            <svg class="profile-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Reportees Dropdown Menu -->
+      <!-- Semantic hidden containers for backward-compatible metadata and dropdown elements -->
+      <div style="display:none;" aria-hidden="true" id="reportees-dropdown-container">
         <div id="reportees-dropdown-menu" class="reportees-dropdown-menu hidden">
-          <div class="reportees-menu-header">
-            <div class="reportees-menu-title-row">
-              <span class="reportees-menu-title">All Reportees</span>
-              <span class="reportees-count-badge" id="reportees-dropdown-count">0</span>
-            </div>
-            <div class="reportees-menu-search-wrapper">
-              <svg class="reportees-menu-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input type="text" id="reportees-dropdown-search-input" class="reportees-menu-search-input" placeholder="Search reportees by name or ID..." />
-            </div>
-          </div>
-          <div id="reportees-dropdown-list" class="reportees-dropdown-list">
-            <!-- Dynamic Reportee Items Injected by JS -->
-          </div>
+          <input type="text" id="reportees-dropdown-search-input" />
+          <div id="reportees-dropdown-list"></div>
+          <span id="reportees-dropdown-count">0</span>
         </div>
-      </div>
-
-      <!-- Table Scrollable Area (Collapsible Accordion Table) -->
-      <div class="timeslot-table-wrapper hidden" id="reportees-scroll-container">
-        <!-- Loading State -->
-        <div id="reportees-loading" class="state-container hidden">
-          <div class="spinner"></div>
-          <p>Loading reportees time slot data...</p>
-        </div>
-
-        <!-- Error State -->
-        <div id="reportees-error" class="state-container hidden">
-          <p id="reportees-error-msg" class="error-msg">Unable to load reportees time slot data.</p>
-          <button id="reportees-retry-btn" class="retry-button">Retry</button>
-        </div>
-
-        <!-- Empty State -->
-        <div id="reportees-empty" class="state-container hidden">
-          <p id="reportees-empty-msg" class="empty-msg">No reportee activity logs found for this period.</p>
-        </div>
-
-        <!-- Dynamic Time-Slot Table -->
-        <div class="timeslot-table-scroll" id="timeslot-table-scroll">
-          <table id="timeslot-table" class="timeslot-data-table">
-            <thead>
-              <tr>
-                <th class="th-col th-date">DATE <span class="sort-icon">▲</span></th>
-                <th class="th-col th-early-morning">
-                  <div class="th-main-title">Early Morning</div>
-                  <div class="th-time-range">(12 AM to 8.30 AM)</div>
-                </th>
-                <th class="th-col th-office-time">
-                  <div class="th-main-title">Office Time</div>
-                  <div class="th-time-range">(8.30 AM to 7.30 PM)</div>
-                </th>
-                <th class="th-col th-after-office">
-                  <div class="th-main-title">After Office Time</div>
-                  <div class="th-time-range">(7.30 PM to 11.59 PM)</div>
-                </th>
-                <th class="th-col th-slot-total">TOTAL</th>
-                <th class="th-col th-work-time">WORK TIME</th>
-                <th class="th-col th-leave">LEAVE</th>
-                <th class="th-col th-holiday">HOLIDAY</th>
-                <th class="th-col th-early-out">EARLY OUT</th>
-              </tr>
-            </thead>
-            <tbody id="timeslot-table-body">
-              <!-- Dynamically populated rows for selected employee only -->
-            </tbody>
-            <tfoot id="timeslot-table-foot">
-              <tr class="timeslot-row-total">
-                <td class="td-total-label td-date">Total</td>
-                <td class="td-num td-early-morning" id="total-early-morning">0.00h</td>
-                <td class="td-num td-office-time" id="total-office-time">0.00h</td>
-                <td class="td-num td-after-office" id="total-after-office">0.00h</td>
-                <td class="td-num td-slot-total td-cyan" id="total-system-active">0.00h</td>
-                <td class="td-num td-work-time" id="total-work-time">0.00h</td>
-                <td class="td-num td-leave" id="total-leave">0.00h</td>
-                <td class="td-num td-holiday" id="total-holiday">0.00h</td>
-                <td class="td-num td-early-out" id="total-early-out">0.00h</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-
-      <!-- Semantic hidden containers for backward-compatible metadata -->
-      <div style="display:none;" aria-hidden="true">
         <span id="reportee-id"></span>
         <span id="reportee-manager"></span>
         <span id="reportees-date-range-text">-- — --</span>

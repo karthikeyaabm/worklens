@@ -532,17 +532,18 @@ sequenceDiagram
 *   **Multi-Reportee Dropdown & Dynamic Employee Selection (v1.3.48):**
     *   **Clean Tab Navigation Button (`Reportees (N)`):** The reportees header option is styled as a clean pill tab button without a dropdown menu or chevron. Clicking the button directly switches between Active Time and Reportees dashboard views.
     *   **Automatic Profile & Table Binding:** Seamlessly binds the employee details into the profile card and populates the 9-column time-slot table with their records and isolated totals.
-    *   **Shortage Legend Badge:** Positioned immediately above the employee card, displaying `⚠️ Red Row = Required Hours Shortage (< 7.5h / Early Out < 6h / Half Day Leave < 3.5h)` in a pill badge with dark red tint (`rgba(239, 68, 68, 0.1)`, border `rgba(239, 68, 68, 0.3)`, and text `#fca5a5`).
-    *   **Employee Profile Card & Interactive Reportee Dropdown:** Displays a dedicated sleek profile card directly beneath the shortage badge:
-        *   Avatar box with employee initials (e.g. `VH` for Vishal Hake, `KK` for Karthikeya Kondavathri).
-        *   Bold Employee Name with interactive hover glow.
-        *   **Dynamic Total Time & Work Time Stat Pills:** Directly inside the profile card to the right of the employee name, displays two real-time stat pills:
-            *   `TOTAL TIME:` (System active total hours highlighted in cyan `#38bdf8`, e.g. `161.67h`).
-            *   `WORK TIME:` (Redmine timesheet hours highlighted in clean white `#f1f5f9`, e.g. `153.00h`).
-            *   Provides instant visibility into the employee's total tracked time and Redmine logged time even when the table is collapsed.
-        *   Chevron arrow indicator (`▼` / `▲`).
-        *   **Collapsible Accordion Table Toggle:** Clicking the employee box (e.g. Vishal Hake) toggles the time-slot data table open and closed. On initial load the table is collapsed; clicking the employee card opens the table and rotates the chevron arrow (`▲`), and clicking again collapses/hides the table (`▼`).
-        *   **Instant Context & Table Switch:** Selecting any reportee updates the profile card, renders that reportee's date-wise table and totals, and expands the table view.
+    *   **Shortage Legend Badge (v1.3.64):** Positioned at the bottom of the Reportees dashboard view (beneath all reportee cards and accordion tables), displaying `⚠️ Red Row = Required Hours Shortage (< 7.5h / Early Out < 6h / Half Day Leave < 3.5h)` in a pill badge with dark red tint (`rgba(239, 68, 68, 0.1)`, border `rgba(239, 68, 68, 0.3)`, and text `#fca5a5`).
+    *   **Dynamic Multi-Reportee Accordion Dashboard List (v1.3.63):** Displays all reportees returned by the API dynamically on the dashboard within `#reportees-sections-container`:
+        *   **All Reportees Rendered:** When the manager has multiple reportees (e.g. 3 reportees: Gaurav Gaikwad, Vishal Hake, and others), all reportees are rendered directly on the dashboard rather than limiting the view to a single employee.
+        *   **Dedicated Card & Metric Pills per Reportee:** Each reportee block (`.reportee-employee-block`) features:
+            *   Avatar box with employee initials (e.g. `GG` for Gaurav Gaikwad, `VH` for Vishal Hake).
+            *   Bold Employee Name with interactive hover glow.
+            *   **Dynamic Total Time & Work Time Stat Pills:**
+                *   `TOTAL TIME:` (System active total hours highlighted in cyan `#38bdf8`).
+                *   `WORK TIME:` (Redmine timesheet hours highlighted in clean white `#f1f5f9`).
+            *   Interactive chevron arrow indicator (`▼` / `▲`).
+        *   **Independent Collapsible Accordion Tables:** Clicking any reportee's card or dropdown arrow expands/collapses that specific reportee's 9-column time-slot data table with their isolated date records, shortage highlights, and calculated column totals.
+        *   **Smooth Scrollable Container:** `#reportees-sections-container` manages vertical scrolling smoothly with zero horizontal side overflow.
     *   **Compact Dynamic Time-Slot Table (9 Columns, Single TOTAL, 100% Fit):**
         *   **Single TOTAL Column:** Retains the single authoritative TOTAL column immediately following AFTER OFFICE (highlighted in cyan `#38bdf8`).
         *   **Proportional Column Widths (Zero Horizontal Scroll):** Table uses `table-layout: fixed; width: 100%;` with exact column percentages totaling 100% (`DATE` 18%, `EARLY MORNING` 12%, `OFFICE TIME` 11%, `AFTER OFFICE` 11%, `TOTAL` 10%, `WORK TIME` 10%, `LEAVE` 9%, `HOLIDAY` 9%, `EARLY OUT` 10%).
@@ -1549,6 +1550,16 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Comprehensive Test Suite:** Added `test_working_hours_schedule_suite.js` covering 40 unit and integration tests across boundary conditions, overnight schedules, dynamic configuration refreshes, and recording gate safety.
 *   **v1.3.5 - Release Version Bump (1.3.5):**
     *   **Version Update:** Updated application release version to `1.3.5` across `package.json`, `package-lock.json`, `renderer/index.html`, and dynamic IPC `get-app-version`.
+*   **v1.3.65 - Top Breathing Padding on Reportees Box Container:**
+    *   **Header Separation:** Added `padding-top: 10px; margin-top: 4px;` on `.reportees-sections-container` to provide clean visual clearance between the top header navigation (`Reportees (N)`) and the first employee card.
+*   **v1.3.64 - Shortage Legend Badge Placed at Bottom of Reportees Dashboard:**
+    *   **Bottom Placement:** Repositioned the shortage explanation badge (`.reportee-shortage-badge`, `⚠️ Red Row = Required Hours Shortage (< 7.5h / Early Out < 6h / Half Day Leave < 3.5h)`) from the top of the Reportees view to the bottom beneath `#reportees-sections-container`.
+    *   **Clean Header Clearance:** Gives immediate top focus to employee cards while keeping the shortage guidance badge clearly visible at the bottom of the dashboard.
+*   **v1.3.63 - Multi-Reportee Dynamic Dashboard Accordion List (All Reportees Rendered):**
+    *   **Root Cause Resolution:** Resolved issue where managers with multiple reportees (e.g. 3 reportees in API) only saw the first reportee on the dashboard due to a single hardcoded employee card.
+    *   **Dynamic Multi-Reportee List:** Updated `renderReporteesDashboard()` to iterate over `allReporteesList` and render all reportees inside `#reportees-sections-container`.
+    *   **Card & Accordion Table per Reportee:** Each reportee features their own profile card with initials avatar, employee name, `TOTAL TIME` pill, `WORK TIME` pill, and chevron arrow, with an independent 9-column timeslot table that expands and collapses on click.
+    *   **Automated Verification:** Added unit test `5.9` in `test_reportees_dashboard_suite.js` (28/28 tests passing).
 *   **v1.3.62 - Total Time & Work Time Stat Badges in Employee Profile Card:**
     *   **Direct Card Metrics:** Displayed **Total Time** (`#reportee-stat-total`, in cyan `#38bdf8`) and **Work Time** (`#reportee-stat-work`, in crisp white `#f1f5f9`) directly within `.reportee-profile-card` to the left of the accordion chevron.
     *   **Instant Visibility without Expanding:** Allows managers to immediately see the employee's total active hours and Redmine logged work hours even when the accordion data table is collapsed.

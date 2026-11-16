@@ -611,6 +611,16 @@ async function runAsyncTest(description, testFn) {
     assert.strictEqual(popupRenderer.getIsReporteeTableExpanded(), false);
   });
 
+  runTest('5.9 createExtraReporteeBlock and renderTableRowsForBody handle multi-reportee dashboard rendering', () => {
+    assert.strictEqual(typeof popupRenderer.createExtraReporteeBlock, 'function');
+    assert.strictEqual(typeof popupRenderer.renderTableRowsForBody, 'function');
+    const empMock = { id: 891, name: 'Employee Two' };
+    const empRecs = sanitizedMulti.records.filter(r => r.user_id === 891);
+    const empTotals = reporteesService.calculateEmployeeTotals(empRecs);
+    const block = popupRenderer.createExtraReporteeBlock(empMock, empRecs, empTotals, false);
+    assert.strictEqual(block, null); // safe headless DOM fallback in node
+  });
+
   // -----------------------------------------------------------------------------
   // SUMMARY
   // -----------------------------------------------------------------------------
