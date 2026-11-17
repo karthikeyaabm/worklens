@@ -545,6 +545,16 @@ sequenceDiagram
         *   **Independent Collapsible Accordion Tables:** Clicking any reportee's card or dropdown arrow expands/collapses that specific reportee's 9-column time-slot data table with their isolated date records, shortage highlights, and calculated column totals.
         *   **Smooth Scrollable Container:** `#reportees-sections-container` manages vertical scrolling smoothly with zero horizontal side overflow.
     *   **Compact Dynamic Time-Slot Table (9 Columns, Single TOTAL, 100% Fit):**
+        *   **Themed Column Header Colors (Matching Reference Design):**
+            *   `EARLY MORNING (12 AM TO 8.30 AM)`: Deep Navy Blue background (`#0f2744`), border `#1e5a96`, text `#ffffff`, subtitle time range `#7dd3fc`.
+            *   `OFFICE TIME (8.30 AM TO 7.30 PM)`: Deep Forest Green background (`#0f3521`), border `#1e7e48`, text `#ffffff`, subtitle time range `#86efac`.
+            *   `AFTER OFFICE TIME (7.30 PM TO 11.59 PM)`: Deep Amber Bronze background (`#3e2808`), border `#9e6712`, text `#ffffff`, subtitle time range `#fde047`.
+            *   `TOTAL`: Dark Slate/Charcoal background (`#1c2738`), border `#3b4e68`, text `#ffffff`.
+            *   `LEAVE`: Deep Olive/Mustard background (`#463f0d`), border `#998a1a`, text `#ffffff`.
+            *   `HOLIDAY`: Deep Violet/Purple background (`#33194a`), border `#7432a8`, text `#ffffff`.
+            *   `EARLY OUT`: Deep Terracotta/Rust background (`#451f12`), border `#944024`, text `#ffffff`.
+            *   `WORK TIME`: Dark Slate Blue background (`#1c2738`), border `#3b4e68`, text `#ffffff`.
+            *   `DATE`: Clean Dark Table Header background (`#111827`), border `#1f2937`, text `#cbd5e1`.
         *   **Single TOTAL Column:** Retains the single authoritative TOTAL column immediately following AFTER OFFICE (highlighted in cyan `#38bdf8`).
         *   **Proportional Column Widths (Zero Horizontal Scroll):** Table uses `table-layout: fixed; width: 100%;` with exact column percentages totaling 100% (`DATE` 18%, `EARLY MORNING` 12%, `OFFICE TIME` 11%, `AFTER OFFICE` 11%, `TOTAL` 10%, `WORK TIME` 10%, `LEAVE` 9%, `HOLIDAY` 9%, `EARLY OUT` 10%).
         *   **Compact Spacing:** Cell padding streamlined to `5px 3px` to eliminate horizontal overflow.
@@ -560,7 +570,38 @@ sequenceDiagram
         8. `HOLIDAY` (Holiday hours)
         9. `EARLY OUT` (Early out hours)
     *   **Strict Employee Data Isolation:** Table records and summary totals strictly filter by `record.user_id === selectedUserId`. Manager-level aggregate totals are never mixed into individual employee records.
-    *   **Consistent Hour Formatting:** Values are formatted consistently in hours with two decimals and the `h` suffix (e.g. `0.00h`, `1.18h`, `31.26h`, `34.85h`).
+    *   **Consistent Hour Formatting & Plain Zero-Value Display (v1.3.67):** In the reportee time-slot data table (`timeslot-data-table`), if a cell's value is `0.0` (or `0`, `0.00`, `null`, `undefined`, or empty), it is rendered plain (blank empty string `""` without displaying `0.00h`), leaving the cell clean and un-cluttered. Non-zero values display as decimal hours with two decimals and the `h` suffix (e.g. `6.33h`, `8.00h`). Profile summary stat pills (`TOTAL TIME:`, `WORK TIME:`) in the employee card continue to display the standard `0.00h` format.
+    *   **Column-Themed Value Colors (v1.3.69):** Value text colors in normal rows and footer totals match their respective column header color themes:
+        *   `EARLY MORNING`: Light Sky Blue (`#7dd3fc`)
+        *   `OFFICE TIME`: Light Green (`#86efac`)
+        *   `AFTER OFFICE TIME`: Bright Yellow/Gold (`#fde047`)
+        *   `TOTAL`: Cyan (`#38bdf8`)
+        *   `WORK TIME`: Clean White (`#ffffff`)
+        *   `LEAVE`: Warm Yellow/Mustard (`#facc15`)
+        *   `HOLIDAY`: Light Purple/Violet (`#c084fc`)
+        *   `EARLY OUT`: Terracotta/Orange (`#fb923c`)
+        *   *Exception:* Shortage rows (`is_shortage === true`) strictly retain uniform red values (`#fca5a5` / `#f87171`) to keep shortage alerts distinct.
+    *   **Column Background Colors & Lightly Borders (v1.3.72):**
+        *   **Column Colors in Table Body Background:** Data cells across all normal rows (`tbody tr:not(.timeslot-row-shortage)`) feature subtle translucent background tints matching each column's header theme (Navy Blue for Early Morning, Forest Green for Office Time, Amber Bronze for After Office, Slate/Cyan for Total, Slate Blue for Work Time, Olive Mustard for Leave, Violet Purple for Holiday, Terracotta Rust for Early Out).
+        *   **Lightly Borders (Grid Lines):** Refined subtle borders (`border-right: 1px solid rgba(255, 255, 255, 0.09)`, `border-bottom: 1px solid rgba(255, 255, 255, 0.08)`) between cells and rows in dark mode, and `1px solid #e2e8f0` in light mode, ensuring clean visual separation.
+        *   **Alternating Even Rows:** Even rows feature slightly more saturated column tints for effortless vertical and horizontal scanning.
+        *   **Shortage Row Preservation:** Red shortage rows (`.timeslot-row-shortage`) strictly retain uniform red alert background (`rgba(239, 68, 68, 0.16)`), red values, and red borders across all columns.
+        *   **Footer Alignment:** Column backgrounds seamlessly extend into the sticky summary footer with light dividing borders.
+    *   **Light & Dark Mode Option (v1.3.70, v1.3.71, v1.3.72):**
+        *   **Reportees Data-Scoped Toggle (v1.3.72):** Light mode styling applies strictly to the reportees data section (`#reportees-view.reportees-light-theme`). The top popup header (`.popup-header`), tabs (`ACTIVE TIME`, `Reportees`), date range picker, theme button, and window frame stay dark and consistent across both modes.
+        *   **Single Dynamic Icon Toggle Button (v1.3.71):** Placed directly in the header navigation bar (`#header-theme-toggle-container`) beside the date selector when viewing the Reportees dashboard, featuring a single interactive icon button (`#theme-toggle-btn`, `.header-theme-icon-btn`).
+            *   **Dark Mode Active:** Displays a golden Sun icon (`.icon-sun`, `#fbbf24`) with tooltip `title="Switch to Light Mode"`.
+            *   **Light Mode Active:** Displays an indigo Moon icon (`.icon-moon`, `#6366f1`) with tooltip `title="Switch to Dark Mode"`.
+            *   **One-Click Toggle:** Clicking the single button invokes `toggleReporteesTheme()` to switch modes instantly.
+        *   **Persistent Preference:** User choice is automatically saved to `localStorage` (`worklens_reportees_theme`) and reloaded seamlessly across app sessions.
+        *   **Complete Light Theme Styling (`#reportees-view.reportees-light-theme`):**
+            *   Container & Cards: Crisp light backgrounds (`#f8fafc`, `#ffffff`) with subtle borders (`#e2e8f0`) and soft elevation shadows.
+            *   Profile Card: Crisp white card with dark slate employee name (`#0f172a`), slate stat labels (`#64748b`), cyan-blue total (`#0284c7`), and dark work time (`#0f172a`).
+            *   Data Table: Clean borders (`#e2e8f0`), column background tints in soft pastels, high-contrast readable values, and hover state (`#f0f9ff`).
+            *   Light Themed Column Headers: Soft, readable pastel background tints (`#e0f2fe` Early Morning, `#dcfce7` Office Time, `#fef9c3` After Office, `#fef3c7` Leave, `#f3e8ff` Holiday, `#ffedd5` Early Out) paired with matching deep text colors.
+            *   High-Contrast Value Colors: Saturated readable text colors matching column identities on light background (Sky `#0284c7`, Green `#16a34a`, Amber `#ca8a04`, Cyan `#0284c7`, Slate `#0f172a`, Orange `#ea580c`, Purple `#9333ea`).
+            *   Shortage Rows (Red): Soft light red background (`#fee2e2`), dark red text and values (`#b91c1c`), and border (`#fca5a5`).
+        *   **Isolated Scope:** Active Time dashboard tab remains untouched in its standard dark theme, keeping personal workstation monitoring dark and focused.
     *   **Default Selection:** Automatically selects the first available reportee on dashboard initialization, or displays a clean empty state if no reportees exist.
     *   **Decimal Formatting & Null Handling:** Decimal hours are rendered directly from API numbers without incorrect rounding. Null/undefined fields display clean blank cells.
     *   **Total Row:** Bottom `<tfoot>` calculates and displays column sums across all visible reportee records.
@@ -568,9 +609,9 @@ sequenceDiagram
 *   **Important Row Color Logic (`is_shortage`):**
     *   Row highlighting strictly evaluates the boolean `record.is_shortage` field from the API:
         *   `is_shortage === true`: Entire row highlighted in **Red** (`rgba(239, 68, 68, 0.16)` background, `#fca5a5` text, `#f87171` cyan/total values and calendar icon). Class `.timeslot-row-shortage`.
-        *   `is_shortage === false`: Entire row highlighted in **Green** (`rgba(34, 197, 94, 0.14)` background, `#86efac` text, `#4ade80` cyan/total values and calendar icon). Class `.timeslot-row-normal`.
+        *   `is_shortage === false`: Normal row without shortage (v1.3.68). Green tint removed per user requirement; renders with clean neutral dark styling (transparent/subtle alternating rows, white/light `#f1f5f9` text, `#38bdf8` cyan total, and `#94a3b8` calendar icon). Class `.timeslot-row-normal`.
         *   `is_shortage === null || undefined`: Retains default neutral table background and text colors.
-    *   Color is applied to all cells in that row and is strictly driven by the API's `is_shortage` boolean value.
+    *   Red highlight is applied exclusively to shortage rows requiring manager attention.
 *   **Excel Export (`Export Time Slot Excel`):**
     *   Uses native `xlsx` library to generate binary `.xlsx` files without external cloud dependencies.
     *   Default filename format: `WorkLens_Reportees_Time_Slot_{from}_to_{to}.xlsx`.
@@ -1550,6 +1591,47 @@ When adding features or modifying code in WorkLens, AI assistants must adhere to
     *   **Comprehensive Test Suite:** Added `test_working_hours_schedule_suite.js` covering 40 unit and integration tests across boundary conditions, overnight schedules, dynamic configuration refreshes, and recording gate safety.
 *   **v1.3.5 - Release Version Bump (1.3.5):**
     *   **Version Update:** Updated application release version to `1.3.5` across `package.json`, `package-lock.json`, `renderer/index.html`, and dynamic IPC `get-app-version`.
+*   **v1.3.72 - Reportees Data-Scoped Dark/Light Mode & Column Background Colors with Light Borders:**
+    *   **Data-Scoped Dark/Light Toggle:** Restricted `.reportees-light-theme` to `#reportees-view` (the reportees cards and data section), keeping the top popup window header (`.popup-header`), navigation tabs (`ACTIVE TIME`, `Reportees`), date range selector, and window frame in the dark theme.
+    *   **Column Background Colors in Table Body:** Applied subtle translucent background colors across normal rows (`tbody tr:not(.timeslot-row-shortage)`) matching each column header's identity in both dark and light modes (Navy for Early Morning, Forest Green for Office Time, Amber for After Office, Slate/Cyan for Total, Slate Blue for Work Time, Olive Mustard for Leave, Violet for Holiday, and Terracotta for Early Out).
+    *   **Lightly Borders:** Added crisp subtle borders (`border-right: 1px solid rgba(255, 255, 255, 0.09)`, `border-bottom: 1px solid rgba(255, 255, 255, 0.08)`) between cells in dark mode and `#e2e8f0` in light mode for clear grid separation.
+    *   **Shortage Row Rule Preservation:** Shortage rows (`timeslot-row-shortage`) strictly preserve the uniform red shortage alert styling (`rgba(239, 68, 68, 0.16)` background, red text, and red borders) across all columns.
+    *   **Test Suite Verification:** Verified with `test_reportees_dashboard_suite.js` passing all 31/31 assertions.
+*   **v1.3.71 - Single Icon Button for Reportees Light/Dark Mode Toggle:**
+    *   **Single Dynamic Icon Button:** Replaced the dual `[Dark | Light]` segmented control with a single icon button (`#theme-toggle-btn`, `.header-theme-icon-btn`) in `#header-theme-toggle-container` to streamline the header controls.
+    *   **State-Aware Icon Display:** Displays a golden Sun icon (`.icon-sun`, `#fbbf24`) with tooltip `title="Switch to Light Mode"` when in Dark mode, and an indigo Moon icon (`.icon-moon`, `#6366f1`) with tooltip `title="Switch to Dark Mode"` when in Light mode.
+    *   **Dynamic Theme Toggling:** Wired `toggleReporteesTheme()` in `renderer/activity-popup.js` to flip between `'light'` and `'dark'`, apply/remove `.reportees-light-theme`, update tooltips and icons, and persist state in `localStorage` (`worklens_reportees_theme`).
+    *   **Automated Test Suite:** Updated Tests 4.5 and 5.11 in `test_reportees_dashboard_suite.js`, verifying single button DOM structure, dynamic icon visibility, and theme toggle operations (31/31 passing tests).
+*   **v1.3.70 - Light and Dark Mode Option for Reportees Dashboard:**
+    *   **Header Segmented Toggle:** Added responsive theme segmented buttons (`#theme-btn-dark` and `#theme-btn-light`) with Moon and Sun icons to `#header-theme-toggle-container`, visible exclusively when inspecting the Reportees dashboard.
+    *   **Persistent User Preference:** Saves selection to `localStorage` (`worklens_reportees_theme`), defaulting to dark mode and remembering the user's choice across popup cycles.
+    *   **Comprehensive Light Theme Styling:** Fully styled `.reportees-light-theme` in `renderer/activity-popup.css` covering container backgrounds, header controls, date picker, employee cards, stat pills, light pastel table header tints, light-mode column value colors, and high-contrast shortage rows.
+    *   **Test Suite Verification:** Added tests 4.5 and 5.11 to `test_reportees_dashboard_suite.js`, verifying HTML structure, CSS rules, and clean theme toggling (31/31 passing tests).
+*   **v1.3.69 - Column-Themed Value Colors Across Rows (Except Red Rows):**
+    *   **Column Color Harmony:** Configured cell value text colors in `renderer/activity-popup.css` to match their respective column header themes on non-shortage rows and footer totals: `EARLY MORNING` (`#7dd3fc`), `OFFICE TIME` (`#86efac`), `AFTER OFFICE TIME` (`#fde047`), `TOTAL` (`#38bdf8`), `WORK TIME` (`#ffffff`), `LEAVE` (`#facc15`), `HOLIDAY` (`#c084fc`), and `EARLY OUT` (`#fb923c`).
+    *   **Red Shortage Preservation:** Maintained uniform red values (`#fca5a5` / `#f87171`) and red background (`rgba(239, 68, 68, 0.16)`) exclusively on shortage rows (`.timeslot-row-shortage`).
+    *   **Test Suite Verification:** `test_reportees_dashboard_suite.js` verified with 29/29 passing tests.
+*   **v1.3.68 - Removal of Green Highlight on Normal Table Rows:**
+    *   **Green Tint Removed:** Removed the green background (`rgba(34, 197, 94, 0.14)`), green text (`#86efac`), green total (`#4ade80`), and green calendar icon from `.timeslot-row-normal` in `renderer/activity-popup.css`.
+    *   **Clean Neutral Dark Appearance:** Rows where `is_shortage === false` now render with clean, neutral dark table styling (subtle alternating row backgrounds, white/light `#f1f5f9` text, `#94a3b8` calendar icon, and standard cyan `#38bdf8` total). Only shortage rows (`is_shortage === true`) remain highlighted in red to clearly emphasize deficit hours.
+    *   **Test Suite Verification:** `test_reportees_dashboard_suite.js` passes all 29/29 tests.
+*   **v1.3.67 - Plain Blank Cell Display for Zero Values in Time-Slot Table:**
+    *   **Blank Zero-Value Cells:** Implemented `formatTableCellVal` in `renderer/activity-popup.js` to render any `0.0` (or `0`, `0.00`, `null`, `undefined`, or empty) cell value in `timeslot-data-table` as a plain blank cell (`""`) without showing `0.00h`.
+    *   **Reduced Visual Clutter:** Table body cells (`EARLY MORNING`, `OFFICE TIME`, `AFTER OFFICE TIME`, `TOTAL`, `WORK TIME`, `LEAVE`, `HOLIDAY`, `EARLY OUT`) and table footer columns leave zero-hour values plain/empty, significantly improving table readability while non-zero values retain exact decimal hour formatting with `h` suffix (e.g. `6.33h`, `8.00h`).
+    *   **Stat Pills Unchanged:** Employee profile card summary stat pills (`TOTAL TIME:`, `WORK TIME:`) continue using `formatHoursVal` to clearly display formatted hours (e.g. `102.08h`, `0.00h`).
+    *   **Test Suite Verification:** Added test 5.10 to `test_reportees_dashboard_suite.js` covering `formatTableCellVal` with 29/29 passing tests.
+*   **v1.3.66 - Themed Column Header Colors Matching Design Mockup:**
+    *   **Per-Column Visual Identity:** Applied themed background colors, border tones, and text/subtitle shades to each column header of the time-slot data table matching the reference design:
+        *   `EARLY MORNING (12 AM TO 8.30 AM)`: Deep Navy Blue (`#0f2744`), border `#1e5a96`, text `#ffffff`, subtitle time range `#7dd3fc`.
+        *   `OFFICE TIME (8.30 AM TO 7.30 PM)`: Deep Forest Green (`#0f3521`), border `#1e7e48`, text `#ffffff`, subtitle time range `#86efac`.
+        *   `AFTER OFFICE TIME (7.30 PM TO 11.59 PM)`: Deep Amber Bronze (`#3e2808`), border `#9e6712`, text `#ffffff`, subtitle time range `#fde047`.
+        *   `TOTAL`: Dark Slate/Charcoal (`#1c2738`), border `#3b4e68`, text `#ffffff`.
+        *   `LEAVE`: Deep Olive/Mustard (`#463f0d`), border `#998a1a`, text `#ffffff`.
+        *   `HOLIDAY`: Deep Violet/Purple (`#33194a`), border `#7432a8`, text `#ffffff`.
+        *   `EARLY OUT`: Deep Terracotta/Rust (`#451f12`), border `#944024`, text `#ffffff`.
+        *   `WORK TIME`: Dark Slate Blue (`#1c2738`), border `#3b4e68`, text `#ffffff`.
+        *   `DATE`: Clean Dark Table Header (`#111827`), border `#1f2937`, text `#cbd5e1`.
+    *   **Centered & Uppercase Alignment:** Maintained `text-align: center !important` with uppercase time ranges (`text-transform: uppercase`) and crisp 1px division borders across primary and dynamic accordion tables.
 *   **v1.3.65 - Top Breathing Padding on Reportees Box Container:**
     *   **Header Separation:** Added `padding-top: 10px; margin-top: 4px;` on `.reportees-sections-container` to provide clean visual clearance between the top header navigation (`Reportees (N)`) and the first employee card.
 *   **v1.3.64 - Shortage Legend Badge Placed at Bottom of Reportees Dashboard:**

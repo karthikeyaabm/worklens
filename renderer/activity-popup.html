@@ -54,6 +54,31 @@
             <div class="header-range-menu-item active" data-days="30">Last 30 Days (30 days)</div>
           </div>
         </div>
+
+        <!-- Divider 3 -->
+        <div class="header-divider hidden" id="header-divider-theme">|</div>
+
+        <!-- Single Theme Mode Toggle for Reportees Dashboard -->
+        <div class="header-theme-toggle-wrapper hidden" id="header-theme-toggle-container">
+          <button type="button" id="theme-toggle-btn" class="header-theme-icon-btn" title="Switch to Light Mode" aria-label="Toggle theme">
+            <!-- Sun icon: shown when dark mode is active (click to switch to light) -->
+            <svg class="theme-toggle-icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <!-- Moon icon: shown when light mode is active (click to switch to dark) -->
+            <svg class="theme-toggle-icon icon-moon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </button>
+        </div>
       </div>
       <div class="header-actions">
         <button id="refresh-btn" class="header-action-btn refresh-button" title="Refresh live data" aria-label="Refresh live data">
@@ -260,14 +285,14 @@
                 <tfoot id="timeslot-table-foot">
                   <tr class="timeslot-row-total">
                     <td class="td-total-label td-date">Total</td>
-                    <td class="td-num td-early-morning" id="total-early-morning">0.00h</td>
-                    <td class="td-num td-office-time" id="total-office-time">0.00h</td>
-                    <td class="td-num td-after-office" id="total-after-office">0.00h</td>
-                    <td class="td-num td-slot-total td-cyan" id="total-system-active">0.00h</td>
-                    <td class="td-num td-work-time" id="total-work-time">0.00h</td>
-                    <td class="td-num td-leave" id="total-leave">0.00h</td>
-                    <td class="td-num td-holiday" id="total-holiday">0.00h</td>
-                    <td class="td-num td-early-out" id="total-early-out">0.00h</td>
+                    <td class="td-num td-early-morning" id="total-early-morning"></td>
+                    <td class="td-num td-office-time" id="total-office-time"></td>
+                    <td class="td-num td-after-office" id="total-after-office"></td>
+                    <td class="td-num td-slot-total td-cyan" id="total-system-active"></td>
+                    <td class="td-num td-work-time" id="total-work-time"></td>
+                    <td class="td-num td-leave" id="total-leave"></td>
+                    <td class="td-num td-holiday" id="total-holiday"></td>
+                    <td class="td-num td-early-out" id="total-early-out"></td>
                   </tr>
                 </tfoot>
               </table>

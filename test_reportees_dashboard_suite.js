@@ -403,6 +403,24 @@ async function runAsyncTest(description, testFn) {
     assert.ok(content.includes('.timeslot-row-total'), 'Must define .timeslot-row-total');
   });
 
+  runTest('4.5 activity-popup contains single theme toggle icon button and light theme styles', () => {
+    const htmlPath = path.join(__dirname, 'renderer', 'activity-popup.html');
+    const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    const cssPath = path.join(__dirname, 'renderer', 'activity-popup.css');
+    const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+    assert.ok(htmlContent.includes('id="header-theme-toggle-container"'), 'HTML must have #header-theme-toggle-container');
+    assert.ok(htmlContent.includes('id="theme-toggle-btn"'), 'HTML must have single #theme-toggle-btn');
+    assert.ok(htmlContent.includes('class="theme-toggle-icon icon-sun"'), 'HTML must have Sun icon');
+    assert.ok(htmlContent.includes('class="theme-toggle-icon icon-moon hidden"'), 'HTML must have Moon icon');
+
+    assert.ok(cssContent.includes('.header-theme-icon-btn'), 'CSS must define .header-theme-icon-btn');
+    assert.ok(cssContent.includes('.reportees-light-theme'), 'CSS must define .reportees-light-theme');
+    assert.ok(cssContent.includes('td.td-early-morning'), 'CSS must define column styles for td.td-early-morning');
+    assert.ok(cssContent.includes('td.td-office-time'), 'CSS must define column styles for td.td-office-time');
+    assert.ok(cssContent.includes('border-right: 1px solid'), 'CSS must define lightly borders between cells');
+  });
+
   // -----------------------------------------------------------------------------
   // 5. MULTI-REPORTEE DROPDOWN & DYNAMIC EMPLOYEE TABLE (SECTION 10 VERIFICATION)
   // -----------------------------------------------------------------------------
@@ -619,6 +637,43 @@ async function runAsyncTest(description, testFn) {
     const empTotals = reporteesService.calculateEmployeeTotals(empRecs);
     const block = popupRenderer.createExtraReporteeBlock(empMock, empRecs, empTotals, false);
     assert.strictEqual(block, null); // safe headless DOM fallback in node
+  });
+
+  runTest('5.10 formatTableCellVal leaves 0.0 values plain and formats positive values with h suffix', () => {
+    assert.strictEqual(popupRenderer.formatTableCellVal(0), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal(0.0), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal('0.0'), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal('0.00h'), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal(null), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal(undefined), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal(''), '');
+    assert.strictEqual(popupRenderer.formatTableCellVal(6.33), '6.33h');
+    assert.strictEqual(popupRenderer.formatTableCellVal(8), '8.00h');
+    assert.strictEqual(popupRenderer.formatTableCellVal('7.83'), '7.83h');
+    assert.strictEqual(popupRenderer.formatHoursVal(0, true), '');
+    assert.strictEqual(popupRenderer.formatHoursVal(6.33, true), '6.33h');
+  });
+
+  runTest('5.11 Reportees theme toggles between light and dark mode cleanly with single icon toggle', () => {
+    assert.strictEqual(typeof popupRenderer.getReporteesTheme, 'function');
+    assert.strictEqual(typeof popupRenderer.setReporteesTheme, 'function');
+    assert.strictEqual(typeof popupRenderer.toggleReporteesTheme, 'function');
+    assert.strictEqual(typeof popupRenderer.applyReporteesTheme, 'function');
+
+    popupRenderer.setReporteesTheme('light');
+    assert.strictEqual(popupRenderer.getReporteesTheme(), 'light');
+
+    popupRenderer.toggleReporteesTheme();
+    assert.strictEqual(popupRenderer.getReporteesTheme(), 'dark');
+
+    popupRenderer.toggleReporteesTheme();
+    assert.strictEqual(popupRenderer.getReporteesTheme(), 'light');
+
+    popupRenderer.setReporteesTheme('dark');
+    assert.strictEqual(popupRenderer.getReporteesTheme(), 'dark');
+
+    popupRenderer.setReporteesTheme('invalid-theme');
+    assert.strictEqual(popupRenderer.getReporteesTheme(), 'dark');
   });
 
   // -----------------------------------------------------------------------------

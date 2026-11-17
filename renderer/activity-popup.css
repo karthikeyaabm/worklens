@@ -2930,6 +2930,7 @@ body.is-maximized #popup-container {
   color: #f1f5f9;
   border-spacing: 0;
   background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .timeslot-data-table thead {
@@ -2955,10 +2956,14 @@ body.is-maximized #popup-container {
   letter-spacing: 0.1px;
   text-transform: uppercase;
   text-align: center !important;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.12);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.18) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
   white-space: normal;
   line-height: 1.15;
+}
+
+.timeslot-data-table th:last-child {
+  border-right: none !important;
 }
 
 .th-main-title {
@@ -2969,13 +2974,86 @@ body.is-maximized #popup-container {
 
 .th-time-range {
   font-size: 7.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: #64748b;
   line-height: 1.1;
   margin-top: 1px;
-  text-transform: none;
-  letter-spacing: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
   text-align: center;
+}
+
+/* ================= THEMED COLUMN HEADER COLORS (MATCHING REFERENCE DESIGN) ================= */
+.timeslot-data-table th.th-date {
+  background: #111827 !important;
+  border: 1px solid #1f2937 !important;
+  color: #cbd5e1 !important;
+}
+
+.timeslot-data-table th.th-early-morning {
+  background: #0f2744 !important;
+  border: 1px solid #1e5a96 !important;
+  color: #ffffff !important;
+}
+.timeslot-data-table th.th-early-morning .th-main-title {
+  color: #ffffff !important;
+}
+.timeslot-data-table th.th-early-morning .th-time-range {
+  color: #7dd3fc !important;
+}
+
+.timeslot-data-table th.th-office-time {
+  background: #0f3521 !important;
+  border: 1px solid #1e7e48 !important;
+  color: #ffffff !important;
+}
+.timeslot-data-table th.th-office-time .th-main-title {
+  color: #ffffff !important;
+}
+.timeslot-data-table th.th-office-time .th-time-range {
+  color: #86efac !important;
+}
+
+.timeslot-data-table th.th-after-office {
+  background: #3e2808 !important;
+  border: 1px solid #9e6712 !important;
+  color: #ffffff !important;
+}
+.timeslot-data-table th.th-after-office .th-main-title {
+  color: #ffffff !important;
+}
+.timeslot-data-table th.th-after-office .th-time-range {
+  color: #fde047 !important;
+}
+
+.timeslot-data-table th.th-slot-total {
+  background: #1c2738 !important;
+  border: 1px solid #3b4e68 !important;
+  color: #ffffff !important;
+}
+
+.timeslot-data-table th.th-work-time {
+  background: #1c2738 !important;
+  border: 1px solid #3b4e68 !important;
+  color: #ffffff !important;
+}
+
+.timeslot-data-table th.th-leave {
+  background: #463f0d !important;
+  border: 1px solid #998a1a !important;
+  color: #ffffff !important;
+}
+
+.timeslot-data-table th.th-holiday {
+  background: #33194a !important;
+  border: 1px solid #7432a8 !important;
+  color: #ffffff !important;
+}
+
+.timeslot-data-table th.th-early-out {
+  background: #451f12 !important;
+  border: 1px solid #944024 !important;
+  color: #ffffff !important;
 }
 
 /* 9 Columns exact percentage proportions totaling exactly 100% */
@@ -3066,11 +3144,15 @@ body.is-maximized #popup-container {
 }
 
 .timeslot-data-table td {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  border-right: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.09);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   white-space: nowrap;
+}
+
+.timeslot-data-table td:last-child {
+  border-right: none !important;
 }
 
 .td-cyan,
@@ -3084,26 +3166,93 @@ body.is-maximized #popup-container {
   font-weight: 700;
 }
 
-/* Alternating row styling */
-.timeslot-data-table tbody tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
+/* ================= COLUMN COLORS IN BACKGROUND (MATCHING HEADER IDENTITIES) ================= */
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-date {
+  background-color: rgba(17, 24, 39, 0.65);
 }
 
-.timeslot-data-table tbody tr:nth-child(odd) {
-  background-color: transparent;
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-morning {
+  background-color: rgba(15, 39, 68, 0.42);
 }
 
-.timeslot-data-table tbody tr:hover {
-  background-color: rgba(56, 189, 248, 0.06);
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-office-time {
+  background-color: rgba(15, 53, 33, 0.42);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-after-office {
+  background-color: rgba(62, 40, 8, 0.42);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-slot-total {
+  background-color: rgba(28, 39, 56, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-work-time {
+  background-color: rgba(28, 39, 56, 0.42);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-leave {
+  background-color: rgba(70, 63, 13, 0.42);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-holiday {
+  background-color: rgba(51, 25, 74, 0.42);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-out {
+  background-color: rgba(69, 31, 18, 0.42);
+}
+
+/* Alternating even rows with slightly deeper column background tint */
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-date {
+  background-color: rgba(17, 24, 39, 0.85);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-early-morning {
+  background-color: rgba(15, 39, 68, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-office-time {
+  background-color: rgba(15, 53, 33, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-after-office {
+  background-color: rgba(62, 40, 8, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-slot-total {
+  background-color: rgba(28, 39, 56, 0.72);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-work-time {
+  background-color: rgba(28, 39, 56, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-leave {
+  background-color: rgba(70, 63, 13, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-holiday {
+  background-color: rgba(51, 25, 74, 0.58);
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-early-out {
+  background-color: rgba(69, 31, 18, 0.58);
+}
+
+/* Hover on normal rows */
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage):hover td {
+  filter: brightness(1.22);
 }
 
 /* Exact row highlight logic based on is_shortage boolean field */
-/* is_shortage === true -> Red Row (Shortage / Requirement Not Met) */
+/* is_shortage === true -> Red Row (Shortage / Requirement Not Met - Overrides column colors) */
 .timeslot-data-table tr.timeslot-row-shortage,
 .timeslot-data-table tr.timeslot-row-shortage td {
   background-color: rgba(239, 68, 68, 0.16) !important;
   color: #fca5a5 !important;
   border-bottom: 1px solid rgba(239, 68, 68, 0.28) !important;
+  border-right: 1px solid rgba(239, 68, 68, 0.16) !important;
 }
 
 .timeslot-data-table tr.timeslot-row-shortage td.td-cyan,
@@ -3119,32 +3268,68 @@ body.is-maximized #popup-container {
 
 .timeslot-data-table tbody tr.timeslot-row-shortage:hover td {
   background-color: rgba(239, 68, 68, 0.26) !important;
+  filter: none !important;
 }
 
-/* is_shortage === false -> Green Row (Normal / No Shortage) */
-.timeslot-data-table tr.timeslot-row-normal,
+/* is_shortage === false -> Normal Row class fallback */
 .timeslot-data-table tr.timeslot-row-normal td {
-  background-color: rgba(34, 197, 94, 0.14) !important;
-  color: #86efac !important;
-  border-bottom: 1px solid rgba(34, 197, 94, 0.25) !important;
+  color: #f1f5f9;
 }
 
 .timeslot-data-table tr.timeslot-row-normal td.td-cyan,
 .timeslot-data-table tr.timeslot-row-normal td.td-slot-total,
 .timeslot-data-table tr.timeslot-row-normal td.td-day-total {
-  color: #4ade80 !important;
+  color: #38bdf8 !important;
   font-weight: 700;
 }
 
 .timeslot-data-table tr.timeslot-row-normal .row-cal-icon {
+  color: #94a3b8 !important;
+}
+
+/* ================= COLUMN THEMED VALUE COLORS (MATCHING HEADER TINTS, EXCEPT RED ROWS) ================= */
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-morning,
+.timeslot-data-table tfoot td.td-early-morning {
+  color: #7dd3fc !important;
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-office-time,
+.timeslot-data-table tfoot td.td-office-time {
   color: #86efac !important;
 }
 
-.timeslot-data-table tbody tr.timeslot-row-normal:hover td {
-  background-color: rgba(34, 197, 94, 0.24) !important;
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-after-office,
+.timeslot-data-table tfoot td.td-after-office {
+  color: #fde047 !important;
 }
 
-/* Footer Total Row aligned */
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-slot-total,
+.timeslot-data-table tfoot td.td-slot-total {
+  color: #38bdf8 !important;
+  font-weight: 700;
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-work-time,
+.timeslot-data-table tfoot td.td-work-time {
+  color: #ffffff !important;
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-leave,
+.timeslot-data-table tfoot td.td-leave {
+  color: #facc15 !important;
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-holiday,
+.timeslot-data-table tfoot td.td-holiday {
+  color: #c084fc !important;
+}
+
+.timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-out,
+.timeslot-data-table tfoot td.td-early-out {
+  color: #fb923c !important;
+}
+
+/* Footer Total Row aligned with Column Colors */
 .timeslot-data-table tfoot {
   position: sticky;
   bottom: 0;
@@ -3157,9 +3342,14 @@ body.is-maximized #popup-container {
   color: #ffffff;
   font-weight: 700;
   font-size: 11px;
-  border-top: 2px solid rgba(56, 189, 248, 0.4) !important;
-  border-bottom: none !important;
+  border-top: 2px solid rgba(56, 189, 248, 0.5) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.09) !important;
   font-variant-numeric: tabular-nums;
+}
+
+.timeslot-row-total td:last-child {
+  border-right: none !important;
 }
 
 .timeslot-row-total td.td-total-label {
@@ -3169,6 +3359,50 @@ body.is-maximized #popup-container {
   font-weight: 700;
   font-size: 12px;
   letter-spacing: 0.3px;
+}
+
+.timeslot-row-total td.td-date {
+  background-color: #111827 !important;
+}
+
+.timeslot-row-total td.td-early-morning {
+  background-color: #0f2744 !important;
+  border-right: 1px solid rgba(30, 90, 150, 0.35) !important;
+}
+
+.timeslot-row-total td.td-office-time {
+  background-color: #0f3521 !important;
+  border-right: 1px solid rgba(30, 126, 72, 0.35) !important;
+}
+
+.timeslot-row-total td.td-after-office {
+  background-color: #3e2808 !important;
+  border-right: 1px solid rgba(158, 103, 18, 0.35) !important;
+}
+
+.timeslot-row-total td.td-slot-total {
+  background-color: #1c2738 !important;
+  border-right: 1px solid rgba(59, 78, 104, 0.4) !important;
+}
+
+.timeslot-row-total td.td-work-time {
+  background-color: #1c2738 !important;
+  border-right: 1px solid rgba(59, 78, 104, 0.4) !important;
+}
+
+.timeslot-row-total td.td-leave {
+  background-color: #463f0d !important;
+  border-right: 1px solid rgba(153, 138, 26, 0.35) !important;
+}
+
+.timeslot-row-total td.td-holiday {
+  background-color: #33194a !important;
+  border-right: 1px solid rgba(116, 50, 168, 0.35) !important;
+}
+
+.timeslot-row-total td.td-early-out {
+  background-color: #451f12 !important;
+  border-right: 1px solid rgba(148, 64, 36, 0.35) !important;
 }
 
 .timeslot-row-total td.td-cyan {
@@ -3194,4 +3428,517 @@ body.is-maximized #popup-container {
 .timeslot-table-scroll::-webkit-scrollbar-thumb:hover,
 .timeslot-table-wrapper::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* ================= REPORTEES SINGLE THEME TOGGLE ICON BUTTON ================= */
+.header-theme-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.header-theme-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fbbf24;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease-in-out;
+  -webkit-app-region: no-drag;
+}
+
+.header-theme-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fde047;
+  transform: scale(1.06);
+}
+
+.header-theme-icon-btn:active {
+  transform: scale(0.94);
+}
+
+.theme-toggle-icon {
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.theme-toggle-icon.icon-sun {
+  color: #fbbf24;
+}
+
+.theme-toggle-icon.icon-moon {
+  color: #6366f1;
+}
+
+/* ================= REPORTEES LIGHT THEME (SCOPED TO REPORTEES DATA SECTION ONLY) ================= */
+#reportees-view.reportees-light-theme,
+.reportees-light-theme #reportees-view,
+#reportees-sections-container.reportees-light-theme {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#reportees-view.reportees-light-theme .reportee-profile-card,
+.reportees-light-theme .reportee-profile-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+#reportees-view.reportees-light-theme .reportee-profile-card:hover,
+.reportees-light-theme .reportee-profile-card:hover {
+  border-color: #0284c7 !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.08) !important;
+}
+
+#reportees-view.reportees-light-theme .reportee-profile-name,
+.reportees-light-theme .reportee-profile-name {
+  color: #0f172a !important;
+}
+
+#reportees-view.reportees-light-theme .profile-stat-item,
+.reportees-light-theme .profile-stat-item {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+#reportees-view.reportees-light-theme .profile-stat-label,
+.reportees-light-theme .profile-stat-label {
+  color: #64748b !important;
+}
+
+#reportees-view.reportees-light-theme .profile-stat-val.val-total,
+.reportees-light-theme .profile-stat-val.val-total {
+  color: #0284c7 !important;
+}
+
+#reportees-view.reportees-light-theme .profile-stat-val.val-work,
+.reportees-light-theme .profile-stat-val.val-work {
+  color: #0f172a !important;
+}
+
+#reportees-view.reportees-light-theme .profile-chevron-icon,
+.reportees-light-theme .profile-chevron-icon {
+  color: #64748b !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-table-wrapper,
+.reportees-light-theme .timeslot-table-wrapper {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table,
+.reportees-light-theme .timeslot-data-table {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+/* Lightly borders in Light Mode */
+#reportees-view.reportees-light-theme .timeslot-data-table th,
+.reportees-light-theme .timeslot-data-table th {
+  border-bottom: 2px solid #cbd5e1 !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table td,
+.reportees-light-theme .timeslot-data-table td {
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th:last-child,
+#reportees-view.reportees-light-theme .timeslot-data-table td:last-child,
+.reportees-light-theme .timeslot-data-table th:last-child,
+.reportees-light-theme .timeslot-data-table td:last-child {
+  border-right: none !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-normal td,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-normal td {
+  color: #1e293b;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-normal .row-cal-icon,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-normal .row-cal-icon {
+  color: #64748b !important;
+}
+
+/* Light Mode Column Colors in Background */
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-date,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-date {
+  background-color: #f8fafc !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-morning,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-morning {
+  background-color: rgba(224, 242, 254, 0.45) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-office-time,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-office-time {
+  background-color: rgba(220, 252, 231, 0.45) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-after-office,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-after-office {
+  background-color: rgba(254, 249, 195, 0.45) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-slot-total,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-slot-total {
+  background-color: rgba(224, 242, 254, 0.65) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-work-time,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-work-time {
+  background-color: rgba(241, 245, 249, 0.55) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-leave,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-leave {
+  background-color: rgba(254, 243, 199, 0.45) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-holiday,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-holiday {
+  background-color: rgba(243, 232, 255, 0.45) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-out,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-out {
+  background-color: rgba(255, 237, 213, 0.45) !important;
+}
+
+/* Light Mode Alternating Even Rows */
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-date,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-date {
+  background-color: #f1f5f9 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-early-morning,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-early-morning {
+  background-color: rgba(224, 242, 254, 0.72) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-office-time,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-office-time {
+  background-color: rgba(220, 252, 231, 0.72) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-after-office,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-after-office {
+  background-color: rgba(254, 249, 195, 0.72) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-slot-total,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-slot-total {
+  background-color: rgba(224, 242, 254, 0.88) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-work-time,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-work-time {
+  background-color: rgba(241, 245, 249, 0.82) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-leave,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-leave {
+  background-color: rgba(254, 243, 199, 0.72) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-holiday,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-holiday {
+  background-color: rgba(243, 232, 255, 0.72) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-early-out,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):nth-child(even) td.td-early-out {
+  background-color: rgba(255, 237, 213, 0.72) !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):hover td,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage):hover td {
+  filter: brightness(0.96) !important;
+}
+
+/* Light mode table header tints */
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-date,
+.reportees-light-theme .timeslot-data-table th.th-date {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-early-morning,
+.reportees-light-theme .timeslot-data-table th.th-early-morning {
+  background: #e0f2fe !important;
+  border: 1px solid #bae6fd !important;
+  color: #0369a1 !important;
+}
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-early-morning .th-main-title,
+.reportees-light-theme .timeslot-data-table th.th-early-morning .th-main-title {
+  color: #0369a1 !important;
+}
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-early-morning .th-time-range,
+.reportees-light-theme .timeslot-data-table th.th-early-morning .th-time-range {
+  color: #0284c7 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-office-time,
+.reportees-light-theme .timeslot-data-table th.th-office-time {
+  background: #dcfce7 !important;
+  border: 1px solid #bbf7d0 !important;
+  color: #15803d !important;
+}
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-office-time .th-main-title,
+.reportees-light-theme .timeslot-data-table th.th-office-time .th-main-title {
+  color: #15803d !important;
+}
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-office-time .th-time-range,
+.reportees-light-theme .timeslot-data-table th.th-office-time .th-time-range {
+  color: #16a34a !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-after-office,
+.reportees-light-theme .timeslot-data-table th.th-after-office {
+  background: #fef9c3 !important;
+  border: 1px solid #fef08a !important;
+  color: #a16207 !important;
+}
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-after-office .th-main-title,
+.reportees-light-theme .timeslot-data-table th.th-after-office .th-main-title {
+  color: #a16207 !important;
+}
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-after-office .th-time-range,
+.reportees-light-theme .timeslot-data-table th.th-after-office .th-time-range {
+  color: #854d0e !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-slot-total,
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-work-time,
+.reportees-light-theme .timeslot-data-table th.th-slot-total,
+.reportees-light-theme .timeslot-data-table th.th-work-time {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-leave,
+.reportees-light-theme .timeslot-data-table th.th-leave {
+  background: #fef3c7 !important;
+  border: 1px solid #fde68a !important;
+  color: #b45309 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-holiday,
+.reportees-light-theme .timeslot-data-table th.th-holiday {
+  background: #f3e8ff !important;
+  border: 1px solid #e9d5ff !important;
+  color: #7e22ce !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table th.th-early-out,
+.reportees-light-theme .timeslot-data-table th.th-early-out {
+  background: #ffedd5 !important;
+  border: 1px solid #fed7aa !important;
+  color: #c2410c !important;
+}
+
+/* Light mode column value colors (high contrast for light background) */
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-morning,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-early-morning,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-morning,
+.reportees-light-theme .timeslot-data-table tfoot td.td-early-morning {
+  color: #0284c7 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-office-time,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-office-time,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-office-time,
+.reportees-light-theme .timeslot-data-table tfoot td.td-office-time {
+  color: #16a34a !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-after-office,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-after-office,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-after-office,
+.reportees-light-theme .timeslot-data-table tfoot td.td-after-office {
+  color: #ca8a04 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-slot-total,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-slot-total,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-slot-total,
+.reportees-light-theme .timeslot-data-table tfoot td.td-slot-total {
+  color: #0284c7 !important;
+  font-weight: 700;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-work-time,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-work-time,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-work-time,
+.reportees-light-theme .timeslot-data-table tfoot td.td-work-time {
+  color: #0f172a !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-leave,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-leave,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-leave,
+.reportees-light-theme .timeslot-data-table tfoot td.td-leave {
+  color: #d97706 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-holiday,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-holiday,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-holiday,
+.reportees-light-theme .timeslot-data-table tfoot td.td-holiday {
+  color: #9333ea !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-out,
+#reportees-view.reportees-light-theme .timeslot-data-table tfoot td.td-early-out,
+.reportees-light-theme .timeslot-data-table tbody tr:not(.timeslot-row-shortage) td.td-early-out,
+.reportees-light-theme .timeslot-data-table tfoot td.td-early-out {
+  color: #ea580c !important;
+}
+
+/* Light mode table footer */
+#reportees-view.reportees-light-theme .timeslot-row-total,
+#reportees-view.reportees-light-theme .timeslot-row-total td,
+.reportees-light-theme .timeslot-row-total,
+.reportees-light-theme .timeslot-row-total td {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-top: 2px solid #0284c7 !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td:last-child,
+.reportees-light-theme .timeslot-row-total td:last-child {
+  border-right: none !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-total-label,
+.reportees-light-theme .timeslot-row-total td.td-total-label {
+  color: #0284c7 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-date,
+.reportees-light-theme .timeslot-row-total td.td-date {
+  background-color: #e2e8f0 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-early-morning,
+.reportees-light-theme .timeslot-row-total td.td-early-morning {
+  background-color: #bae6fd !important;
+  border-right: 1px solid #7dd3fc !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-office-time,
+.reportees-light-theme .timeslot-row-total td.td-office-time {
+  background-color: #bbf7d0 !important;
+  border-right: 1px solid #86efac !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-after-office,
+.reportees-light-theme .timeslot-row-total td.td-after-office {
+  background-color: #fef08a !important;
+  border-right: 1px solid #fde047 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-slot-total,
+.reportees-light-theme .timeslot-row-total td.td-slot-total {
+  background-color: #bae6fd !important;
+  border-right: 1px solid #38bdf8 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-work-time,
+.reportees-light-theme .timeslot-row-total td.td-work-time {
+  background-color: #e2e8f0 !important;
+  border-right: 1px solid #cbd5e1 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-leave,
+.reportees-light-theme .timeslot-row-total td.td-leave {
+  background-color: #fde68a !important;
+  border-right: 1px solid #facc15 !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-holiday,
+.reportees-light-theme .timeslot-row-total td.td-holiday {
+  background-color: #e9d5ff !important;
+  border-right: 1px solid #c084fc !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-row-total td.td-early-out,
+.reportees-light-theme .timeslot-row-total td.td-early-out {
+  background-color: #fed7aa !important;
+  border-right: 1px solid #fb923c !important;
+}
+
+/* Light mode shortage row (red) */
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage,
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td {
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+  border-bottom: 1px solid #fca5a5 !important;
+  border-right: 1px solid #fecaca !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-cyan,
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-slot-total,
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-day-total,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-cyan,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-slot-total,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-day-total {
+  color: #b91c1c !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage .row-cal-icon,
+.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage .row-cal-icon {
+  color: #b91c1c !important;
+}
+
+#reportees-view.reportees-light-theme .timeslot-data-table tbody tr.timeslot-row-shortage:hover td,
+.reportees-light-theme .timeslot-data-table tbody tr.timeslot-row-shortage:hover td {
+  background-color: #fecaca !important;
+}
+
+/* Light mode shortage legend badge */
+#reportees-view.reportees-light-theme .reportee-shortage-badge,
+.reportees-light-theme .reportee-shortage-badge {
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+  color: #991b1b !important;
+}
+
+/* Light mode scrollbars */
+#reportees-view.reportees-light-theme .timeslot-table-scroll::-webkit-scrollbar-thumb,
+#reportees-view.reportees-light-theme .timeslot-table-wrapper::-webkit-scrollbar-thumb,
+#reportees-view.reportees-light-theme .reportees-sections-container::-webkit-scrollbar-thumb,
+.reportees-light-theme .timeslot-table-scroll::-webkit-scrollbar-thumb,
+.reportees-light-theme .timeslot-table-wrapper::-webkit-scrollbar-thumb,
+.reportees-light-theme .reportees-sections-container::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+#reportees-view.reportees-light-theme .timeslot-table-scroll::-webkit-scrollbar-thumb:hover,
+#reportees-view.reportees-light-theme .timeslot-table-wrapper::-webkit-scrollbar-thumb:hover,
+#reportees-view.reportees-light-theme .reportees-sections-container::-webkit-scrollbar-thumb:hover,
+.reportees-light-theme .timeslot-table-scroll::-webkit-scrollbar-thumb:hover,
+.reportees-light-theme .timeslot-table-wrapper::-webkit-scrollbar-thumb:hover,
+.reportees-light-theme .reportees-sections-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
 }

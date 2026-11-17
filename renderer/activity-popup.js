@@ -40,6 +40,9 @@ const headerDatePickerContainer = getEl('header-date-picker-container');
 const headerDateRangeBtn = getEl('header-date-range-btn');
 const headerDateRangeLabel = getEl('header-date-range-label');
 const headerDateRangeMenu = getEl('header-date-range-menu');
+const headerDividerTheme = getEl('header-divider-theme');
+const headerThemeToggleContainer = getEl('header-theme-toggle-container');
+const themeToggleBtn = getEl('theme-toggle-btn');
 const activeTimeView = getEl('active-time-view');
 const reporteesView = getEl('reportees-view');
 
@@ -2662,14 +2665,109 @@ function getReporteeColor(index, id) {
   return REPORTEE_PALETTE[seed % REPORTEE_PALETTE.length];
 }
 
-function formatHoursVal(val) {
+function formatHoursVal(val, blankIfZero = false) {
+  if (blankIfZero) {
+    return formatTableCellVal(val);
+  }
   if (val === null || val === undefined || val === '') return '0.00h';
   const num = typeof val === 'number' ? val : parseFloat(val);
   if (isNaN(num)) return '0.00h';
   return num.toFixed(2) + 'h';
 }
 
+function formatTableCellVal(val) {
+  if (val === null || val === undefined || val === '') return '';
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num) || num <= 0 || parseFloat(num.toFixed(2)) === 0) return '';
+  return num.toFixed(2) + 'h';
+}
+
+// ================= REPORTEES THEME (LIGHT / DARK MODE) =================
+let currentReporteesTheme = 'dark'; // 'dark' | 'light'
+
+function getReporteesTheme() {
+  return currentReporteesTheme;
+}
+
+function setReporteesTheme(theme) {
+  currentReporteesTheme = (theme === 'light') ? 'light' : 'dark';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('worklens_reportees_theme', currentReporteesTheme);
+    }
+  } catch (_) {}
+
+  applyReporteesTheme(currentReporteesTheme);
+}
+
+function toggleReporteesTheme() {
+  const nextTheme = currentReporteesTheme === 'light' ? 'dark' : 'light';
+  setReporteesTheme(nextTheme);
+  return nextTheme;
+}
+
+function applyReporteesTheme(theme) {
+  const container = (typeof popupContainer !== 'undefined' && popupContainer) ||
+    (typeof document !== 'undefined' ? document.getElementById('popup-container') : null);
+  const view = (typeof reporteesView !== 'undefined' && reporteesView) ||
+    (typeof document !== 'undefined' ? document.getElementById('reportees-view') : null);
+  const toggleBtn = (typeof themeToggleBtn !== 'undefined' && themeToggleBtn) ||
+    (typeof document !== 'undefined' ? document.getElementById('theme-toggle-btn') : null);
+
+  if (theme === 'light') {
+    if (toggleBtn) {
+      toggleBtn.title = 'Switch to Dark Mode';
+      toggleBtn.setAttribute('aria-label', 'Switch to Dark Mode');
+      const sunIcon = toggleBtn.querySelector('.icon-sun');
+      const moonIcon = toggleBtn.querySelector('.icon-moon');
+      if (sunIcon) sunIcon.classList.add('hidden');
+      if (moonIcon) moonIcon.classList.remove('hidden');
+    }
+    // Dark/Light mode applies strictly to reportees data section (#reportees-view), not the popup container / header
+    if (view && currentDashboardView === 'reportees') {
+      view.classList.add('reportees-light-theme');
+    }
+    if (container) {
+      container.classList.remove('reportees-light-theme');
+    }
+  } else {
+    if (toggleBtn) {
+      toggleBtn.title = 'Switch to Light Mode';
+      toggleBtn.setAttribute('aria-label', 'Switch to Light Mode');
+      const sunIcon = toggleBtn.querySelector('.icon-sun');
+      const moonIcon = toggleBtn.querySelector('.icon-moon');
+      if (sunIcon) sunIcon.classList.remove('hidden');
+      if (moonIcon) moonIcon.classList.add('hidden');
+    }
+    if (view) {
+      view.classList.remove('reportees-light-theme');
+    }
+    if (container) {
+      container.classList.remove('reportees-light-theme');
+    }
+  }
+}
+
+function initReporteesTheme() {
+  let savedTheme = 'dark';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('worklens_reportees_theme');
+      if (stored === 'light' || stored === 'dark') savedTheme = stored;
+    }
+  } catch (_) {}
+  setReporteesTheme(savedTheme);
+}
+
 function setupHeaderNav() {
+  initReporteesTheme();
+
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleReporteesTheme();
+    });
+  }
   if (tabNavActiveTime) {
     tabNavActiveTime.addEventListener('click', () => {
       switchDashboardView('active-time');
@@ -2876,18 +2974,34 @@ function switchDashboardView(view) {
     if (tabNavActiveTime) tabNavActiveTime.classList.add('active');
     if (tabNavReportees) tabNavReportees.classList.remove('active');
     if (activeTimeView) activeTimeView.classList.remove('hidden');
-    if (reporteesView) reporteesView.classList.add('hidden');
+    if (reporteesView) {
+      reporteesView.classList.add('hidden');
+      reporteesView.classList.remove('reportees-light-theme');
+    }
     if (headerDatePickerContainer) headerDatePickerContainer.classList.add('hidden');
     if (headerDividerDate) headerDividerDate.classList.add('hidden');
+    if (headerThemeToggleContainer) headerThemeToggleContainer.classList.add('hidden');
+    if (headerDividerTheme) headerDividerTheme.classList.add('hidden');
+    if (popupContainer) popupContainer.classList.remove('reportees-light-theme');
     toggleReporteesDropdown(false);
     toggleHeaderDateMenu(false);
   } else if (view === 'reportees') {
     if (tabNavActiveTime) tabNavActiveTime.classList.remove('active');
     if (tabNavReportees) tabNavReportees.classList.add('active');
     if (activeTimeView) activeTimeView.classList.add('hidden');
-    if (reporteesView) reporteesView.classList.remove('hidden');
+    if (reporteesView) {
+      reporteesView.classList.remove('hidden');
+      if (currentReporteesTheme === 'light') {
+        reporteesView.classList.add('reportees-light-theme');
+      }
+    }
     if (headerDatePickerContainer) headerDatePickerContainer.classList.remove('hidden');
     if (headerDividerDate) headerDividerDate.classList.remove('hidden');
+    if (headerThemeToggleContainer) headerThemeToggleContainer.classList.remove('hidden');
+    if (headerDividerTheme) headerDividerTheme.classList.remove('hidden');
+    if (popupContainer) {
+      popupContainer.classList.remove('reportees-light-theme');
+    }
 
     if (!reporteesData) {
       fetchAndRenderReportees();
@@ -3082,14 +3196,14 @@ function renderTableRowsForBody(tbodyEl, records) {
           <span class="row-date-text">${escapeHtml(displayDate)}</span>
         </span>
       </td>
-      <td class="td-num td-early-morning">${formatHoursVal(r.early_morning)}</td>
-      <td class="td-num td-office-time">${formatHoursVal(r.office_time)}</td>
-      <td class="td-num td-after-office">${formatHoursVal(r.after_office_time)}</td>
-      <td class="td-num td-slot-total td-cyan">${formatHoursVal(rowTotal)}</td>
-      <td class="td-num td-work-time">${formatHoursVal(r.work_time)}</td>
-      <td class="td-num td-leave">${formatHoursVal(r.leave)}</td>
-      <td class="td-num td-holiday">${formatHoursVal(r.holiday)}</td>
-      <td class="td-num td-early-out">${formatHoursVal(r.early_out)}</td>
+      <td class="td-num td-early-morning">${formatTableCellVal(r.early_morning)}</td>
+      <td class="td-num td-office-time">${formatTableCellVal(r.office_time)}</td>
+      <td class="td-num td-after-office">${formatTableCellVal(r.after_office_time)}</td>
+      <td class="td-num td-slot-total td-cyan">${formatTableCellVal(rowTotal)}</td>
+      <td class="td-num td-work-time">${formatTableCellVal(r.work_time)}</td>
+      <td class="td-num td-leave">${formatTableCellVal(r.leave)}</td>
+      <td class="td-num td-holiday">${formatTableCellVal(r.holiday)}</td>
+      <td class="td-num td-early-out">${formatTableCellVal(r.early_out)}</td>
     `;
     tbodyEl.appendChild(tr);
   });
@@ -3163,14 +3277,14 @@ function createExtraReporteeBlock(emp, empRecords, empTotals, isExpanded) {
         <tfoot>
           <tr class="timeslot-row-total">
             <td class="td-total-label td-date">Total</td>
-            <td class="td-num td-early-morning">${formatHoursVal(empTotals.early_morning)}</td>
-            <td class="td-num td-office-time">${formatHoursVal(empTotals.office_time)}</td>
-            <td class="td-num td-after-office">${formatHoursVal(empTotals.after_office_time)}</td>
-            <td class="td-num td-slot-total td-cyan">${formatHoursVal(empTotals.total)}</td>
-            <td class="td-num td-work-time">${formatHoursVal(empTotals.work_time)}</td>
-            <td class="td-num td-leave">${formatHoursVal(empTotals.leave)}</td>
-            <td class="td-num td-holiday">${formatHoursVal(empTotals.holiday)}</td>
-            <td class="td-num td-early-out">${formatHoursVal(empTotals.early_out)}</td>
+            <td class="td-num td-early-morning">${formatTableCellVal(empTotals.early_morning)}</td>
+            <td class="td-num td-office-time">${formatTableCellVal(empTotals.office_time)}</td>
+            <td class="td-num td-after-office">${formatTableCellVal(empTotals.after_office_time)}</td>
+            <td class="td-num td-slot-total td-cyan">${formatTableCellVal(empTotals.total)}</td>
+            <td class="td-num td-work-time">${formatTableCellVal(empTotals.work_time)}</td>
+            <td class="td-num td-leave">${formatTableCellVal(empTotals.leave)}</td>
+            <td class="td-num td-holiday">${formatTableCellVal(empTotals.holiday)}</td>
+            <td class="td-num td-early-out">${formatTableCellVal(empTotals.early_out)}</td>
           </tr>
         </tfoot>
       </table>
@@ -3219,6 +3333,8 @@ function renderReporteesDashboard() {
   const count = allReporteesList.length || (typeof data.total_reportees === 'number' ? data.total_reportees : 0);
   if (count === 0) {
     if (tabNavReportees) tabNavReportees.classList.add('hidden');
+    if (headerThemeToggleContainer) headerThemeToggleContainer.classList.add('hidden');
+    if (headerDividerTheme) headerDividerTheme.classList.add('hidden');
     if (currentDashboardView === 'reportees') {
       switchDashboardView('active-time');
     }
@@ -3344,15 +3460,15 @@ function renderEmployeeTableAndTotals() {
 }
 
 function updateTableTotals(totals) {
-  if (totalEarlyMorning) totalEarlyMorning.textContent = formatHoursVal(totals.early_morning);
-  if (totalOfficeTime) totalOfficeTime.textContent = formatHoursVal(totals.office_time);
-  if (totalAfterOffice) totalAfterOffice.textContent = formatHoursVal(totals.after_office_time);
-  if (totalSystemActive) totalSystemActive.textContent = formatHoursVal(totals.total);
-  if (totalWorkTime) totalWorkTime.textContent = formatHoursVal(totals.work_time);
-  if (totalLeave) totalLeave.textContent = formatHoursVal(totals.leave);
-  if (totalEarlyOut) totalEarlyOut.textContent = formatHoursVal(totals.early_out);
-  if (totalOverall) totalOverall.textContent = formatHoursVal(totals.total);
-  if (totalHoliday) totalHoliday.textContent = formatHoursVal(totals.holiday);
+  if (totalEarlyMorning) totalEarlyMorning.textContent = formatTableCellVal(totals.early_morning);
+  if (totalOfficeTime) totalOfficeTime.textContent = formatTableCellVal(totals.office_time);
+  if (totalAfterOffice) totalAfterOffice.textContent = formatTableCellVal(totals.after_office_time);
+  if (totalSystemActive) totalSystemActive.textContent = formatTableCellVal(totals.total);
+  if (totalWorkTime) totalWorkTime.textContent = formatTableCellVal(totals.work_time);
+  if (totalLeave) totalLeave.textContent = formatTableCellVal(totals.leave);
+  if (totalEarlyOut) totalEarlyOut.textContent = formatTableCellVal(totals.early_out);
+  if (totalOverall) totalOverall.textContent = formatTableCellVal(totals.total);
+  if (totalHoliday) totalHoliday.textContent = formatTableCellVal(totals.holiday);
 
   // Update profile card stat pills (Total Time & Work Time)
   const statTotalEl = (typeof reporteeStatTotal !== 'undefined' && reporteeStatTotal) ||
@@ -3535,6 +3651,12 @@ if (typeof module !== 'undefined' && module.exports) {
     getReporteeInitials,
     getReporteeColor,
     formatHoursVal,
+    formatTableCellVal,
+    getReporteesTheme,
+    setReporteesTheme,
+    toggleReporteesTheme,
+    applyReporteesTheme,
+    initReporteesTheme,
     setupHeaderNav,
     switchDashboardView,
     getCurrentDashboardView: () => currentDashboardView,
