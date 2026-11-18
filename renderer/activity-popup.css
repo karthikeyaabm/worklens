@@ -3533,28 +3533,29 @@ body.is-maximized #popup-container {
 #reportees-view.reportees-light-theme .timeslot-table-wrapper,
 .reportees-light-theme .timeslot-table-wrapper {
   background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05) !important;
+  border: 1.5px solid #94a3b8 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table,
 .reportees-light-theme .timeslot-data-table {
   background: #ffffff !important;
   color: #0f172a !important;
-  border: 1px solid #cbd5e1 !important;
+  border: 1.5px solid #94a3b8 !important;
 }
 
-/* Lightly borders in Light Mode */
+/* Crisp high-contrast grid borders in Light Mode */
 #reportees-view.reportees-light-theme .timeslot-data-table th,
 .reportees-light-theme .timeslot-data-table th {
-  border-bottom: 2px solid #cbd5e1 !important;
-  border-right: 1px solid #e2e8f0 !important;
+  border-bottom: 2px solid #475569 !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-top: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table td,
 .reportees-light-theme .timeslot-data-table td {
-  border-bottom: 1px solid #e2e8f0 !important;
-  border-right: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #94a3b8 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table th:last-child,
@@ -3675,14 +3676,16 @@ body.is-maximized #popup-container {
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-date,
 .reportees-light-theme .timeslot-data-table th.th-date {
   background: #f1f5f9 !important;
-  border: 1px solid #e2e8f0 !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #334155 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-early-morning,
 .reportees-light-theme .timeslot-data-table th.th-early-morning {
   background: #e0f2fe !important;
-  border: 1px solid #bae6fd !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #0369a1 !important;
 }
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-early-morning .th-main-title,
@@ -3697,7 +3700,8 @@ body.is-maximized #popup-container {
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-office-time,
 .reportees-light-theme .timeslot-data-table th.th-office-time {
   background: #dcfce7 !important;
-  border: 1px solid #bbf7d0 !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #15803d !important;
 }
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-office-time .th-main-title,
@@ -3712,7 +3716,8 @@ body.is-maximized #popup-container {
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-after-office,
 .reportees-light-theme .timeslot-data-table th.th-after-office {
   background: #fef9c3 !important;
-  border: 1px solid #fef08a !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #a16207 !important;
 }
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-after-office .th-main-title,
@@ -3729,28 +3734,32 @@ body.is-maximized #popup-container {
 .reportees-light-theme .timeslot-data-table th.th-slot-total,
 .reportees-light-theme .timeslot-data-table th.th-work-time {
   background: #f1f5f9 !important;
-  border: 1px solid #e2e8f0 !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #1e293b !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-leave,
 .reportees-light-theme .timeslot-data-table th.th-leave {
   background: #fef3c7 !important;
-  border: 1px solid #fde68a !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #b45309 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-holiday,
 .reportees-light-theme .timeslot-data-table th.th-holiday {
   background: #f3e8ff !important;
-  border: 1px solid #e9d5ff !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #7e22ce !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table th.th-early-out,
 .reportees-light-theme .timeslot-data-table th.th-early-out {
   background: #ffedd5 !important;
-  border: 1px solid #fed7aa !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #475569 !important;
   color: #c2410c !important;
 }
 
@@ -3819,9 +3828,9 @@ body.is-maximized #popup-container {
 .reportees-light-theme .timeslot-row-total td {
   background-color: #f1f5f9 !important;
   color: #0f172a !important;
-  border-top: 2px solid #0284c7 !important;
-  border-bottom: 1px solid #cbd5e1 !important;
-  border-right: 1px solid #e2e8f0 !important;
+  border-top: 2.5px solid #0284c7 !important;
+  border-bottom: 1.5px solid #94a3b8 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td:last-child,
@@ -3837,54 +3846,55 @@ body.is-maximized #popup-container {
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-date,
 .reportees-light-theme .timeslot-row-total td.td-date {
   background-color: #e2e8f0 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-early-morning,
 .reportees-light-theme .timeslot-row-total td.td-early-morning {
   background-color: #bae6fd !important;
-  border-right: 1px solid #7dd3fc !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-office-time,
 .reportees-light-theme .timeslot-row-total td.td-office-time {
   background-color: #bbf7d0 !important;
-  border-right: 1px solid #86efac !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-after-office,
 .reportees-light-theme .timeslot-row-total td.td-after-office {
   background-color: #fef08a !important;
-  border-right: 1px solid #fde047 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-slot-total,
 .reportees-light-theme .timeslot-row-total td.td-slot-total {
   background-color: #bae6fd !important;
-  border-right: 1px solid #38bdf8 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-work-time,
 .reportees-light-theme .timeslot-row-total td.td-work-time {
   background-color: #e2e8f0 !important;
-  border-right: 1px solid #cbd5e1 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-leave,
 .reportees-light-theme .timeslot-row-total td.td-leave {
   background-color: #fde68a !important;
-  border-right: 1px solid #facc15 !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-holiday,
 .reportees-light-theme .timeslot-row-total td.td-holiday {
   background-color: #e9d5ff !important;
-  border-right: 1px solid #c084fc !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-row-total td.td-early-out,
 .reportees-light-theme .timeslot-row-total td.td-early-out {
   background-color: #fed7aa !important;
-  border-right: 1px solid #fb923c !important;
+  border-right: 1px solid #94a3b8 !important;
 }
 
 /* Light mode shortage row (red) */
@@ -3894,8 +3904,8 @@ body.is-maximized #popup-container {
 .reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td {
   background-color: #fee2e2 !important;
   color: #b91c1c !important;
-  border-bottom: 1px solid #fca5a5 !important;
-  border-right: 1px solid #fecaca !important;
+  border-bottom: 1.5px solid #f87171 !important;
+  border-right: 1px solid #f87171 !important;
 }
 
 #reportees-view.reportees-light-theme .timeslot-data-table tr.timeslot-row-shortage td.td-cyan,

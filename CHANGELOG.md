@@ -4,6 +4,19 @@ All notable changes to the WorkLens Desktop Timelog application are documented b
 
 ---
 
+## [1.3.6] - 2026-11-17
+### Added
+- **Single Dynamic Icon Button for Reportees Light/Dark Theme Toggle**: Streamlined the Reportees dashboard header controls by replacing the dual pill button with a single interactive icon button (`#theme-toggle-btn`) displaying dynamic Sun (`☀️`) / Moon (`🌙`) SVG icons and tooltips.
+- **Data-Scoped Light & Dark Theme**: Restricted light mode styling exclusively to the reportees data section (`#reportees-view`), ensuring the window header, tabs, date range selector, and window frame stay dark and consistent across both light and dark modes.
+- **Column Background Colors in Table Body**: Applied subtle translucent background colors across normal data rows matching each column header's identity in both dark and light modes.
+- **High-Contrast Grid Borders**: Integrated crisp borders (`border-right: 1px solid rgba(255, 255, 255, 0.09)`, `border-bottom: 1px solid rgba(255, 255, 255, 0.08)`) in dark mode and high-contrast Slate-400 (`#94a3b8`) borders in light mode with `#475569` header dividers.
+- **Blank Zero-Value Cells**: Rendered `0.0` values plain/blank (`""`) in the time slot data table for clean readability.
+
+### Changed
+- Bumped application release version to `1.3.6` across `package.json`, `package-lock.json`, `renderer/index.html`, and `CHANGELOG.md`.
+
+---
+
 ## [1.3.0] - 2026-10-29
 ### Added
 - **Single-Source Today Total Time Synchronization across Historical Dashboards**: Unified Today's active duration across the Today tab, Last 7 Days, and Last 30 Days views. Extracted centralized `getAuthoritativeTodayActivity(userId, currentOsUser)` in `main.js` to ensure the live in-progress session and merged records are accurately reflected in Today's row and footer totals across all dashboard periods.
