@@ -421,6 +421,28 @@ async function runAsyncTest(description, testFn) {
     assert.ok(cssContent.includes('border-right: 1px solid'), 'CSS must define lightly borders between cells');
   });
 
+  runTest('4.6 activity-popup.css pins Employee Profile Card and Table Headers with scrollable data rows', () => {
+    const cssPath = path.join(__dirname, 'renderer', 'activity-popup.css');
+    const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+    // 1. Profile card pinned sticky at top
+    assert.ok(cssContent.includes('.reportee-profile-card'), 'Must define .reportee-profile-card');
+    assert.ok(cssContent.includes('position: sticky'), 'Must include position: sticky');
+    assert.ok(cssContent.includes('z-index: 25'), 'Must include z-index: 25 for frozen profile card');
+
+    // 2. Table thead pinned sticky at top
+    assert.ok(cssContent.includes('.timeslot-data-table thead'), 'Must define .timeslot-data-table thead');
+    assert.ok(cssContent.includes('.timeslot-data-table thead th'), 'Must define .timeslot-data-table thead th');
+
+    // 3. Table scroll container scrolls data rows
+    assert.ok(cssContent.includes('.timeslot-table-scroll'), 'Must define .timeslot-table-scroll');
+    assert.ok(cssContent.includes('overflow-y: auto;   /* Smoothly scrollable reportee date records */'), 'Must have scrollable reportee records');
+
+    // 4. Table footer pinned sticky at bottom
+    assert.ok(cssContent.includes('.timeslot-data-table tfoot'), 'Must define .timeslot-data-table tfoot');
+    assert.ok(cssContent.includes('bottom: 0;'), 'Must have bottom: 0 for pinned footer');
+  });
+
   // -----------------------------------------------------------------------------
   // 5. MULTI-REPORTEE DROPDOWN & DYNAMIC EMPLOYEE TABLE (SECTION 10 VERIFICATION)
   // -----------------------------------------------------------------------------

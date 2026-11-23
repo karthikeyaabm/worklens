@@ -2635,8 +2635,10 @@ function toggleReporteeTable(forceOpen) {
   }
 
   if (container) {
+    const primaryBlock = (typeof document !== 'undefined' ? document.getElementById('reportee-block-primary') : null);
     if (willOpen) {
       container.classList.remove('hidden');
+      if (primaryBlock) primaryBlock.classList.add('has-expanded-table');
       if (card) {
         card.classList.add('is-expanded');
         card.setAttribute('aria-expanded', 'true');
@@ -2644,6 +2646,7 @@ function toggleReporteeTable(forceOpen) {
       }
     } else {
       container.classList.add('hidden');
+      if (primaryBlock) primaryBlock.classList.remove('has-expanded-table');
       if (card) {
         card.classList.remove('is-expanded');
         card.setAttribute('aria-expanded', 'false');
@@ -3213,7 +3216,7 @@ function createExtraReporteeBlock(emp, empRecords, empTotals, isExpanded) {
   if (typeof document === 'undefined') return null;
 
   const block = document.createElement('div');
-  block.className = 'reportee-employee-block reportee-extra-block';
+  block.className = `reportee-employee-block reportee-extra-block ${isExpanded ? 'has-expanded-table' : ''}`;
   block.setAttribute('data-user-id', String(emp.id));
 
   const card = document.createElement('div');
@@ -3299,11 +3302,13 @@ function createExtraReporteeBlock(emp, empRecords, empTotals, isExpanded) {
     if (isHidden) {
       tableWrapper.classList.remove('hidden');
       card.classList.add('is-expanded');
+      block.classList.add('has-expanded-table');
       card.setAttribute('title', 'Click to hide time slot data');
       expandedReporteeUserIds.add(Number(emp.id));
     } else {
       tableWrapper.classList.add('hidden');
       card.classList.remove('is-expanded');
+      block.classList.remove('has-expanded-table');
       card.setAttribute('title', 'Click to view time slot data');
       expandedReporteeUserIds.delete(Number(emp.id));
     }
